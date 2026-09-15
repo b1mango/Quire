@@ -324,7 +324,7 @@ def test_unusable_image_is_not_committed_and_can_retry_or_use_alternative(
         elif format == "webp" and damaged:
             buffer = io.BytesIO()
             Image.new("RGB", (256, 256), "red").save(buffer, "WEBP")
-            data = buffer.getvalue()
+            data = buffer.getvalue()[:-12]
         else:
             data = _png(b"not zlib" if damaged else zlib.compress(bytes((256 * 3 + 1) * 256)))
         return answer(request, data=data)

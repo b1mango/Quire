@@ -225,6 +225,18 @@ def _save_report(result: MangaResult, overwrite: bool) -> MangaResult:
     }
     if result.task_id is not None:
         payload.update(task_id=result.task_id, resources_reused=result.resources_reused)
+    if result.compression is not None:
+        payload.update(
+            source_resources=result.source_resources,
+            compression={
+                "preset": result.compression,
+                "target_bytes": result.target_bytes,
+                "target_met": result.target_met,
+                "rounds": result.encoding_rounds,
+                "quality": result.quality,
+                "max_edge": result.max_edge,
+            },
+        )
     try:
         write_bytes(
             report,

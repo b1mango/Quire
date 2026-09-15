@@ -54,9 +54,9 @@ def test_runtime_and_frontend_budget():
     assert sum(p.stat().st_size for p in (ROOT / "ui-preview").rglob("*") if p.is_file()) < 200_000
 
 
-def test_current_core_network_dependency_budget():
+def test_current_core_dependency_budget():
     from scripts.measure_core_dependencies import measure
 
     report = measure()
-    assert report["total_installed_bytes_excluding_pyc"] <= 8_000_000
+    assert report["total_installed_bytes_excluding_pyc"] <= 18_000_000
     assert report["includes_python_runtime"] is False

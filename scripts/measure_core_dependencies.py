@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tomllib
 from importlib.metadata import distribution
 from pathlib import Path
 
@@ -12,7 +13,10 @@ from packaging.utils import canonicalize_name
 
 
 def measure() -> dict[str, object]:
-    pending = ["httpx"]
+    project = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())
+    pending = [
+        Requirement(item).name for item in project["project"]["optional-dependencies"]["core"]
+    ]
     packages = {}
     while pending:
         name = canonicalize_name(pending.pop())

@@ -29,3 +29,6 @@ session-smoke:
 
 resume-smoke:
     {{python}} scripts/smoke_resume.py
+
+compression-smoke:
+    {{python}} scripts/smoke_compression.py

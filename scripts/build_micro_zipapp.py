@@ -24,7 +24,11 @@ def build(destination: Path) -> int:
             "quire/fetch/async_policy.py",
             "quire/fetch/decoding.py",
             "quire/core_manga.py",
+            "quire/core_export.py",
             "quire/image/downloader.py",
+            "quire/image/codec.py",
+            "quire/image/analyze.py",
+            "quire/image/compress.py",
         }
     }
     entries["__main__.py"] = b"from quire.cli import main\nraise SystemExit(main())\n"

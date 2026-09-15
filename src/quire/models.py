@@ -1,4 +1,4 @@
-"""Immutable task inputs and results for the micro pipeline."""
+"""Immutable capture inputs and results shared by the backends."""
 
 from __future__ import annotations
 
@@ -63,6 +63,13 @@ class MangaResult:
     report: Path | None = None
     task_id: str | None = None
     resources_reused: int = 0
+    source_resources: int = 0
+    compression: str | None = None
+    target_bytes: int | None = None
+    target_met: bool | None = None
+    encoding_rounds: int = 0
+    quality: int | None = None
+    max_edge: int | None = None
 
     @property
     def partial(self) -> bool:

@@ -608,6 +608,7 @@ source = { editable = "." }
 [package.optional-dependencies]
 core = [
     { name = "httpx" },
+    { name = "pillow" },
 ]
 dev = [
     { name = "lxml" },
@@ -624,6 +625,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'core'", specifier = ">=0.28,<0.29" },
     { name = "lxml", marker = "extra == 'dev'", specifier = ">=5,<7" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11,<2" },
+    { name = "pillow", marker = "extra == 'core'", specifier = ">=10.4,<13" },
     { name = "pillow", marker = "extra == 'dev'", specifier = ">=10.4,<13" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=5,<7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<10" },

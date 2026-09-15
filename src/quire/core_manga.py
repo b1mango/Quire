@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import cast
 
-from .assemble.pdf_min import MiniPdfWriter
+from .core_export import export_pdf
 from .errors import ConfigError
 from .fetch.session import AsyncFetcher
 from .image.downloader import download_images
-from .manga import _missing, _save_report, discover_page, embed_bytes
+from .image.options import CompressionOptions
+from .manga import _save_report, discover_page
 from .models import MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate
 from .parse.minidom import parse as parse_html
-from .store.cache import read_cached, remove_cached
+from .store.cache import remove_cached
 from .store.ledger import Ledger
 from .store.models import JsonValue, ResourceSpec, task_identity
 
@@ -39,8 +39,10 @@ async def run_core_manga(
     resume: bool = False,
     fetcher: AsyncFetcher | None = None,
     progress: ProgressSink | None = None,
+    compression: CompressionOptions | None = None,
 ) -> MangaResult:
     opts = options or MangaOptions()
+    encoding = compression or CompressionOptions()
     output = Path(out)
     if output.exists() and not opts.overwrite:
         raise ConfigError(f"目标已存在：{output}")
@@ -83,42 +85,9 @@ async def run_core_manga(
                 resources_reused=downloads.reused,
                 images_dir=cache if opts.keep_images else None,
             )
-            with MiniPdfWriter(
-                output, title=result.title, dpi=opts.dpi, paper=opts.paper, overwrite=opts.overwrite
-            ) as pdf:
-                for index, (record, candidate) in enumerate(
-                    zip(downloads.snapshot.resources, candidates, strict=True)
-                ):
-                    if record.local_path is not None:
-                        assert record.sha256 is not None and record.size is not None
-                        data = read_cached(
-                            ledger.root,
-                            task_id,
-                            record.local_path,
-                            sha256=record.sha256,
-                            size=record.size,
-                        )
-                        result = embed_bytes(
-                            pdf,
-                            data,
-                            result,
-                            index,
-                            len(candidates),
-                            candidate,
-                            opts,
-                        )
-                    else:
-                        result = _missing(
-                            pdf,
-                            result,
-                            index,
-                            len(candidates),
-                            candidate,
-                            record.error_code or "network",
-                        )
-                    if progress:
-                        progress.update(index + 1, len(candidates), result)
-                    await asyncio.sleep(0)
+            result = await export_pdf(
+                ledger.root, downloads.snapshot, candidates, opts, encoding, result, progress
+            )
             if result.partial:
                 result = replace(
                     result, warnings=result.warnings + ("恢复缓存已保留，可用 --resume 重试",)
@@ -129,7 +98,7 @@ async def run_core_manga(
                 ),
                 opts.overwrite,
             )
-            if result.partial:
+            if result.partial or result.target_met is False:
                 return result
             if not opts.keep_images and result.report is not None:
                 for record in downloads.snapshot.resources:

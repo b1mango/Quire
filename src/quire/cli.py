@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Never
 
 from . import __version__
+from .cli_options import add_manga_options, compression_options
 from .cli_progress import Progress
 from .errors import ConfigError, QuireError, UnsupportedError
 from .manga import MangaOptions, MangaResult, run_local, run_manga
@@ -70,9 +71,12 @@ def human_size(num: int) -> str:
 
 
 def cmd_manga(args: argparse.Namespace) -> int:
+    compression = compression_options(args)
     if args.resume and not args.core:
         raise ConfigError("--resume 需要 --core")
-    if args.core and (not _module_available("httpx") or not _module_available("quire.core_manga")):
+    if args.core and not all(
+        _module_available(name) for name in ("httpx", "PIL", "quire.core_manga")
+    ):
         raise UnsupportedError(
             "缺少 core 下载能力", hint="安装 quire-local[core]；micro 不包含断点恢复"
         )
@@ -119,6 +123,7 @@ def cmd_manga(args: argparse.Namespace) -> int:
                     workdir=args.workdir,
                     resume=args.resume,
                     progress=progress,
+                    compression=compression,
                 )
             )
         else:
@@ -166,6 +171,15 @@ def _report(result: MangaResult, args: argparse.Namespace) -> None:
         info(f"  报告：{result.report}")
     if result.task_id:
         info(f"  任务：{result.task_id[:12]} · 复用 {result.resources_reused} 张")
+    if result.compression:
+        target = (
+            "无体积目标"
+            if result.target_bytes is None
+            else (
+                f"目标 {human_size(result.target_bytes)} · {'已达成' if result.target_met else '未达成'}"
+            )
+        )
+        info(f"  {result.compression} · {result.encoding_rounds} 轮 · {target}")
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
@@ -230,7 +244,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     info("")
 
     info("可选依赖")
-    optional = [("PIL", "开发测试图像库"), ("pypdf", "PDF 回读校验"), ("lxml", "选择器对拍测试")]
+    optional = [("PIL", "core 图片解码与压缩"), ("httpx", "core 连接池"), ("pypdf", "PDF 测试校验")]
     for module, purpose in optional:
         mark = "✓" if _module_available(module) else "·"
         info(f"  {mark} {module:<14} {purpose}")
@@ -251,9 +265,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     info("")
     info("能力档位")
     info("  micro：静态网页 / 本地 JPEG、PNG → 无损 PDF，零第三方运行时依赖")
-    if _module_available("httpx") and _module_available("quire.core_manga"):
-        info("  core：静态漫画异步下载、校验缓存与 --resume 恢复")
-    info("  压缩、动态渲染、小说、OCR 和应用界面尚未实现")
+    if all(_module_available(name) for name in ("httpx", "PIL", "quire.core_manga")):
+        info("  core：静态漫画下载恢复、Pillow 转码切页、默认压缩及体积目标")
+    info("  动态渲染、小说、OCR 和应用界面尚未实现")
 
     info("")
     info("数据目录")
@@ -304,41 +318,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     m = sub.add_parser("manga", help="抓一页漫画并合成 PDF")
-    m.add_argument("url")
-    m.add_argument("--core", action="store_true", help="使用 core 连接池和本地账本")
-    m.add_argument("--resume", action="store_true", help="校验并复用 core 任务已完成图片")
-    m.add_argument("-o", "--output", help="输出 PDF 路径")
-    m.add_argument("--selector", help="限定图片所在区域的选择器，如 'div.reader img'")
-    m.add_argument(
-        "--order",
-        default="auto",
-        choices=["auto", "dom", "asc", "desc"],
-        help="页序策略（默认 auto：DOM 序，与编号冲突时告警）",
-    )
-    m.add_argument("--referer", help="自定义 Referer，用于防盗链站点")
-    m.add_argument("--start", type=int, default=1, help="起始页（1 起）")
-    m.add_argument("--end", type=int, default=0, help="结束页（0 表示到最后一页）")
-    m.add_argument("--concurrency", type=int, default=4, help="并发下载数（默认 4）")
-    m.add_argument("--rate", type=float, default=4.0, help="每站限速 req/s（默认 4）")
-    m.add_argument("--retries", type=int, default=3, help="失败重试次数（默认 3）")
-    m.add_argument("--timeout", type=float, default=20.0, help="单请求超时秒数")
-    m.add_argument("--dpi", type=int, default=150, help="像素→物理尺寸的换算基准")
-    m.add_argument(
-        "--paper",
-        default="original",
-        choices=["original", "a4", "a5", "b5", "letter"],
-        help="纸张（默认 original：页面等于图片）",
-    )
-    m.add_argument("--min-width", type=int, default=200, help="小于此宽度判为噪音")
-    m.add_argument("--min-height", type=int, default=200, help="小于此高度判为噪音")
-    m.add_argument("--min-size", type=float, default=0, help="最小图片 KB（默认不限）")
-    m.add_argument("--max-bytes", type=int, default=32 * 1024 * 1024, help="单资源最大字节数")
-    m.add_argument("--keep-images", action="store_true", help="保留下载的原图")
-    m.add_argument("--workdir", help="临时目录（默认在输出文件旁边）")
-    m.add_argument("--explain", action="store_true", help="打印每张图被过滤的原因")
-    m.add_argument("--explain-limit", type=int, default=30)
-    m.add_argument("--overwrite", action="store_true", help="覆盖同名输出")
-    m.add_argument("-q", "--quiet", action="store_true", help="不显示进度条")
+    add_manga_options(m)
     m.set_defaults(func=cmd_manga)
 
     i = sub.add_parser("inspect", help="侦察页面结构（写站点规则用）")

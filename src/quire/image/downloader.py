@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import zlib
 from dataclasses import dataclass
 from typing import Protocol
 
-from ..assemble.png import _png_to_pdf_image
-from ..errors import BlockedError, FetchError, UnsupportedError
+from ..errors import BlockedError, FetchError
 from ..parse.images import Candidate
 from ..store.cache import publish_bytes
 from ..store.ledger import Ledger
 from ..store.models import FailureCode, ResourceRecord, TaskSnapshot
-from .probe import probe_bytes
+from .codec import inspect_image
 
 
 class ImageResponse(Protocol):
@@ -93,17 +91,15 @@ async def _download_one(
         except FetchError:
             failure = "network"
             continue
-        probe = probe_bytes(response.content) if len(response.content) <= max_bytes else None
-        if probe is None or not probe.ok or probe.format not in {"jpeg", "png"}:
+        if len(response.content) > max_bytes:
             failure = "invalid_image"
             continue
-        if probe.format == "png":
-            try:
-                _png_to_pdf_image(response.content)
-            except (UnsupportedError, ValueError, IndexError, zlib.error):
-                failure = "invalid_image"
-                continue
-        extension = "jpg" if probe.format == "jpeg" else probe.format
+        try:
+            info = inspect_image(response.content)
+        except FetchError:
+            failure = "invalid_image"
+            continue
+        extension = "jpg" if info.format.lower() == "jpeg" else info.format.lower()
         relative = publish_bytes(
             ledger.root,
             task_id,
