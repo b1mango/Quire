@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
+core = ["httpx>=0.28,<0.29"]
 dev = ["pytest>=8,<10", "pytest-cov>=5,<8", "ruff>=0.6,<1", "mypy>=1.11,<2", "Pillow>=10.4,<13", "pypdf>=5,<7", "lxml>=5,<7"]
 
 [project.scripts]
@@ -34,4 +35,3 @@ source = ["quire"]
 
 [tool.coverage.report]
 show_missing = true
-

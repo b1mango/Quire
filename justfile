@@ -23,3 +23,6 @@ mock:
 
 ledger-smoke:
     {{python}} scripts/smoke_ledger.py
+
+session-smoke:
+    {{python}} scripts/smoke_session.py

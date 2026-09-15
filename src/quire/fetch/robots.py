@@ -94,6 +94,15 @@ def _parse(body: str) -> tuple[_Rule, ...]:
     return tuple(rule for names, entries in groups if selected in names for rule in entries)
 
 
+def _allowed(rules: tuple[_Rule, ...], url: str) -> bool:
+    parts = urlsplit(url)
+    path = _normalize((parts.path or "/") + ("?" + parts.query if parts.query else ""))
+    return max(
+        ((rule.specificity, rule.allow) for rule in rules if rule.matches(path)),
+        default=(0, True),
+    )[1]
+
+
 class RobotsPolicy:
     def __init__(self, fetch_text: Callable[[str], str]) -> None:
         self._fetch_text = fetch_text
@@ -115,10 +124,5 @@ class RobotsPolicy:
                     body = ""
                 self._policies[origin] = _parse(body)
             rules = self._policies[origin]
-        path = _normalize((parts.path or "/") + ("?" + parts.query if parts.query else ""))
-        best = max(
-            ((rule.specificity, rule.allow) for rule in rules if rule.matches(path)),
-            default=(0, True),
-        )
-        if not best[1]:
+        if not _allowed(rules, url):
             raise BlockedError("robots.txt does not allow Quire to fetch this resource")

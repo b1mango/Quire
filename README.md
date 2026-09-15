@@ -43,7 +43,7 @@
 ## 开发与验证
 
 ```sh
-uv sync --locked --extra dev --python 3.12
+uv sync --locked --extra dev --extra core --python 3.12
 .venv/bin/ruff check .
 .venv/bin/ruff format --check .
 .venv/bin/mypy src/quire
@@ -53,6 +53,7 @@ uv sync --locked --extra dev --python 3.12
 .venv/bin/python scripts/smoke_micro.py
 swift scripts/render_pdf.swift output/smoke/quire-sample.pdf output/smoke/page
 .venv/bin/python scripts/smoke_ledger.py
+.venv/bin/python scripts/smoke_session.py
 ```
 
 `Pillow`、`pypdf`、`lxml` 仅用于开发验证，不进入 micro 包。`uv.lock` 固定开发依赖，2026-09-15 pip-audit 未发现已知漏洞；不覆盖系统组件。CI 工作流已提供，仅有本地 Git 仓库，未在 GitHub 运行。
@@ -64,6 +65,8 @@ swift scripts/render_pdf.swift output/smoke/quire-sample.pdf output/smoke/page
 ## 下一阶段
 
 M1/S1.1 提供独立的本地账本：任务身份、资源状态、单写者 SQLite、缓存哈希校验和中断恢复。`scripts/smoke_ledger.py` 不访问网络，模拟子进程被强制终止后复用已提交资源，并检查损坏文件回到待下载状态。当前 CLI 下载流程尚未接入账本，因此还没有用户可用的 `--resume`；状态与验收结果以项目进度为准。
+
+S1.2 的 `AsyncFetcher` 使用 httpx 连接池，作为 `core` 可选依赖；micro 继续使用标准库网络层。`scripts/smoke_session.py` 使用本地 HTTP/1.1 服务核验连接复用、并发、限速和取消。core 安装后的网络依赖文件实测 1,997,423 bytes（排除 pyc，不含 Python），详细清单可通过 `scripts/measure_core_dependencies.py` 重建。
 
 M1：SQLite 断点账本、连接池下载、Pillow 转码与体积控制、PDF/CBZ/图片 ZIP 同轮输出。最终产品默认目标 50 MB，可由用户调整；当前 micro 保留原编码，**尚不实施 50 MB 压缩上限**。
 
