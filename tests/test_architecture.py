@@ -62,6 +62,9 @@ def test_layer_boundaries_and_module_sizes():
                     "quire.manga",
                     "quire.core_manga",
                     "quire.core_export",
+                    "quire.core_publish",
+                    "quire.export_commit",
+                    "quire.export_receipt",
                     "quire.core_pages",
                 }
             ), (module, target)

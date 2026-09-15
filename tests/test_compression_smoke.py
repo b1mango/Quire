@@ -47,7 +47,8 @@ def test_smoke_rerun_readback_and_cache(tmp_path):
         for case in report["cases"].values():
             assert len(case["pages"]) == 11 and case["cached_sources_verified"]
             assert case["elapsed_s"] > 0 and case["peak_rss_bytes"] > 0
-            assert case["resources_reused"] == (7 if attempt else 0)
+            assert case["resources_reused"] == 0
+            assert case["artifacts_reused"] is bool(attempt)
             assert sum(p not in ("/chapter", "/robots.txt") for p in case["requests"]) == (
                 0 if attempt else 7
             )

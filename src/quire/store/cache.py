@@ -318,7 +318,9 @@ def publish_bytes(root: Path, task_id: str, filename: str, data: bytes) -> str:
         raise LedgerError("Cache file could not be published safely") from exc
 
 
-def remove_cached(root: Path, task_id: str, relative: str) -> None:
+def remove_cached(
+    root: Path, task_id: str, relative: str, *, expected: FileStamp | None = None
+) -> None:
     """Remove only a named regular task file, leaving every other entry alone."""
     path = _cache_path(task_id, relative, single=True)
     try:
@@ -327,6 +329,10 @@ def remove_cached(root: Path, task_id: str, relative: str) -> None:
             before = _entry(directory, path.name)
             if before is None:
                 return
+            if expected is not None:
+                actual = fingerprint(root, task_id, relative, expected_size=expected.size)
+                if actual != expected:
+                    raise LedgerError("Cache file changed; preserved instead of deleting")
             _check_directories(root, task_id, directories)
             _unchanged(directory, path.name, before)
             os.unlink(path.name, dir_fd=directory)

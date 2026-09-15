@@ -10,16 +10,17 @@ from typing import cast
 
 from .assemble.models import clean_metadata_text
 from .core_export import export_books
-from .errors import ConfigError
+from .core_publish import begin, complete, preflight, prepare, recover_export
+from .errors import ConfigError, LedgerError
 from .export_options import output_paths
+from .export_receipt import export_key, read_receipt
 from .fetch.session import AsyncFetcher
 from .image.downloader import download_images
 from .image.options import CompressionOptions
-from .manga import _save_report, discover_page
+from .manga import discover_page
 from .models import MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate
 from .parse.minidom import parse as parse_html
-from .store.cache import remove_cached
 from .store.ledger import Ledger
 from .store.models import JsonValue, ResourceSpec, task_identity
 
@@ -46,13 +47,15 @@ async def run_core_manga(
 ) -> MangaResult:
     opts = options or MangaOptions()
     encoding = compression or CompressionOptions()
-    destinations = output_paths(Path(out), formats)
+    destinations = output_paths(Path(out).absolute(), formats)
     output = destinations[0]
     for destination in destinations:
         if destination.is_symlink() or (destination.exists() and not destination.is_file()):
             raise ConfigError(f"目标不是普通文件：{destination}")
-        if destination.exists() and not opts.overwrite:
+        if destination.exists() and not opts.overwrite and not resume:
             raise ConfigError(f"目标已存在：{destination}")
+    if not resume:
+        preflight(output, formats, overwrite=opts.overwrite)
     if opts.selector:
         parse_html("").select(opts.selector)
     started = time.monotonic()
@@ -75,6 +78,22 @@ async def run_core_manga(
             if ledger.contains(task_id) and not resume:
                 raise ConfigError("已有相同采集任务，请使用 --resume 继续或选择其他 --workdir")
             ledger.create_task(url, identity, specs)
+            key = export_key(task_id, result.title, output, formats, opts, encoding)
+            receipt = read_receipt(ledger.root, key, output, formats) if resume else None
+            if receipt is not None:
+                if receipt.result is not None and (
+                    receipt.result.task_id != task_id or receipt.result.title != result.title
+                ):
+                    raise LedgerError("Export receipt does not match the current task")
+                reused = await recover_export(ledger.root, receipt, ledger.snapshot(task_id), opts)
+                if reused is not None:
+                    return replace(reused, elapsed_s=time.monotonic() - started)
+            before = preflight(
+                output,
+                formats,
+                overwrite=opts.overwrite,
+                owned=receipt,
+            )
             if resume:
                 ledger.recover(task_id)
             downloads = await download_images(
@@ -93,6 +112,8 @@ async def run_core_manga(
                 resources_reused=downloads.reused,
                 images_dir=cache if opts.keep_images else None,
             )
+            output.parent.mkdir(parents=True, exist_ok=True)
+            receipt = begin(ledger.root, key, output, formats, before)
             result = await export_books(
                 ledger.root,
                 downloads.snapshot,
@@ -101,6 +122,7 @@ async def run_core_manga(
                 encoding,
                 result,
                 progress,
+                workspace=receipt.workspace,
                 formats=formats,
                 source_url=url,
             )
@@ -108,16 +130,11 @@ async def run_core_manga(
                 result = replace(
                     result, warnings=result.warnings + ("恢复缓存已保留，可用 --resume 重试",)
                 )
-            result = _save_report(
-                replace(
-                    result, bytes_out=output.stat().st_size, elapsed_s=time.monotonic() - started
-                ),
-                opts.overwrite,
+            receipt = prepare(
+                ledger.root,
+                receipt,
+                replace(result, elapsed_s=time.monotonic() - started),
+                before,
+                downloads.snapshot,
             )
-            if result.partial or result.target_met is False:
-                return result
-            if not opts.keep_images and result.report is not None:
-                for record in downloads.snapshot.resources:
-                    if record.local_path is not None:
-                        remove_cached(ledger.root, task_id, record.local_path)
-            return result
+            return await complete(ledger.root, receipt, opts)

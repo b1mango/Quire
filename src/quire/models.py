@@ -79,6 +79,8 @@ class MangaResult:
     quality: int | None = None
     max_edge: int | None = None
     artifacts: tuple[ArtifactResult, ...] = ()
+    artifacts_reused: bool = False
+    export_recovered: bool = False
 
     @property
     def total_bytes(self) -> int:

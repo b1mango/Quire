@@ -196,23 +196,13 @@ def test_cancelled_encoding_preserves_old_output_and_cached_sources(tmp_path):
 
 
 def test_cancel_during_final_copy_never_commits_or_cleans_cache(tmp_path, monkeypatch):
-    from contextlib import contextmanager
+    from quire.export_commit import _stage
 
-    from quire.workspace import atomic_output
+    async def cancel(receipt, item):
+        await _stage(receipt, item)
+        asyncio.current_task().cancel()
 
-    @contextmanager
-    def cancelling_output(path, *, overwrite, on_commit):
-        with atomic_output(path, overwrite=overwrite, on_commit=on_commit) as target:
-
-            class Handle:
-                def write(self, block):
-                    written = target.write(block)
-                    asyncio.current_task().cancel()
-                    return written
-
-            yield Handle()
-
-    monkeypatch.setattr("quire.core_export.atomic_output", cancelling_output)
+    monkeypatch.setattr("quire.export_commit._stage", cancel)
     output = tmp_path / "book.pdf"
     output.write_bytes(b"original")
     with pytest.raises(asyncio.CancelledError):

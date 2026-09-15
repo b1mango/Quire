@@ -86,7 +86,7 @@ def cmd_manga(args: argparse.Namespace) -> int:
         )
     out = Path(args.output) if args.output else Path.cwd() / f"comic.{formats[0]}"
     if args.core:
-        out = available_output(out, formats, overwrite=args.overwrite)
+        out = available_output(out, formats, overwrite=args.overwrite or args.resume)
     elif out.exists():
         if not args.overwrite:
             out = unique_path(out)
@@ -150,6 +150,8 @@ def cmd_manga(args: argparse.Namespace) -> int:
 
 
 def _report(result: MangaResult, args: argparse.Namespace) -> None:
+    if result.artifacts_reused:
+        info("成品校验通过，已复用" + ("并完成中断恢复" if result.export_recovered else ""))
     for warning in result.warnings:
         warn(warning)
 

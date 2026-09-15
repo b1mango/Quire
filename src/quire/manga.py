@@ -204,8 +204,7 @@ def _missing(
     )
 
 
-def _save_report(result: MangaResult, overwrite: bool) -> MangaResult:
-    report = result.output.with_suffix(".report.json")
+def report_payload(result: MangaResult) -> dict[str, object]:
     payload = {
         "schema": 1,
         "title": result.title,
@@ -224,7 +223,12 @@ def _save_report(result: MangaResult, overwrite: bool) -> MangaResult:
         "images_dir": str(result.images_dir) if result.images_dir else None,
     }
     if result.task_id is not None:
-        payload.update(task_id=result.task_id, resources_reused=result.resources_reused)
+        payload.update(
+            task_id=result.task_id,
+            resources_reused=result.resources_reused,
+            artifacts_reused=result.artifacts_reused,
+            export_recovered=result.export_recovered,
+        )
     if result.compression is not None:
         payload.update(
             source_resources=result.source_resources,
@@ -250,10 +254,15 @@ def _save_report(result: MangaResult, overwrite: bool) -> MangaResult:
                 for a in result.artifacts
             ],
         )
+    return payload
+
+
+def _save_report(result: MangaResult, overwrite: bool) -> MangaResult:
+    report = result.output.with_suffix(".report.json")
     try:
         write_bytes(
             report,
-            json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+            json.dumps(report_payload(result), ensure_ascii=False, indent=2).encode("utf-8"),
             overwrite=overwrite,
         )
     except OSError as exc:

@@ -4,7 +4,6 @@ import asyncio
 import io
 import json
 import xml.etree.ElementTree as ET
-from contextlib import contextmanager
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -180,39 +179,32 @@ def test_writer_failure_preserves_all_old_outputs(tmp_path, monkeypatch):
 
 
 def test_partial_publish_failure_reports_committed_and_keeps_cache(tmp_path, monkeypatch):
-    from quire.workspace import atomic_output
+    import os
 
-    @contextmanager
-    def fault(path, *, overwrite, on_commit):
-        with atomic_output(path, overwrite=overwrite, on_commit=on_commit) as target:
-            yield target
-            if path.suffix == ".cbz":
-                raise OSError("injected")
+    original = os.link
 
-    monkeypatch.setattr("quire.core_export.atomic_output", fault)
-    with pytest.raises(FetchError, match="已发布：book.zip"):
+    def fault(source, destination, **kwargs):
+        if destination.suffix == ".cbz":
+            raise OSError("injected")
+        return original(source, destination, **kwargs)
+
+    monkeypatch.setattr("quire.export_commit.os.link", fault)
+    with pytest.raises(FetchError, match="已发布：book.pdf"):
         capture(tmp_path)
-    assert (tmp_path / "book.zip").exists()
-    assert not (tmp_path / "book.pdf").exists() and not (tmp_path / "book.cbz").exists()
+    assert (tmp_path / "book.pdf").exists()
+    assert not (tmp_path / "book.zip").exists() and not (tmp_path / "book.cbz").exists()
     assert len(list((tmp_path / ".quire-core/cache").rglob("*.png"))) == 3
 
 
 def test_multi_cancel_during_copy_preserves_all_old_files(tmp_path, monkeypatch):
-    from quire.workspace import atomic_output
+    from quire.export_commit import _stage
 
-    @contextmanager
-    def cancel(path, *, overwrite, on_commit):
-        with atomic_output(path, overwrite=overwrite, on_commit=on_commit) as target:
+    async def cancel(receipt, item):
+        await _stage(receipt, item)
+        if item.kind == "zip":
+            asyncio.current_task().cancel()
 
-            class Cancelling:
-                def write(self, data):
-                    target.write(data)
-                    if path.suffix == ".zip":
-                        asyncio.current_task().cancel()
-
-            yield Cancelling()
-
-    monkeypatch.setattr("quire.core_export.atomic_output", cancel)
+    monkeypatch.setattr("quire.export_commit._stage", cancel)
     for fmt in ("pdf", "cbz", "zip"):
         (tmp_path / f"book.{fmt}").write_bytes(b"old")
     with pytest.raises(asyncio.CancelledError):
@@ -305,15 +297,20 @@ def test_cleanup_error_after_commit_reports_published(tmp_path, monkeypatch, ove
     original_unlink = Path.unlink
 
     def fail(path, *args, **kwargs):
-        if path.name.startswith(".book.zip.") and path.parent == tmp_path:
+        if path.name == "publish-pdf.tmp":
             raise OSError("cleanup EIO")
         return original_unlink(path, *args, **kwargs)
 
     if overwrite:
-        (tmp_path / "book.zip").write_bytes(b"old")
+        (tmp_path / "book.pdf").write_bytes(b"old")
     monkeypatch.setattr(Path, "unlink", fail)
-    with pytest.raises(FetchError, match="已发布：book.zip"):
-        capture(tmp_path, options=MangaOptions(overwrite=overwrite))
-    assert (tmp_path / "book.zip").read_bytes().startswith(b"PK")
-    assert not (tmp_path / "book.pdf").exists()
+    if overwrite:
+        # replace consumes the staging name, so no unlink follows this publication.
+        result = capture(tmp_path, options=MangaOptions(overwrite=True))
+        assert result.report is not None
+        return
+    with pytest.raises(FetchError, match="已发布：book.pdf"):
+        capture(tmp_path)
+    assert (tmp_path / "book.pdf").read_bytes().startswith(b"%PDF")
+    assert not (tmp_path / "book.zip").exists()
     assert len(list((tmp_path / ".quire-core/cache").rglob("*.png"))) == 3

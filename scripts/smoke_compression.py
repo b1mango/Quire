@@ -212,6 +212,7 @@ def worker(root: Path, case: str) -> None:
             "peak_rss_bytes": peak,
             "before_processing_peak_rss_bytes": baseline,
             "resources_reused": result.resources_reused,
+            "artifacts_reused": result.artifacts_reused,
             "requests": requests,
             "task_id": result.task_id,
             "fixture_sha256": fixture_id,

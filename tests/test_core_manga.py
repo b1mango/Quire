@@ -169,19 +169,13 @@ def test_export_failure_keeps_committed_cache_and_original_output(site, tmp_path
     assert result.resources_reused == 3 and widths(out) == [401, 402, 403]
 
 
-def test_report_failure_preserves_cache(site, tmp_path):
+def test_report_conflict_prevents_download(site, tmp_path):
     report = tmp_path / "book.report.json"
     report.write_text("existing")
-    result = asyncio.run(
-        run_core_manga(
-            site.url + "/comic",
-            tmp_path / "book.pdf",
-            options=options(),
-        )
-    )
-    assert result.report is None and result.warnings
+    with pytest.raises(ConfigError, match="目标已存在"):
+        asyncio.run(run_core_manga(site.url + "/comic", tmp_path / "book.pdf", options=options()))
     assert report.read_text() == "existing"
-    assert len(list((tmp_path / ".quire-core" / "cache").rglob("*.jpg"))) == 3
+    assert not (tmp_path / ".quire-core").exists()
 
 
 def test_cli_core_partial_recovery_and_missing_capability(site, tmp_path, monkeypatch, capsys):
@@ -200,7 +194,8 @@ def test_cli_core_partial_recovery_and_missing_capability(site, tmp_path, monkey
     ]
     assert main(args) == 4
     assert main([*args, "--resume"]) == 4
-    assert (tmp_path / "cli (1).pdf").exists()
+    assert (tmp_path / "cli.pdf").exists()
+    assert not (tmp_path / "cli (1).pdf").exists()
     assert main(["manga", site.url + "/comic", "--resume"]) == 1
     monkeypatch.setattr("quire.cli._module_available", lambda _: False)
     assert main(args) == 6

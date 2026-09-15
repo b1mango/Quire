@@ -18,6 +18,9 @@ prefixes = (
     "src/quire/fetch/decoding.py",
     "src/quire/core_manga.py",
     "src/quire/core_export.py",
+    "src/quire/core_publish.py",
+    "src/quire/export_commit.py",
+    "src/quire/export_receipt.py",
     "src/quire/core_pages.py",
     "src/quire/export_options.py",
 )
