@@ -1,0 +1,26 @@
+name: Quire checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  micro:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.7"
+      - run: uv sync --locked --extra dev --python 3.12
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy src/quire
+      - run: uv run pytest --cov=quire --cov-report=term-missing --cov-report=json:output/coverage.json
+      - run: uv run python scripts/check_coverage.py output/coverage.json
+      - run: uv run python scripts/build_micro_zipapp.py
+      - run: uv run python -S dist/quire.pyz doctor
+      - run: uv run python scripts/smoke_micro.py
+      - run: swift scripts/render_pdf.swift output/smoke/quire-sample.pdf output/smoke/page
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quire-micro
+          path: dist/quire.pyz

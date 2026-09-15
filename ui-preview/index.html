@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="paper" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>卷帙 Quire — UI 方向预览</title>
+<style>
+/* ============================================================
+   主题令牌：三个方向 × 明/暗 两套
+   ============================================================ */
+
+/* ---------- 主题 1：纸感 Paper（仅浅色） ---------- */
+[data-theme="paper"]{
+  --bg:#EFEBE4; --surface:#FFFFFF; --surface-2:#F5F1EA; --surface-3:#EBE5DB;
+  --text:#1A1714; --muted:#6E665C; --faint:#A79E92;
+  --border:#E4DCD0; --border-strong:#CFC4B4;
+  --accent:#B23A2F; --accent-soft:#F3E2DF; --accent-fg:#FFFFFF;
+  --ok:#4A7C59; --warn:#B8860B;
+  --radius:12px; --radius-sm:8px;
+  --shadow:0 1px 2px rgba(26,23,20,.05), 0 10px 30px rgba(26,23,20,.07);
+  --shadow-sm:0 1px 2px rgba(26,23,20,.06);
+  --fd:"Songti SC","STSong","Source Han Serif SC",Georgia,serif;
+  --fb:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --track:.02em; --ease:cubic-bezier(.2,.8,.2,1);
+}
+
+/* ---------- 主题 2/3：暗房 Darkroom（深色为主场，另备浅色） ---------- */
+[data-theme="darkroom"][data-mode="dark"]{
+  --bg:#0B0B0D; --surface:#151518; --surface-2:#1D1D22; --surface-3:#26262D;
+  --text:#ECECEF; --muted:#8B8B94; --faint:#5C5C64;
+  --border:#25252B; --border-strong:#34343D;
+  --accent:#4C8DFF; --accent-soft:#16233C; --accent-fg:#FFFFFF;
+  --ok:#3FBF7F; --warn:#E0A33A;
+  --radius:10px; --radius-sm:7px;
+  --shadow:0 1px 0 rgba(255,255,255,.03) inset, 0 16px 40px rgba(0,0,0,.55);
+  --shadow-sm:0 1px 0 rgba(255,255,255,.04) inset;
+  --fd:var(--fb); --fb:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --track:-.01em; --ease:cubic-bezier(.2,.8,.2,1);
+}
+/* ---------- 暗房 Darkroom / 亮色 ---------- */
+[data-theme="darkroom"][data-mode="light"]{
+  --bg:#F4F5F7; --surface:#FFFFFF; --surface-2:#F0F1F4; --surface-3:#E7E9EE;
+  --text:#131317; --muted:#6A6A74; --faint:#A0A0AA;
+  --border:#E3E5EA; --border-strong:#CFD2DA;
+  --accent:#2F6BFF; --accent-soft:#E7EEFF; --accent-fg:#FFFFFF;
+  --ok:#1E9E63; --warn:#C98A16;
+  --radius:10px; --radius-sm:7px;
+  --shadow:0 1px 2px rgba(16,18,24,.06), 0 12px 30px rgba(16,18,24,.08);
+  --shadow-sm:0 1px 2px rgba(16,18,24,.06);
+  --fd:var(--fb); --fb:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --track:-.01em; --ease:cubic-bezier(.2,.8,.2,1);
+}
+
+/* ---------- 主题 4：瑞士网格 Swiss（仅浅色） ---------- */
+[data-theme="swiss"]{
+  --bg:#FFFFFF; --surface:#FFFFFF; --surface-2:#F2F2F2; --surface-3:#E6E6E6;
+  --text:#000000; --muted:#555555; --faint:#9A9A9A;
+  --border:#000000; --border-strong:#000000;
+  --accent:#FF3B00; --accent-soft:#FFE8E0; --accent-fg:#FFFFFF;
+  --ok:#00813D; --warn:#C24E00;
+  --radius:0px; --radius-sm:0px;
+  --shadow:none; --shadow-sm:none;
+  --fd:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --fb:"Helvetica Neue",Helvetica,Arial,"PingFang SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --track:-.02em; --ease:cubic-bezier(.2,.8,.2,1);
+}
+
+/* ============================================================
+   预览外壳
+   ============================================================ */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--fb);
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s var(--ease), color .25s var(--ease);
+  min-height:100vh;
+}
+.toolbar{
+  position:sticky; top:0; z-index:50;
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding:14px 24px;
+  background:color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter:saturate(180%) blur(14px);
+  border-bottom:1px solid var(--border);
+}
+.brand{display:flex;align-items:baseline;gap:8px;font-family:var(--fd);font-size:17px;letter-spacing:var(--track)}
+.brand b{font-weight:600}
+.brand span{font-family:var(--fb);font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.14em}
+.spacer{flex:1}
+.seg{display:flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
+.seg button{
+  appearance:none;border:0;background:transparent;color:var(--muted);
+  font:inherit;font-size:12.5px;padding:7px 13px;cursor:pointer;
+  transition:background .16s var(--ease), color .16s var(--ease);
+}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button:hover{color:var(--text);background:var(--surface-2)}
+.seg button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
+[data-theme="swiss"] .seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.tbtn{
+  appearance:none;border:1px solid var(--border);background:transparent;color:var(--text);
+  font:inherit;font-size:12.5px;padding:7px 12px;border-radius:var(--radius-sm);cursor:pointer;
+  transition:background .16s var(--ease);
+}
+.tbtn:hover{background:var(--surface-2)}
+
+main{max-width:1240px;margin:0 auto;padding:28px 24px 64px}
+.stage{display:grid;grid-template-columns:1fr 288px;gap:24px;align-items:start}
+@media(max-width:1080px){.stage{grid-template-columns:1fr}}
+
+/* ============================================================
+   窗口
+   ============================================================ */
+.window{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:calc(var(--radius) + 4px);box-shadow:var(--shadow);overflow:hidden;
+}
+.titlebar{
+  display:flex;align-items:center;gap:10px;padding:11px 14px;
+  border-bottom:1px solid var(--border);
+  background:var(--surface-2);
+}
+.lights{display:flex;gap:7px}
+.lights i{width:11px;height:11px;border-radius:50%;background:var(--border-strong);display:block}
+[data-theme="paper"] .lights i:nth-child(1){background:#E5A79E}
+[data-theme="paper"] .lights i:nth-child(2){background:#E8D3A0}
+[data-theme="paper"] .lights i:nth-child(3){background:#AFCFB4}
+[data-theme="darkroom"] .lights i:nth-child(1){background:#4A4A52}
+[data-theme="darkroom"] .lights i:nth-child(2){background:#4A4A52}
+[data-theme="darkroom"] .lights i:nth-child(3){background:#4A4A52}
+[data-theme="swiss"] .lights i{background:transparent;border:1px solid var(--border-strong);width:10px;height:10px;border-radius:0}
+.tb-title{
+  flex:1;text-align:center;font-size:11.5px;color:var(--faint);
+  letter-spacing:.06em;font-family:var(--fb);
+}
+.win-body{display:grid;grid-template-columns:190px 1fr;min-height:560px}
+@media(max-width:720px){.win-body{grid-template-columns:1fr}.sidebar{display:none}}
+
+/* 侧栏 */
+.sidebar{
+  border-right:1px solid var(--border);padding:14px 10px;
+  background:var(--surface-2);display:flex;flex-direction:column;gap:2px;
+}
+.side-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;border-radius:var(--radius-sm);
+  font-size:13.5px;color:var(--muted);cursor:pointer;
+  border:1px solid transparent;background:transparent;
+  font-family:var(--fb);text-align:left;width:100%;
+  transition:background .16s var(--ease), color .16s var(--ease);
+}
+.side-item:hover{background:var(--surface-3);color:var(--text)}
+.side-item[aria-current="true"]{color:var(--text);font-weight:600;background:var(--surface);border-color:var(--border)}
+[data-theme="swiss"] .side-item[aria-current="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.side-item svg{width:15px;height:15px;flex:none;opacity:.8}
+.side-foot{margin-top:auto;padding:10px 11px;font-size:11px;color:var(--faint);line-height:1.6}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:6px}
+[data-theme="swiss"] .dot{border-radius:0}
+
+/* 内容区 */
+.content{padding:30px 34px 38px;overflow:hidden}
+@media(max-width:720px){.content{padding:22px 20px 30px}}
+.vhead{margin-bottom:26px}
+.vhead.row{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+h1{
+  font-family:var(--fd);font-size:28px;line-height:1.2;margin:0;
+  letter-spacing:var(--track);font-weight:600;
+}
+[data-theme="swiss"] h1{font-size:38px;font-weight:700;text-transform:uppercase;letter-spacing:-.03em}
+[data-theme="darkroom"] h1{font-weight:640}
+.sub{margin:7px 0 0;font-size:13.5px;color:var(--muted)}
+[data-theme="swiss"] .sub{text-transform:uppercase;font-size:11px;letter-spacing:.12em;font-weight:600}
+
+.field{margin-bottom:22px}
+.field>label{
+  display:block;font-size:11px;color:var(--faint);margin-bottom:9px;
+  text-transform:uppercase;letter-spacing:.13em;font-weight:600;
+}
+.input{
+  width:100%;padding:11px 13px;font:inherit;font-size:14px;
+  background:var(--surface-2);color:var(--text);
+  border:1px solid var(--border);border-radius:var(--radius-sm);
+  outline:none;font-family:var(--mono);font-size:13px;
+  transition:border-color .16s var(--ease), background .16s var(--ease);
+}
+[data-theme="swiss"] .input{background:transparent;border-width:1px;border-color:var(--border)}
+.input:focus{border-color:var(--accent);background:var(--surface)}
+.input-row{display:flex;gap:10px}
+.input.sm{width:88px;text-align:right}
+.input.nofx{font-family:var(--fb)}
+
+.chips{display:flex;gap:9px;flex-wrap:wrap}
+.chip{
+  appearance:none;font:inherit;font-size:13px;cursor:pointer;
+  padding:9px 16px;border-radius:999px;
+  background:var(--surface-2);color:var(--muted);
+  border:1px solid var(--border);
+  transition:all .16s var(--ease);
+}
+[data-theme="swiss"] .chip{border-radius:0;text-transform:uppercase;font-size:11px;letter-spacing:.1em;font-weight:600}
+.chip:hover{color:var(--text);border-color:var(--border-strong)}
+.chip[aria-pressed="true"]{
+  background:var(--accent-soft);color:var(--accent);
+  border-color:var(--accent);font-weight:600;
+}
+[data-theme="swiss"] .chip[aria-pressed="true"]{background:var(--accent);color:#fff}
+
+.segmented{display:flex;gap:6px;flex-wrap:wrap}
+.segmented button{
+  appearance:none;font:inherit;font-size:12.5px;cursor:pointer;
+  padding:8px 14px;background:var(--surface-2);color:var(--muted);
+  border:1px solid var(--border);border-radius:var(--radius-sm);
+  transition:all .16s var(--ease);
+}
+.segmented button:hover{color:var(--text)}
+.segmented button[aria-pressed="true"]{background:var(--text);color:var(--surface);border-color:var(--text)}
+[data-theme="swiss"] .segmented button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.hint{display:flex;align-items:center;gap:9px;margin-top:12px;font-size:12.5px;color:var(--muted);flex-wrap:wrap}
+.kv{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+.btn{
+  appearance:none;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;
+  padding:11px 22px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:var(--surface-2);color:var(--text);
+  transition:all .16s var(--ease);
+}
+.btn:hover{background:var(--surface-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent}
+.btn.danger{background:transparent;border-color:var(--border);color:var(--warn)}
+.actions{display:flex;align-items:center;gap:14px;margin-top:28px;flex-wrap:wrap}
+.actions .meta{font-size:12px;color:var(--faint)}
+
+/* 进行中：进度与缩略图流 */
+.meter{height:3px;background:var(--surface-3);overflow:hidden;margin-bottom:20px}
+[data-theme="swiss"] .meter{height:2px;background:var(--surface-3)}
+.meter-fill{height:100%;background:var(--accent);width:0;transition:width .6s var(--ease)}
+.stats{display:flex;gap:34px;flex-wrap:wrap;margin-bottom:26px}
+.stats>div{display:flex;flex-direction:column;gap:5px}
+.stats .k{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.13em;font-weight:600}
+.stats .v{font-size:19px;font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stats .v.warn{color:var(--warn)}
+.stream{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));
+  gap:8px;max-height:330px;overflow:hidden;
+  mask-image:linear-gradient(#000 82%,transparent);
+  -webkit-mask-image:linear-gradient(#000 82%,transparent);
+}
+[data-theme="swiss"] .stream{gap:2px}
+.thumb{
+  position:relative;aspect-ratio:3/4.15;border-radius:var(--radius-sm);
+  overflow:hidden;background:var(--surface-2);border:1px solid var(--border);
+  animation:pop .32s var(--ease) both;
+}
+[data-theme="swiss"] .thumb{border-color:var(--border);border-radius:0}
+@keyframes pop{from{opacity:0;transform:translateY(6px) scale(.97)}to{opacity:1;transform:none}}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb.load{background:linear-gradient(100deg,var(--surface-2) 30%,var(--surface-3) 50%,var(--surface-2) 70%);background-size:220% 100%;animation:sh 1.5s linear infinite}
+@keyframes sh{to{background-position:-120% 0}}
+.thumb.now{outline:2px solid var(--accent);outline-offset:1px}
+[data-theme="swiss"] .thumb.now{outline-width:2px;outline-color:var(--accent)}
+.thumb.miss::after{
+  content:"缺页";position:absolute;inset:0;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--warn) 16%, var(--surface));
+  color:var(--warn);font-size:10.5px;font-weight:700;letter-spacing:.08em;
+  border:1px dashed var(--warn);
+}
+.thumb .pg{
+  position:absolute;left:4px;bottom:3px;font-family:var(--mono);
+  font-size:9.5px;color:#000;background:rgba(255,255,255,.82);
+  padding:0 3px;border-radius:2px;font-variant-numeric:tabular-nums;
+}
+[data-theme="swiss"] .thumb .pg{border-radius:0;background:#fff;font-weight:700}
+
+/* 书库 */
+.lib-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:24px;flex-wrap:wrap}
+.lib-head .input{max-width:280px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:20px 16px}
+[data-theme="swiss"] .grid{gap:1px;background:var(--border);padding:1px}
+[data-theme="swiss"] .grid>*{background:var(--bg)}
+.card{cursor:pointer}
+.cover{
+  position:relative;aspect-ratio:3/4.2;border-radius:var(--radius-sm);overflow:hidden;
+  border:1px solid var(--border);box-shadow:var(--shadow-sm);
+  transition:transform .2s var(--ease), box-shadow .2s var(--ease);
+}
+[data-theme="swiss"] .cover{border-radius:0;box-shadow:none}
+.card:hover .cover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.card:hover .ct{color:var(--accent)}
+.cover img{width:100%;height:100%;object-fit:cover;display:block}
+.ct{
+  margin-top:9px;font-size:13px;font-weight:600;line-height:1.35;
+  transition:color .16s var(--ease);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+[data-theme="paper"] .ct{font-family:var(--fd);font-size:14px}
+.cm{margin-top:3px;font-size:11px;color:var(--faint);font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* 说明卡 */
+.notes{
+  border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);
+  padding:20px;box-shadow:var(--shadow-sm);position:sticky;top:86px;
+}
+.notes h2{font-family:var(--fd);font-size:15px;margin:0 0 4px;letter-spacing:var(--track)}
+[data-theme="swiss"] .notes{border-width:1px;border-color:var(--border)}
+.notes .tagline{font-size:11.5px;color:var(--faint);margin:0 0 16px;letter-spacing:.02em}
+.notes dl{margin:0;display:grid;grid-template-columns:64px 1fr;gap:9px 12px;font-size:12.5px}
+.notes dt{color:var(--faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;font-weight:600;padding-top:2px}
+.notes dd{margin:0;color:var(--text);line-height:1.55}
+.notes .swatches{display:flex;gap:6px;margin:16px 0 0}
+.notes .swatches i{width:22px;height:22px;border-radius:var(--radius-sm);border:1px solid var(--border);display:block}
+[data-theme="swiss"] .notes .swatches i{border-radius:0}
+.notes hr{border:0;border-top:1px solid var(--border);margin:18px 0 0}
+.notes .fine{font-size:11.5px;color:var(--muted);line-height:1.6;margin:14px 0 0}
+[hidden]{display:none !important}
+</style>
+</head>
+<body>
+
+<header class="toolbar">
+  <div class="brand"><b>卷帙</b><span>Quire</span></div>
+  <div class="spacer"></div>
+  <div class="seg" id="themeSeg" role="group" aria-label="UI 主题">
+    <button data-preset="paper:light" aria-pressed="true">纸感 · 浅</button>
+    <button data-preset="darkroom:light" aria-pressed="false">暗房 · 浅</button>
+    <button data-preset="darkroom:dark" aria-pressed="false">暗房 · 深</button>
+    <button data-preset="swiss:light" aria-pressed="false">瑞士网格 · 浅</button>
+  </div>
+</header>
+
+<main>
+  <div class="stage">
+    <div class="window">
+      <div class="titlebar">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="tb-title">卷帙 — 书库</div>
+      </div>
+      <div class="win-body">
+        <aside class="sidebar">
+          <button class="side-item" data-view-btn="new" aria-current="false">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3.5v9M3.5 8h9"/></svg>新建任务
+          </button>
+          <button class="side-item" data-view-btn="run" aria-current="true">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.5 3v2.6h2.6"/></svg>进行中
+          </button>
+          <button class="side-item" data-view-btn="lib" aria-current="false">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="2.5" width="4.6" height="11"/><rect x="8.9" y="2.5" width="4.6" height="11"/></svg>书库
+          </button>
+          <button class="side-item" data-view-btn="set" aria-current="false">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 2v1.4M8 12.6V14M2 8h1.4M12.6 8H14M3.8 3.8l1 1M11.2 11.2l1 1M12.2 3.8l-1 1M4.8 11.2l-1 1"/></svg>设置
+          </button>
+          <div class="side-foot"><span class="dot"></span>Chrome 已就绪<br>OCR 模型已缓存</div>
+        </aside>
+
+        <section class="content">
+
+          <!-- ============ 新建任务 ============ -->
+          <div class="view" data-view="new" hidden>
+            <div class="vhead">
+              <h1>新建任务</h1>
+              <p class="sub">粘贴漫画或小说的目录页链接</p>
+            </div>
+
+            <div class="field">
+              <label>链接</label>
+              <div class="input-row">
+                <input class="input" value="https://example.com/comic/12345" spellcheck="false">
+                <button class="btn ghost">粘贴</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>输出格式</label>
+              <div class="chips">
+                <button class="chip" aria-pressed="true">PDF</button>
+                <button class="chip" aria-pressed="false">CBZ</button>
+                <button class="chip" aria-pressed="false">原图 ZIP</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>画质与体积</label>
+              <div class="segmented">
+                <button aria-pressed="false">无损</button>
+                <button aria-pressed="false">高</button>
+                <button aria-pressed="true">均衡</button>
+                <button aria-pressed="false">小</button>
+                <button aria-pressed="false">极小</button>
+              </div>
+              <div class="hint">
+                目标体积 <input class="input sm nofx" value="50"> MB
+                <span style="color:var(--faint)">·</span> 黑白页自动转 1-bit
+                <span style="color:var(--faint)">·</span> 保留原图 <b style="font-weight:600">关</b>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button class="btn primary">开始抓取</button>
+              <span class="meta">预计 200 页 · 约 42 MB · 4 分钟</span>
+            </div>
+          </div>
+
+          <!-- ============ 进行中 ============ -->
+          <div class="view" data-view="run">
+            <div class="vhead row">
+              <div>
+                <h1>第 12 话 · 潮汐</h1>
+                <p class="sub">海贼王 · 137 / 200 页 · 正在压缩第 138 页</p>
+              </div>
+              <div class="actions" style="margin:0">
+                <button class="btn ghost">暂停</button>
+                <button class="btn danger">取消</button>
+              </div>
+            </div>
+
+            <div class="meter"><div class="meter-fill" style="width:68%"></div></div>
+
+            <div class="stats">
+              <div><span class="k">已下载</span><span class="v">137</span></div>
+              <div><span class="k">缺页</span><span class="v warn">2</span></div>
+              <div><span class="k">体积</span><span class="v">28.6 / 50 MB</span></div>
+              <div><span class="k">速度</span><span class="v">3.2 页/秒</span></div>
+            </div>
+
+            <div class="stream" id="stream"></div>
+          </div>
+
+          <!-- ============ 书库 ============ -->
+          <div class="view" data-view="lib" hidden>
+            <div class="lib-head">
+              <div>
+                <h1>书库</h1>
+                <p class="sub">8 部作品 · 共 1.2 GB</p>
+              </div>
+              <input class="input nofx" placeholder="搜索书名或作者">
+            </div>
+            <div class="grid" id="grid"></div>
+          </div>
+
+          <!-- ============ 设置 ============ -->
+          <div class="view" data-view="set" hidden>
+            <div class="vhead">
+              <h1>设置</h1>
+              <p class="sub">数据全部保存在本机</p>
+            </div>
+            <div class="field">
+              <label>输出目录</label>
+              <input class="input" value="~/Library/Application Support/quire/library">
+            </div>
+            <div class="field">
+              <label>默认压缩档</label>
+              <div class="segmented">
+                <button aria-pressed="false">归档</button>
+                <button aria-pressed="true">均衡</button>
+                <button aria-pressed="false">小</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>并发与限速</label>
+              <div class="hint">
+                并发 <input class="input sm nofx" value="8">
+                每站限速 <input class="input sm nofx" value="4"> req/s
+              </div>
+            </div>
+          </div>
+
+        </section>
+      </div>
+    </div>
+
+    <aside class="notes" id="notes"></aside>
+  </div>
+</main>
+
+<script>
+/* ============================================================
+   1. 假漫画页 / 假封面的 SVG 生成（纯前端，无外链）
+   ============================================================ */
+function rng(seed){let s=(seed>>>0)||1;return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296}}
+const TPL=[
+  [[14,14,292,412]],
+  [[14,14,292,196],[14,220,292,206]],
+  [[14,14,292,152],[14,176,140,250],[164,176,140,250]],
+  [[14,14,140,196],[164,14,140,196],[14,220,140,206],[164,220,140,206]],
+  [[14,14,292,112],[14,136,292,182],[14,328,292,98]],
+  [[14,14,140,132],[164,14,140,132],[14,156,140,132],[164,156,140,132],[14,298,140,128],[164,298,140,128]]
+];
+const TINT=['#C9D6E8','#E8D5C9','#D5E3D2','#E2D8EA'];
+function pageSVG(seed){
+  const R=rng(seed*7919+31);
+  const tpl=TPL[Math.floor(R()*TPL.length)];
+  const tint=TINT[Math.floor(R()*TINT.length)];
+  let s=`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="440" viewBox="0 0 320 440">`;
+  s+=`<rect width="320" height="440" fill="#FCFCFA"/>`;
+  tpl.forEach((p,i)=>{
+    const [x,y,w,h]=p;
+    if(i===1&&R()<0.28){ s+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${tint}"/>`; }
+    s+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${i===1&&R()<0.28?'none':'#fff'}" stroke="#1B1B1B" stroke-width="2.4"/>`;
+    // 对话气泡
+    if(R()<0.72){
+      const cx=x+w*(0.28+R()*0.44), cy=y+h*(0.2+R()*0.4);
+      const rx=Math.min(w*0.26,34), ry=rx*0.72;
+      s+=`<ellipse cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="#fff" stroke="#1B1B1B" stroke-width="2"/>`;
+      s+=`<path d="M${(cx-rx).toFixed(1)} ${cy.toFixed(1)} l-9 7 l3 -9z" fill="#1B1B1B"/>`;
+      for(let l=0;l<2;l++){
+        const ly=cy-ry*0.28+l*ry*0.62;
+        s+=`<line x1="${(cx-rx*0.55).toFixed(1)}" y1="${ly.toFixed(1)}" x2="${(cx+rx*0.5).toFixed(1)}" y2="${ly.toFixed(1)}" stroke="#1B1B1B" stroke-width="1.6"/>`;
+      }
+    }
+    // 集中线
+    if(R()<0.4){
+      const cx=x+w/2, cy=y+h/2;
+      for(let k=0;k<7;k++){
+        const a=R()*Math.PI*2, r1=Math.min(w,h)*0.32, r2=Math.min(w,h)*0.5;
+        s+=`<line x1="${(cx+Math.cos(a)*r1).toFixed(1)}" y1="${(cy+Math.sin(a)*r1).toFixed(1)}" x2="${(cx+Math.cos(a)*r2).toFixed(1)}" y2="${(cy+Math.sin(a)*r2).toFixed(1)}" stroke="#1B1B1B" stroke-width="1" opacity=".55"/>`;
+      }
+    }
+    // 人物剪影
+    if(R()<0.5){
+      const bxx=x+w*0.5, byy=y+h*0.62, bh=h*0.3, bw=w*0.16;
+      s+=`<ellipse cx="${bxx.toFixed(1)}" cy="${(byy-bh*0.72).toFixed(1)}" rx="${(bw*0.62).toFixed(1)}" ry="${(bw*0.72).toFixed(1)}" fill="#1B1B1B" opacity=".88"/>`;
+      s+=`<path d="M${(bxx-bw).toFixed(1)} ${(byy+bh*0.3).toFixed(1)} q${bw.toFixed(1)} ${(-bh*0.95).toFixed(1)} ${(bw*2).toFixed(1)} 0 z" fill="#1B1B1B" opacity=".88"/>`;
+    }
+  });
+  s+=`</svg>`;
+  return 'data:image/svg+xml,'+encodeURIComponent(s);
+}
+const COVER_COLORS=['#1F3A5F','#5B2A2A','#243B32','#3A2F52','#4A3A1E','#1E3B45','#432B3B','#2C3A20','#54331F','#2A3548'];
+function coverSVG(title,sub,seed){
+  const R=rng(seed*104729+7);
+  const c=COVER_COLORS[Math.floor(R()*COVER_COLORS.length)];
+  const c2=COVER_COLORS[Math.floor(R()*COVER_COLORS.length)];
+  const ch=title.slice(0,1);
+  let s=`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="420" viewBox="0 0 300 420">`;
+  s+=`<defs><linearGradient id="g${seed}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>`;
+  s+=`<rect width="300" height="420" fill="url(#g${seed})"/>`;
+  s+=`<path d="M0 ${(300+R()*80).toFixed(0)} L300 ${(200+R()*80).toFixed(0)} L300 420 L0 420 Z" fill="#000" opacity=".22"/>`;
+  s+=`<text x="150" y="228" font-size="176" font-family="Songti SC,STSong,serif" fill="#fff" opacity=".95" text-anchor="middle">${ch}</text>`;
+  s+=`<rect x="34" y="300" width="58" height="2.5" fill="#fff" opacity=".85"/>`;
+  s+=`<text x="34" y="336" font-size="21" font-family="PingFang SC,sans-serif" fill="#fff" font-weight="600">${title}</text>`;
+  s+=`<text x="34" y="362" font-size="12" font-family="PingFang SC,sans-serif" fill="#fff" opacity=".7">${sub}</text>`;
+  s+=`<rect x="0" y="0" width="300" height="420" fill="none" stroke="#000" stroke-opacity=".18"/>`;
+  s+=`</svg>`;
+  return 'data:image/svg+xml,'+encodeURIComponent(s);
+}
+
+/* ============================================================
+   2. 缩略图流
+   ============================================================ */
+const TOTAL=137, LOADING=6;
+(function buildStream(){
+  const wrap=document.getElementById('stream');
+  const MISS=new Set([41,88]);
+  let html='';
+  for(let i=1;i<=TOTAL;i++){
+    const miss=MISS.has(i);
+    const now=(i===TOTAL);
+    html+=`<div class="thumb${miss?' miss':''}${now?' now':''}">`;
+    if(!miss) html+=`<img src="${pageSVG(i)}" alt="">`;
+    html+=`<span class="pg">${i}</span></div>`;
+  }
+  for(let i=0;i<LOADING;i++) html+=`<div class="thumb load"></div>`;
+  wrap.innerHTML=html;
+})();
+
+/* ============================================================
+   3. 书库
+   ============================================================ */
+const BOOKS=[
+  ['海贼王','尾田荣一郎',214,'18 卷 · 412 MB'],
+  ['灌篮高手','井上雄彦',276,'12 卷 · 288 MB'],
+  ['浪客剑心','和月伸宏',188,'9 卷 · 201 MB'],
+  ['攻壳机动队','士郎正宗',142,'4 卷 · 96 MB'],
+  ['虫师','漆原友纪',164,'7 卷 · 151 MB'],
+  ['20 世纪少年','浦泽直树',198,'11 卷 · 233 MB'],
+  ['寄生兽','岩明均',132,'6 卷 · 118 MB'],
+  ['棋魂','小畑健',176,'10 卷 · 189 MB']
+];
+(function buildGrid(){
+  const g=document.getElementById('grid');
+  g.innerHTML=BOOKS.map((b,i)=>`
+    <div class="card">
+      <div class="cover"><img src="${coverSVG(b[0],b[1],i+3)}" alt=""></div>
+      <div class="ct">${b[0]}</div>
+      <div class="cm">${b[2]} 页 · ${b[3].split(' · ')[1]}</div>
+    </div>`).join('');
+})();
+
+/* ============================================================
+   4. 交互
+   ============================================================ */
+const root=document.documentElement;
+/* 定稿的四个主题预设：纸感·浅 / 暗房·浅 / 暗房·深 / 瑞士网格·浅
+   （纸感与瑞士网格不做深色版；暗房深浅两版都保留） */
+const PRESETS={
+  'paper:light':      {theme:'paper',    mode:'light', notes:'paper'},
+  'darkroom:light':   {theme:'darkroom', mode:'light', notes:'darkroomLight'},
+  'darkroom:dark':    {theme:'darkroom', mode:'dark',  notes:'darkroom'},
+  'swiss:light':      {theme:'swiss',    mode:'light', notes:'swiss'}
+};
+function applyPreset(key){
+  const p=PRESETS[key]||PRESETS['paper:light'];
+  root.dataset.theme=p.theme;
+  root.dataset.mode=p.mode;
+  document.querySelectorAll('[data-preset]').forEach(x=>
+    x.setAttribute('aria-pressed',String(x.dataset.preset===key)));
+  renderNotes(p.notes);
+}
+document.querySelectorAll('[data-preset]').forEach(b=>
+  b.addEventListener('click',()=>applyPreset(b.dataset.preset)));
+document.querySelectorAll('[data-view-btn]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-view-btn]').forEach(x=>x.setAttribute('aria-current',String(x===b)));
+  const v=b.dataset.viewBtn;
+  document.querySelectorAll('.view').forEach(x=>x.hidden=(x.dataset.view!==v));
+  document.querySelector('.tb-title').textContent='卷帙 — '+b.textContent.trim();
+}));
+document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+  c.setAttribute('aria-pressed', c.getAttribute('aria-pressed')==='true'?'false':'true');
+}));
+document.querySelectorAll('.segmented').forEach(sg=>sg.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  sg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+}));
+
+/* ============================================================
+   5. 方向说明
+   ============================================================ */
+const NOTES={
+  paper:{
+    title:'纸感 · Paper',
+    tag:'像在书桌上整理书。与「卷帙」的名字最配。',
+    rows:[
+      ['气质','温和、从容、有纸的气息。暖白底不必是纯白，标题用宋体压住整页。'],
+      ['适合','长时间阅读与整理书库；截图分享时辨识度最高。'],
+      ['代价','暖色底对色彩管理要求高；宋体在 Windows 上会回退，但本项目只做 macOS。'],
+      ['动效','翻页式过渡，260ms，缓出一种「纸落桌」的质感。']
+    ],
+    fine:'关键细节：卡片只用一层阴影；描边比阴影更重要；正文用苹方保证可读，只有标题回落到宋体，避免整页发软。'
+  },
+  darkroom:{
+    title:'暗房 · Darkroom',
+    tag:'专业工具的冷静感。界面退到后面，内容浮到前面。',
+    rows:[
+      ['气质','近黑底、单一强调色、无边框、等宽数字。像一台设备而不是一个网页。'],
+      ['适合','夜里批量抓取；缩略图流在深色底上最像「正在显影」。'],
+      ['代价','深色底对图片本身最不干扰，但需要更仔细地控制层级，否则容易糊成一片。'],
+      ['动效','几乎不动。只做 160ms 的透明度与位移，很克制。']
+    ],
+    fine:'关键细节：卡片靠「表面层级」而非描边区分，所以做了三级表面色；进度数字必须 tabular-nums，否则跳动时会抖。'
+  },
+  swiss:{
+    title:'瑞士网格 · Swiss',
+    tag:'国际主义排版。最前沿，也最不容易过时。',
+    rows:[
+      ['气质','纯黑白 + 一个橙色。零圆角、零阴影、发丝级分隔线、大字标题。'],
+      ['适合','追求「不像工具的工具」；把界面做成一张排版作品。'],
+      ['代价','对间距和字号最苛刻——差 2px 就露怯，实现上必须严格守 8pt 网格。'],
+      ['动效','最省。颜色与位置瞬时切换，不做补间，反而显得利落。']
+    ],
+    fine:'关键细节：网格用 1px 分隔线做「接缝」而不是卡片；标签一律大写加字距；数字用等宽并在强调时加粗。'
+  },
+  darkroomLight:{
+    title:'暗房 · Darkroom（浅色版）',
+    tag:'同一套布局翻成亮色：白天用，不刺眼但保持工具的冷静。',
+    rows:[
+      ['定位','白天的暗房。结构和深色版完全一致，只换令牌，不做第二套设计。'],
+      ['适合','白天或明亮环境下长时间操作；截图放进文档比深色版更清楚。'],
+      ['代价','浅色底下「表面层级」的区分度不如深色，需要靠更细的描边补回来。'],
+      ['动效','与深色版共用一套时长与曲线，切换时不产生割裂感。']
+    ],
+    fine:'关键细节：强调色从深色版的 #4C8DFF 加深到 #2F6BFF，保证在浅底上仍有足够对比度（≥4.5:1）。'
+  }
+};
+function renderNotes(key){
+  const n=NOTES[key]||NOTES.paper;
+  const m=root.dataset.mode;
+  const cs=getComputedStyle(root);
+  const sw=['--bg','--surface','--accent','--text','--border'].map(v=>`<i style="background:${cs.getPropertyValue(v).trim()}"></i>`).join('');
+  document.getElementById('notes').innerHTML=`
+    <h2>${n.title}</h2>
+    <p class="tagline">${n.tag}</p>
+    <dl>${n.rows.map(r=>`<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join('')}</dl>
+    <div class="swatches">${sw}</div>
+    <hr>
+    <p class="fine">${n.fine}</p>
+    <p class="fine" style="color:var(--faint)">当前主题：${root.dataset.theme} · ${m==='dark'?'深色':'浅色'}。</p>`;
+}
+/* 锚点定位：#paper / #darkroom / #darkroom,light / #swiss */
+(function initFromHash(){
+  const h=(location.hash||'').replace('#','').split(',');
+  const t=h[0], m=h[1];
+  let key='paper:light';
+  if(t==='swiss') key='swiss:light';
+  else if(t==='darkroom') key = (m==='light') ? 'darkroom:light' : 'darkroom:dark';
+  applyPreset(key);
+})();
+</script>
+</body>
+</html>

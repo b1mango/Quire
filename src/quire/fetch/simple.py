@@ -1,0 +1,230 @@
+"""Bounded stdlib HTTP transport for the dependency-free micro build."""
+
+from __future__ import annotations
+
+import http.client
+import math
+import random
+import threading
+import time
+import urllib.error
+import urllib.request
+import zlib
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from email.message import Message
+from email.utils import parsedate_to_datetime
+from typing import Protocol
+from urllib.parse import urlsplit
+
+from ..errors import BlockedError, ConfigError, FetchError, HttpStatusError, NetworkError
+from ..utils.urls import is_usable_url, redact
+from .ratelimit import HostRateLimiter
+from .robots import RobotsPolicy
+from .text import decode_html
+
+DEFAULT_UA = "Quire/0.0.1 (local public-page collector)"
+RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+
+@dataclass(frozen=True, slots=True)
+class Response:
+    url: str
+    status: int
+    headers: Mapping[str, str]
+    content: bytes
+    elapsed_ms: int
+
+    @property
+    def content_type(self) -> str:
+        return self.headers.get("content-type", "").split(";")[0].strip().lower()
+
+    @property
+    def text(self) -> str:
+        return decode_html(self.content, self.headers.get("content-type", ""))
+
+
+class FetchPort(Protocol):
+    def get(
+        self, url: str, *, referer: str | None = None, headers: Mapping[str, str] | None = None
+    ) -> Response: ...
+
+
+class BodyPort(Protocol):
+    headers: Message
+
+    def read(self, size: int = -1) -> bytes: ...
+
+
+def retry_after(value: str, now: float) -> float:
+    try:
+        seconds = float(value)
+        return max(0.0, seconds) if math.isfinite(seconds) else 0.0
+    except ValueError:
+        try:
+            return max(0.0, parsedate_to_datetime(value).timestamp() - now)
+        except (ValueError, TypeError, OverflowError):
+            return 0.0
+
+
+class _HttpOnlyRedirect(urllib.request.HTTPRedirectHandler):
+    def __init__(self, check: Callable[[str], None]) -> None:
+        self.check = check
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        if not is_usable_url(newurl) or urlsplit(newurl).scheme not in {"http", "https"}:
+            raise NetworkError("Redirect target must be HTTP(S)")
+        self.check(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+class Fetcher:
+    def __init__(
+        self,
+        *,
+        timeout: float = 20.0,
+        retries: int = 3,
+        concurrency: int = 8,
+        rate: float = 4.0,
+        user_agent: str = DEFAULT_UA,
+        max_bytes: int = 32 * 1024 * 1024,
+        cancel: threading.Event | None = None,
+        rng: random.Random | None = None,
+    ) -> None:
+        if (
+            not math.isfinite(timeout)
+            or not math.isfinite(rate)
+            or timeout <= 0
+            or rate <= 0
+            or retries < 0
+            or concurrency < 1
+            or max_bytes < 1
+        ):
+            raise ConfigError("Invalid HTTP timeout, rate, retry or size limit")
+        self.timeout, self.retries = timeout, retries
+        self.concurrency, self.max_bytes = concurrency, max_bytes
+        self.user_agent = user_agent
+        self.cancel = cancel or threading.Event()
+        self.limiter = HostRateLimiter(rate, sleep=self._sleep)
+        self.rng = rng or random.Random()
+        self._local = threading.local()
+        self.robots = RobotsPolicy(self._robots_text)
+
+    def _robots_text(self, url: str) -> str:
+        self._local.fetching_policy = True
+        try:
+            return self._get(url).text
+        finally:
+            self._local.fetching_policy = False
+
+    def _redirect_check(self, url: str) -> None:
+        if not getattr(self._local, "fetching_policy", False):
+            self.robots.check(url)
+        self.limiter.acquire(url)
+
+    def _sleep(self, delay: float) -> None:
+        if self.cancel.wait(delay):
+            raise FetchError("Task cancelled")
+
+    def get(
+        self, url: str, *, referer: str | None = None, headers: Mapping[str, str] | None = None
+    ) -> Response:
+        if not is_usable_url(url) or urlsplit(url).scheme not in {"http", "https"}:
+            raise ConfigError("URL must be an absolute HTTP(S) address without credentials")
+        self._sleep(0)
+        self.robots.check(url)
+        return self._get(url, referer=referer, headers=headers)
+
+    def _get(
+        self, url: str, *, referer: str | None = None, headers: Mapping[str, str] | None = None
+    ) -> Response:
+        if not is_usable_url(url) or urlsplit(url).scheme not in {"http", "https"}:
+            raise ConfigError("URL must be an absolute HTTP(S) address without credentials")
+        request_headers = {
+            "User-Agent": self.user_agent,
+            "Accept": "*/*",
+            "Accept-Encoding": "gzip, deflate",
+        }
+        if referer:
+            request_headers["Referer"] = referer
+        request_headers.update(headers or {})
+        last: FetchError = NetworkError(f"Request failed: {redact(url)}")
+        for attempt in range(self.retries + 1):
+            self._sleep(0)
+            self.limiter.acquire(url)
+            try:
+                return self._request(url, request_headers)
+            except urllib.error.HTTPError as exc:
+                status = exc.code
+                delay = retry_after(exc.headers.get("Retry-After", ""), time.time())
+                exc.close()
+                if status == 403:
+                    raise BlockedError(f"HTTP 403: {redact(url)}") from None
+                last = HttpStatusError(url, status)
+                if status not in RETRYABLE_STATUS or delay > 120:
+                    raise last from None
+                self.limiter.defer(url, delay)
+            except (OSError, urllib.error.URLError, http.client.HTTPException, zlib.error) as exc:
+                last = NetworkError(f"{type(exc).__name__}: {redact(url)}")
+            if attempt < self.retries:
+                self._sleep(min(8.0, 0.6 * 2**attempt) * self.rng.uniform(0.6, 1.4))
+        raise last
+
+    def _request(self, url: str, headers: Mapping[str, str]) -> Response:
+        if not hasattr(self._local, "opener"):
+            self._local.opener = urllib.request.build_opener(
+                _HttpOnlyRedirect(self._redirect_check)
+            )
+        started = time.monotonic()
+        request = urllib.request.Request(url, headers=dict(headers))
+        with self._local.opener.open(request, timeout=self.timeout) as response:
+            body = self._read_body(response)
+            return Response(
+                response.geturl(),
+                response.status,
+                {k.lower(): v for k, v in response.headers.items()},
+                body,
+                int((time.monotonic() - started) * 1000),
+            )
+
+    def _read_body(self, response: BodyPort) -> bytes:
+        declared = response.headers.get("Content-Length", "")
+        if declared.isdigit() and int(declared) > self.max_bytes:
+            raise FetchError("Response exceeds configured size limit")
+        raw = bytearray()
+        deadline = time.monotonic() + self.timeout
+        while True:
+            self._sleep(0)
+            if time.monotonic() > deadline:
+                raise TimeoutError("Response deadline exceeded")
+            chunk = response.read(min(65536, self.max_bytes + 1 - len(raw)))
+            if not chunk:
+                break
+            raw.extend(chunk)
+            if len(raw) > self.max_bytes:
+                raise FetchError("Response exceeds configured size limit")
+        if declared.isdigit() and len(raw) != int(declared):
+            raise http.client.IncompleteRead(bytes(raw), int(declared))
+        encoding = response.headers.get("Content-Encoding", "").strip().lower()
+        if encoding in {"gzip", "deflate"}:
+            return self._decode(bytes(raw), encoding)
+        if encoding not in {"", "identity"}:
+            raise FetchError(f"Unsupported content encoding: {encoding}")
+        return bytes(raw)
+
+    def _decode(self, raw: bytes, encoding: str) -> bytes:
+        modes = [31] if encoding == "gzip" else [15, -15]
+        for index, mode in enumerate(modes):
+            try:
+                decoder = zlib.decompressobj(mode)
+                decoded = decoder.decompress(raw, self.max_bytes + 1)
+            except zlib.error:
+                if index == len(modes) - 1:
+                    raise
+                continue
+            if len(decoded) > self.max_bytes:
+                raise FetchError("Decoded response exceeds configured size limit")
+            if not decoder.eof:
+                raise zlib.error("Incomplete compressed response")
+            return decoded
+        raise zlib.error("Invalid compressed response")

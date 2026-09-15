@@ -1,0 +1,1457 @@
+# 卷帙 Quire — 小说 / 漫画采集工具 设计方案 v0.7
+
+> v0.6 变更：**UI 主题定稿为 4 套**（纸感·浅 / 暗房·浅 / 暗房·深 / 瑞士网格·浅）并冻结设计令牌；新增 **§17–§24 构建前规划**：编程范式定稿、关键接口冻结、工程配置与工具链、编码规范与异常层次、垂直切片构建顺序、风险登记册与不做清单、验收基准、首轮开工清单。
+> v0.7（2026-09-15）：用户已授权构建；完成 M0 micro 首轮交付，实际能力、验收数据与偏差见 §26。§1–24 中未实现的功能仍是设计目标，不能当成已交付能力。
+> 状态：**构建中；M0 已验证，M1–M8 待逐步实现。**
+> 目标平台：macOS 12+（v1 仅此一平台）。
+
+---
+
+## 0. 命名方案 —— **已定名：卷帙 / Quire**
+
+| 项 | 值 |
+|---|---|
+| 中文 / 英文 | **卷帙 / Quire** |
+| CLI 命令 | `quire` |
+| Python 包名 | 源码模块 `quire`；本地分发名暂用 `quire-local`，未查询或发布 PyPI |
+| 数据目录 | `~/Library/Application Support/quire/` |
+| 应用包 | `Quire.app`（Bundle ID `com.b1mango.quire`） |
+| 安装包 | `quire-<version>.dmg` |
+| micro 单文件 | `quire.pyz` |
+
+完整决策记录（词源考据、落选理由、全局替换清单）见 **`NAMING.md`**。
+
+### 0.1 「卷帙」的英译考据
+
+**词义拆解**：卷 = 卷轴/书卷（scroll, *volumen*）；帙 = 包裹一函书卷的布套（a case holding a set of scrolls）。
+**卷帙 = 一函书、成套的书**，重心在"成套/成函"，不在"厚"。
+
+> `Tome` 是误译：只对应"卷"，且强调"厚重的大书"，把"帙"的"成套收纳"义整个丢掉。
+
+罗马人管装卷轴的圆筒书箱叫 **scrinium**（帙），管一卷书叫 **volumen**（卷）。
+故「卷帙」最精确的直译是 **a scrinium of volumina**（一函书卷）。
+
+| 英文 | 精确对应 | 信 | 达 | 雅 | 命令名可用性 |
+|---|---|---|---|---|---|
+| **Volumen** | 卷（拉丁本义：卷轴/书卷） | ★★★ | ★★★ | ★★★ | 好（易被当成 volume 拼错） |
+| **Quire** | 帙（一沓待装订的书页，装帧单位） | ★★ | ★★★ | ★★★ | **最好**（5 字母、生僻好念） |
+| **Omnibus** | 多部作品订成一册 | ★★ | ★★★ | ★★ | 好（7 字母、地道英文） |
+| **Corpus** | 一批著作的整体 | ★★ | ★★★ | ★★★ | 中（与语料库撞义） |
+| **Libri** | 书（拉丁复数） | ★★ | ★★ | ★★★ | 好（5 字母） |
+| **Codices** | 成册抄本（复数） | ★★ | ★★ | ★★ | 差（被 OpenAI Codex 污染） |
+| **Scrinium** | 帙（罗马卷轴书箱） | ★★★ | ★★★ | ★★★ | 差（8 字母、太生僻） |
+| **Florilegium** | 文集（字面"采花集"） | ★ | ★★ | ★★★ | 差（11 字母） |
+
+**命名推荐排序**
+
+| 排名 | 中文 | 英文 | CLI | 理由 |
+|---|---|---|---|---|
+| 🥇 | 卷帙 | **Quire** | `quire` | 信达雅俱佳；`quire` 本身是**装帧单位**（一沓即将装订成书页的纸），与工具动词同构 |
+| 🥈 | 卷帙 | **Volumen** | `volumen` | 词源最精确（卷），拉丁雅致；缺点易被读成 volume |
+| 🥉 | 合订本 | **Omnibus** | `omnibus` | 最好懂、最实用，气质偏"合订本" |
+| 备选 | 卷册 | Volume | `volume` | 最直白，但与"音量"撞义 |
+| 备选 | 画谱 | Atlas | `atlas` | 偏漫画，`atlas`＝成册图集，国际化 |
+| 备选 | 兰台 | Lantai | `lantai` | 意境最雅（汉代皇家藏书处），拼音直用 |
+
+### 0.2 通用型备选（第一轮）
+
+| 中文 | 英文 | CLI | 意象 |
+|---|---|---|---|
+| **装订坊** | **Bindery** | `bindery` | 把散页装订成册，功能最直白 |
+| 绘卷 | Emaki | `emaki` | 绘卷物＝连续长卷画，漫画向 |
+| 貔貅 | Pixiu | `pixiu` | 只进不出的囤书神兽 |
+| 拾遗 | Glean | `glean` | 一点点拾取散落内容 |
+| 书手 | Scribe | `scribe` | 抄书人（撞名高） |
+| 卷宗 | Dossier | `dossier` | 归档成卷 |
+| 春蚕 | Silkworm | `silkworm` | 蚕食＋作茧成书 |
+| 线装 | Threadbound | `xianzhuang` | 用线把散页缝成一册 |
+| 琅嬛 | Langhuan | `langhuan` | 琅嬛福地，藏尽天下书之处 |
+
+> **待你定名**。下文继续用代号 `quire`，定名后全局替换命令名、包名、数据目录名、`.app` 名。
+
+---
+
+## 1. 需求与已确认决策
+
+| 输入 | 行为 | 输出 |
+|---|---|---|
+| 漫画章节页 / 目录页 URL | 解析全部图片 → 按序下载 → 合成 | `.pdf`（默认）/ `.cbz` / `.zip` |
+| 小说章节页 / 目录页 URL | 优先抽 HTML 正文，抽不到则 OCR | `.txt` / `.epub` / `.pdf` |
+
+### 1.1 决策总表
+
+| # | 决策项 | **你的选择** | 设计后果 |
+|---|---|---|---|
+| A | 体积 ↔ OCR 离线 | **A1** 核心 7 MB，模型按需下载（≈16 MB，SHA-256 校验） | onnxruntime + 模型下载/校验/离线报错 |
+| B | 通用 ↔ 准确率 | **B1** 通用内核 + 用户 TOML 规则 | 不内置站点库；`inspect`/`sites test` 是核心工具 |
+| C | 无损 ↔ 成品体积 | **默认压缩，用户可选体积** | 压缩档 + `--target-size` 二分搜索（§6.8） |
+| D | 订阅追更 | **不要** | 移除一切调度与差异检测 |
+| E | 输出格式 | 漫画 PDF/CBZ/ZIP；小说 TXT/EPUB/PDF | 六个 writer；小说 PDF 走 Chrome（§6.9） |
+| F | 登录内容 | **仅公开内容** | 不做登录、不做 Cookie 导入 UI |
+| G | 平台 | **仅 macOS** | 路径/浏览器/字体/打包全部按 macOS 写死 |
+| H | 失败容忍 | **插占位页继续** | 占位页样式 + 失败清单 + 退出码 4 |
+| I-1 | UI 形态 | **先 Web（简洁有效、优雅、审美前沿），后做原生软件界面** | 路线图调整为 M6 Web UI → M7 原生壳 |
+| I-2 | 内核分发 | **内嵌精简 Python 运行时**（`.app` ≈30 MB，双击即用，零外部依赖） | 需 python-build-standalone 打包流程 |
+| I-3 | 书库 | **要，但先简单** | `library.db` + 封面墙 + 搜索 + 删除 + 打开；标签/导出延后 |
+| J | 原图保留 | **默认不保留，用户可选保留** | 流水线可"抓一章→出一章→删一章"，磁盘峰值大降；`reassemble` 变为可选能力 |
+| K | 默认成品体积 | **≤50 MB** | 默认 `--target-size 50MB`（见下方歧义说明） |
+| L | CBZ / ZIP | **用户未定 → 我定**：默认只出 PDF；CBZ 给阅读器（含 `ComicInfo.xml`）；原图 ZIP 做归档（store + `manifest.json`），均需显式 `--format` 指定 | 减少默认产物，避免误删原图后无法补出 |
+| M | 分发方式 | **免签名，GitHub Releases 发 `.dmg`** | 需 ad-hoc 签名 + 首次打开的 quarantine 处理说明（§3.4） |
+| N | 小说 PDF 兜底 | **不做**（无 Chrome 时直接报错引导） | 删除 §6.9 路线 2；`doctor` 与格式选择处必须预检 Chrome |
+| O | Swift 薄壳 | **接受**，写约一百行 Swift + WKWebView | 确定走 1 MB 薄壳，不退回 pywebview |
+| P | 内嵌 Python 版本 | **3.12**（`tomllib` 原生、性能好） | 打包 python-build-standalone 3.12 |
+
+**关于 K 的歧义**：你答"50MB以内"。我按"**单行本成品体积默认目标 ≤50 MB**"落地；同时这个数字对"**整个安装包 ≤50 MB**"也成立——`.app`（内嵌 Python）≈30 MB 已含核心，`.dmg` 压缩后 ≈20 MB。两个读法都满足，不再追问。
+
+---
+
+## 2. 技术选型
+
+### 2.1 依赖分层
+
+**核心（≈7 MB）**
+
+```
+httpx      ~1.5 MB   下载（异步、HTTP/2、限速、重试）
+Pillow     ~4.0 MB   转码 / 压缩 / 透明底合成 / 条漫切页 / dHash / 页面分类
+img2pdf    ~0.2 MB   无损直嵌 JPEG（lossless 档使用）
+pypdf      ~1.0 MB   合并 / 书签 / 元数据 / 回读校验
+```
+
+**可选项 extras**
+
+| extra | 内容 | 体积 | 用途 |
+|---|---|---|---|
+| `[fast]` | lxml, selectolax | +6 MB | 大页面解析快 3–5× |
+| `[ocr]` | onnxruntime | +20 MB（+模型 16 MB 按需） | OCR |
+| `[image]` | opencv-python-headless | +45 MB | 双页扫描图中缝检测 |
+| `[browser]` | playwright | +40 MB | 万不得已的渲染后端（复用系统 Chrome，不下载 Chromium） |
+| `[dev]` | pytest, ruff | +8 MB | 开发 |
+
+### 2.2 关键减重手段
+
+| 手段 | 省下 |
+|---|---|
+| 不打包浏览器，`subprocess` 调系统 Chrome | ~150 MB |
+| 去重用 **dHash**（Pillow）而非 pHash | ~60 MB（numpy+scipy） |
+| OCR 预处理**纯 Pillow 手写**，不引 opencv | ~60 MB |
+| 站点规则用 **TOML**（stdlib `tomllib`） | ~1 MB |
+| 配置用 **dataclass** 而非 pydantic | ~13 MB |
+| CLI 用 **argparse** + 自研进度条 | ~6 MB |
+| EPUB **手写**（zip + XML） | ~2 MB |
+| 小说 PDF 走 **Chrome `--print-to-pdf`**（不打包 CJK 字体） | ~10 MB |
+| 前端**零构建原生 JS**（不引 npm/React） | ~5 MB+ |
+
+### 2.3 体积预算
+
+以下 core/.app/.dmg 数字均是早期估算，尚无可安装产物证明；M0 实测单文件约 47 KB，**不含 Python 运行时**。以后分别测量下载包、安装后占用、模型及浏览器依赖，不能混用这些口径。
+
+| 形态 | 体积 |
+|---|---|
+| `micro` 单文件 zipapp | **≈ 350 KB** |
+| 核心 `pip install` | **≈ 7 MB** |
+| `+ [fast]` | ≈ 13 MB |
+| `+ [ocr]`（含模型） | ≈ 43 MB |
+| `+ [browser]` | ≈ 83 MB |
+| **`.app`（薄壳 1 MB + 内嵌 Python 20 MB + 核心 7 MB）** | **≈ 30 MB** |
+| `.dmg`（压缩后） | **≈ 20 MB** |
+| 参照 | Electron 工具 150 MB+ ／ Playwright 默认 150 MB ／ PaddleOCR 全量 500 MB+ |
+
+### 2.4 本地数据存储
+
+```
+~/Library/Application Support/quire/          # 唯一数据根，--data-dir 可改
+  config.toml          全局配置（默认压缩档、目标体积、输出目录、并发）
+  sites/*.toml         站点规则
+  models/              OCR 模型 + CHECKSUMS
+  library.db           书库索引
+  ledger.db            断点账本
+  sessions/            匿名会话 Cookie（0600）
+  cache/               页面 HTML 快照
+  library/             成品（默认输出目录）
+  thumbs/              封面缩略图
+  logs/                日志（默认不记正文）
+  tmp/                 合成中间件（可随时删）
+```
+
+无服务端、无账号、无遥测；除目标站点与显式模型下载外**无任何出站请求**；`--offline` 硬断网；账本存**相对路径**因此整个目录可搬移续传；卸载 = 删一个目录（`quire self clean`）。
+
+---
+
+## 3. 总体架构
+
+```
+┌──────────────── UI 层 ────────────────────────────────┐
+│  quire.app (Swift+WKWebView, ~1MB)  │  浏览器（M6 先行） │
+└──────────────────┬────────────────────────────────────┘
+                   │ http://127.0.0.1:<随机端口>/?token=...
+┌──────────────────▼────────────────────────────────────┐
+│  LocalServer（同进程）  REST + SSE + 内嵌静态资源        │
+├───────────────────────────────────────────────────────┤
+│  CLI (argparse)：manga/novel/inspect/sites/ui/doctor   │
+└──────────────────┬────────────────────────────────────┘
+                   │ TaskSpec
+   ┌───────────────┼───────────────┬──────────────┐
+   ▼               ▼               ▼              ▼
+┌────────┐ ┌──────────────┐ ┌────────────┐ ┌──────────┐
+│SiteRes-│ │   Fetcher    │ │ StateLedger│ │ Library  │
+│olver    │ │httpx│browser │ │ SQLite 续传 │ │ 书库索引  │
+└───┬────┘ └──────┬───────┘ └─────┬──────┘ └──────────┘
+    ▼             │               │
+┌────────┐        │               │
+│Adapter │◄───────┘               │
+└───┬────┘                        │
+    │ Book/Chapter/Page/Asset     │
+    ▼                             │
+┌──────────────────────────────┐  │
+│   Pipeline（双支线，流式）     │  │
+├──────────────┬───────────────┤  │
+│ImagePipeline │ TextPipeline  │  │
+│下载→校验→分类 │ 抽取→校验→OCR  │  │
+│→压缩→出章PDF  │               │  │
+│→删原图(默认)  │               │  │
+└──────┬───────┴───────┬───────┘  │
+       ▼               ▼          │
+┌─────────────┐ ┌─────────────┐   │
+│  Assembler  │ │  Assembler  │   │
+│ pdf/cbz/zip │ │ txt/epub/pdf│   │
+└──────┬──────┘ └──────┬──────┘   │
+       └────────┬──────┘          │
+                ▼                 │
+        ┌───────────────┐         │
+        │ Output+Report │◄────────┘
+        └───────────────┘
+```
+
+分层原则：**Fetcher 不管业务，Adapter 不管 IO 实现，Assembler 只吃本地文件，UI 只调 LocalServer。**
+
+### 3.1 能力档位（`quire doctor` 可查）
+
+| 档 | 解析 | 渲染 | 压缩/切页 | OCR |
+|---|---|---|---|---|
+| `micro` | stdlib 迷你 DOM | 无 | 无 | 无 |
+| `core`（默认） | 迷你 DOM | 无 | Pillow | 无 |
+| `full` | lxml | 系统 Chrome → CDP → playwright | Pillow/opencv | onnxruntime |
+
+### 3.2 「薄壳」是什么（概念澄清）
+
+**薄壳 = 一个只有窗口、没有业务逻辑的原生 macOS 应用。**
+
+```
+quire.app/Contents/
+  MacOS/quire            ~200 KB  Swift 可执行文件
+  Resources/
+    python/             ~20 MB  内嵌精简 Python 运行时（决策 I-2）
+    core/               ~7 MB   我们的 Python 核心
+    AppIcon.icns
+  Info.plist
+```
+
+壳只做三件事：
+
+1. 拉起内嵌的 Python 核心进程（随机端口 + 随机 token）；
+2. 开一个窗口，`WKWebView` 指向 `http://127.0.0.1:<port>/?token=...`；
+3. 窗口关闭时终止子进程。
+
+**为什么只有 1 MB**：`WKWebView` 是 macOS 系统组件，不打包浏览器内核。Electron 之所以 150 MB，是因为它把整个 Chromium 塞进了安装包。
+
+**两个维度不要混淆**：
+
+| 维度 | 选项 | 你的选择 |
+|---|---|---|
+| 窗口层 | 薄壳（WKWebView）／ Electron／ Tauri | **薄壳** |
+| 运行时 | 内嵌 Python ／ 依赖系统 python3 | **内嵌**（macOS 12.3+ 不再预装 python3） |
+
+内嵌 Python 的那 20 MB 换来的是"双击即用、零外部依赖"。
+
+### 3.3 UI 设计语言（决策 I-1 落地）
+
+**总原则：像一个工具，不像一个后台管理系统。界面不抢戏，成品（书）才是主角。**
+
+> **可交互预览已产出**：`ui-preview/index.html`（单文件、零外链，直接双击打开）。
+> 顶部四个主题按钮即时切换；侧栏可切换「新建任务 / 进行中 / 书库 / 设置」四个页面。
+> 也可用锚点直接定位：`#paper`（纸感·浅）/ `#darkroom`（暗房·深）/ `#darkroom,light`（暗房·浅）/ `#swiss`（瑞士网格·浅）。
+> 预览里的漫画页与封面是用内联 SVG 现画的假图，不联网。**此文件即 UI 规格基准与视觉回归对照。**
+
+#### UI 主题定稿：4 套（决策 Q）
+
+| # | 主题 | 明暗 | 定位 | 预览锚点 |
+|---|---|---|---|---|
+| 1 | 纸感 Paper | 仅浅色 | 暖白纸面 + 宋体标题，与「卷帙」气质最配，长时间阅读最舒服 | `#paper` |
+| 2 | 暗房 Darkroom | **深色（主场）** | 近黑底 + 蓝色强调，缩略图流在深底上最像"正在显影" | `#darkroom` |
+| 3 | 暗房 Darkroom | 浅色 | 同一套布局翻成亮色，"白天的暗房"；结构与深色版完全一致，**不做第二套设计** | `#darkroom,light` |
+| 4 | 瑞士网格 Swiss | 仅浅色 | 纯黑白 + 国际橙，零圆角零阴影，最前沿最耐看 | `#swiss` |
+
+> **纸感与瑞士网格不做深色版**——两个方向的性格都建立在各自底色的对比关系上，硬翻一套暗色只会得到一个衰减的赝品。暗房本身就活在暗底上，它的浅色版是"换令牌"而非"重设计"。
+
+#### §3.3.1 设计令牌（冻结，实现时直接照抄）
+
+| 令牌 | 纸感·浅 | 暗房·深 | 暗房·浅 | 瑞士·浅 |
+|---|---|---|---|---|
+| `--bg` | `#EFEBE4` | `#0B0B0D` | `#F4F5F7` | `#FFFFFF` |
+| `--surface` | `#FFFFFF` | `#151518` | `#FFFFFF` | `#FFFFFF` |
+| `--surface-2` | `#F5F1EA` | `#1D1D22` | `#F0F1F4` | `#F2F2F2` |
+| `--surface-3` | `#EBE5DB` | `#26262D` | `#E7E9EE` | `#E6E6E6` |
+| `--text` | `#1A1714` | `#ECECEF` | `#131317` | `#000000` |
+| `--muted` | `#6E665C` | `#8B8B94` | `#6A6A74` | `#555555` |
+| `--faint` | `#A79E92` | `#5C5C64` | `#A0A0AA` | `#9A9A9A` |
+| `--border` | `#E4DCD0` | `#25252B` | `#E3E5EA` | `#000000` |
+| `--accent` | `#B23A2F` 朱砂 | `#4C8DFF` | `#2F6BFF` | `#FF3B00` |
+| `--ok` / `--warn` | `#4A7C59` / `#B8860B` | `#3FBF7F` / `#E0A33A` | `#1E9E63` / `#C98A16` | `#00813D` / `#C24E00` |
+| `--radius` / `-sm` | 12 / 8 px | 10 / 7 px | 10 / 7 px | 0 / 0 px |
+| `--shadow` | 双层柔和 | 内高光 + 深投影 | 双层柔和 | **none** |
+| 标题字体 | Songti SC | 系统无衬线 | 系统无衬线 | Helvetica Neue |
+| 正文字体 | PingFang SC | PingFang SC | PingFang SC | Helvetica Neue / PingFang SC |
+
+> 暗房浅色版的强调色从 `#4C8DFF` **加深**到 `#2F6BFF`，因为浅底上原色对比度不足 4.5:1。
+
+#### §3.3.2 组件状态规范（实现时逐条对照）
+
+| 组件 | 默认 | 悬停 | 焦点 | 选中 / 激活 | 禁用 |
+|---|---|---|---|---|---|
+| 主按钮 | `--accent` 实底 | 亮度 +8% | 2px `--accent` 外环，offset 2px | 按下位移 1px | 40% 不透明，`cursor:not-allowed` |
+| 次按钮 | 透明 + `--border` | `--surface-3` 底 | 同上 | `--surface-3` | 同上 |
+| 分段控件 | `--surface-2` | 文字转 `--text` | 外环 | 瑞士/纸感：`--accent` 实底反白 | 同上 |
+| 芯片（格式） | 描边胶囊 | `--border-strong` | 外环 | `--accent-soft` 底 + `--accent` 字 | 同上 |
+| 缩略图 | 1px 描边 | —— | 外环 | 当前页 2px `--accent` 外框；缺页用 `--warn` 虚线 + 角标 | —— |
+| 输入框 | `--surface-2` 底 | —— | 边框转 `--accent`，底转 `--surface` | —— | —— |
+
+**空状态 / 加载态 / 错误态**（文案必须是人话，不暴露错误码）：
+
+| 场景 | 表现 |
+|---|---|
+| 书库为空 | 居中一句"还没有书。贴一个链接试试。"+ 主按钮「新建任务」 |
+| 解析失败 | "这个链接没找到章节列表。要不要试试章节页的地址？" + 「查看页面快照」按钮（打开 `debug/` 里的 HTML） |
+| 缺 Chrome | "转 PDF 需要 Chrome，这台机器上没找到。" + 「如何安装」 |
+| 进度中 | 不用进度条：**逐页缩略图流**边下边长；当前页带 `--accent` 外框，未下载完的是骨架屏微光 |
+| 部分成功（退出码 4） | 黄色徽标 +「2 页缺失，已用占位页补齐」+ 可展开失败清单。**不是红色错误** |
+
+#### 三个候选方向（历史记录，已定稿）
+
+| 方向 | 特征 | 气质 |
+|---|---|---|
+| **纸感 / Paper** | 暖白底 `#FAF8F5`、宋体标题、极细描边、克制阴影、翻页式过渡 | 像在书桌上整理书，与"卷帙"最配 |
+| **暗房 / Darkroom** | 近黑 `#0E0E10`、单一强调色、等宽数字、无边框、内容优先 | 专业工具的冷静感 |
+| **瑞士网格 / Swiss** | 纯黑白、超大字号标题、严格 8pt 网格、零圆角零阴影、动效只用于状态变化 | 最前沿、最耐看、最不容易过时 |
+
+#### 不随方向变的规范
+
+- **排版**：`-apple-system, "PingFang SC"` 系统字体栈；字号阶 12 / 13 / 15 / 17 / 22 / 28；行高 1.5；数字一律 `font-variant-numeric: tabular-nums`（进度百分比跳动时不抖）。
+- **间距**：4pt 基准，常用 8 / 12 / 16 / 24 / 32。
+- **圆角与阴影**：卡片圆角 10–12（瑞士方向取 0）；只用一层阴影，禁止叠层阴影。
+- **深色模式**：跟随系统，**两套同时设计**，不是事后倒推（这是"审美前沿"和"随便做做"的分水岭）。
+- **动效**：150–250 ms，`cubic-bezier(.2,.8,.2,1)`；只用于状态变化与进度连续性，**不做装饰性动画**；尊重 `prefers-reduced-motion`。
+- **进度呈现（全场唯一值得炫技的地方）**：不用进度条。**逐页缩略图流**——每下载完一页就以缩略图铺进栅格，用户能**看着一本书长出来**。这比任何进度条都有说服力，且成本极低（缩略图本来就要为书库生成）。
+- **文案**：空状态与错误态写成给人看的话，不暴露错误码（"这个链接没找到章节列表，要不要试试章节页？"而不是 `ERR_PARSE_003`）。
+- **键盘**：`⌘V` 直接贴 URL 开始；`⌘K` 命令面板；`Esc` 取消当前任务。
+- **无障碍**：对比度 ≥ 4.5:1；焦点环可见且不被 `outline:none` 干掉。
+- **资源预算**：前端总量 **< 200 KB**，零 npm、零构建、零 CDN 外链（离线可用）。
+
+#### 前端技术
+
+零构建的原生 HTML/CSS/JS，用 `importlib.resources` 内嵌进 Python 包。**不引 React/Vite**——这既守住体积，也逼着设计保持克制。
+
+#### 通信
+
+REST（提交 / 查询 / 取消 / 书库）+ **SSE**（进度、日志、缩略图流）。不用 WebSocket——SSE 单向推送已足够且实现更简单。
+
+#### 安全
+
+仅监听 `127.0.0.1`；每次启动生成随机 token，所有请求必须携带；Cookie `SameSite=Strict`。防止本机其他程序误调。
+
+#### 页面清单（先简单，后扩展）
+
+| 阶段 | 页面 |
+|---|---|
+| **M6（先做）** | ① 新建任务（贴 URL、选格式、选压缩档）② 任务进行中（缩略图流 + 取消）③ 书库（封面墙 + 搜索 + 删除 + 打开）④ 设置（输出目录、并发、OCR、doctor 信息） |
+| M7 之后 | 站点规则编辑器、历史与重试、标签、导出、批量操作 |
+
+### 3.4 分发（决策 M 落地）
+
+- **渠道**：GitHub Releases，产物 `quire-<version>.dmg`。
+- **不做签名与公证**（不需要 Apple 开发者账号）。
+- **但必须做 ad-hoc 签名**：`codesign --force --deep --sign - quire.app`。否则在 Apple Silicon 上应用会直接被内核拒绝执行。
+- **必须处理 Gatekeeper**：用户从浏览器下载的 `.dmg` 会带 `com.apple.quarantine`，首次打开会提示"无法验证开发者"甚至"已损坏"。README 与下载页必须给出：
+  ```
+  右键点 .app → 打开 → 再点"打开"
+  或  xattr -dr com.apple.quarantine /Applications/quire.app
+  ```
+  这是免签名分发的必然代价，**必须写清楚，否则会被当成"软件坏了"**。
+- **构建产物**：`.dmg` 用系统自带 `hdiutil create` 生成，零额外工具链。
+- **架构**：交付 `universal2`（arm64 + x86_64），内嵌的 Python 运行时也必须 universal2 或分别打包后 `lipo` 合并。
+- **版本**：`Info.plist` 里写版本号；`quire doctor` 输出同版本，便于排查。
+
+---
+
+## 4. 目录结构
+
+```
+quire/
+├── pyproject.toml
+├── README.md / DESIGN.md / NAMING.md
+├── ui-preview/index.html         # 三套 UI 方向的可交互预览（UI 视觉基准）
+├── src/quire/
+│   ├── cli.py  config.py  models.py  caps.py  errors.py  progress.py
+│   ├── fetch/
+│   │   ├── session.py  ratelimit.py  robots.py  browser.py
+│   │   ├── browser_chrome.py     # subprocess 调系统 Chrome（默认，0 体积）
+│   │   ├── browser_cdp.py        # 复用已开 Chrome 调试端口（0 体积）
+│   │   └── browser_pw.py         # playwright（可选）
+│   ├── parse/
+│   │   ├── minidom.py            # stdlib html.parser 上的迷你 DOM + CSS 子集
+│   │   ├── detect.py  catalogue.py  images.py  article.py  paginate.py
+│   │   ├── series.py             # 系列/卷边界识别与切卷（§6.13）
+│   │   ├── diagnose.py           # §6.14 选择器建议与 --explain 诊断
+│   │   └── adapters/{base,generic,example_site}.py
+│   ├── image/
+│   │   ├── probe.py              # 纯 Python 文件头解析（宽高/完整性）
+│   │   ├── downloader.py  validate.py  dedup.py  spread.py
+│   │   ├── analyze.py            # color/gray/bitonal 页面分类
+│   │   └── compress.py           # 压缩档 + 目标体积二分搜索
+│   ├── text/{clean,obfuscation,structure}.py
+│   ├── ocr/{base,models,onnx_engine,tesseract,preprocess,postprocess}.py
+│   ├── assemble/
+│   │   ├── pdf.py  pdf_min.py  cbz.py  zipimages.py  epub.py  txt.py
+│   │   └── pdf_text.py           # 小说 PDF：HTML → Chrome print-to-pdf
+│   ├── server/
+│   │   ├── app.py                # 路由 + token 校验
+│   │   ├── jobs.py               # 任务队列、取消、进度事件
+│   │   └── web/                  # 内嵌前端（零构建）
+│   ├── store/{ledger,library,workspace,profile}.py
+│   ├── sites/_template.toml
+│   └── utils/{urls,naming,paths,chrome}.py
+├── app/                          # macOS 原生壳
+│   ├── Package.swift
+│   ├── Sources/QuireApp/{main.swift,WebView.swift,CoreProcess.swift}
+│   └── Resources/{Info.plist,AppIcon.icns}
+├── tests/{fixtures,mock_site,test_*.py}
+└── scripts/{build_micro_zipapp.py,build_app.sh,make_dmg.sh,dev_mock_server.py}
+```
+
+---
+
+## 5. 数据模型
+
+```python
+# models.py —— 全 dataclass，零第三方依赖
+from dataclasses import dataclass, field
+
+
+@dataclass
+class Asset:
+    url: str
+    index: int
+    page_url: str | None = None
+    referer: str | None = None
+    headers: dict[str, str] = field(default_factory=dict)
+    local_path: str | None = None  # keep_images=False 时为临时路径
+    sha256: str | None = None
+    dhash: int | None = None
+    width: int | None = None
+    height: int | None = None
+    page_kind: str | None = None  # color | gray | bitonal
+    status: str = "pending"  # pending|ok|failed|skipped|dup
+    error: str | None = None
+    retries: int = 0
+
+
+@dataclass
+class Page:
+    index: int
+    source: str  # html | ocr | css-content | font-map
+    text: str = ""
+    image_path: str | None = None
+    ocr_confidence: float | None = None
+    needs_review: bool = False
+
+
+@dataclass
+class Chapter:
+    index: int
+    title: str
+    url: str | None = None
+    assets: list[Asset] = field(default_factory=list)
+    pages: list[Page] = field(default_factory=list)
+    status: str = "pending"
+
+
+@dataclass
+class Book:
+    title: str
+    kind: str  # manga | novel
+    source_url: str
+    author: str | None = None
+    site: str | None = None
+    chapters: list[Chapter] = field(default_factory=list)
+    cover: str | None = None
+    meta: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class JobOptions:
+    formats: list[str] = field(default_factory=lambda: ["pdf"])
+    compress: str = "balanced"  # lossless|archive|high|balanced|small|tiny
+    target_size: int = 50 * 1024**2  # 默认 50 MB（决策 K）
+    bitonal: bool = True  # 黑白页转 1-bit
+    keep_images: bool = False  # 默认不保留（决策 J）
+    rtl: str = "auto"
+    concurrency: int = 8
+    rate: float = 4.0
+    ocr_mode: str = "auto"  # auto|always|never
+    margin_mm: float = 0.0
+    dpi: int = 150
+```
+
+---
+
+## 6. 模块设计
+
+### 6.1 Fetcher
+
+**静态抓取**：`httpx.AsyncClient`，HTTP/2，连接池 = 并发数。重试仅对 `429/5xx/超时/连接重置`（指数退避 + 抖动，上限 5 次），`403` 不重试。尊重 `Retry-After`。匿名会话 Cookie 持久化到 `sessions/`。
+
+**渲染后端（三选一，按可用性降级）**
+
+| 后端 | 体积 | 能力 | 何时用 |
+|---|---|---|---|
+| `browser_chrome` | 0 | `--dump-dom` / `--screenshot` / `--virtual-time-budget` | 默认，覆盖多数 JS 站 |
+| `browser_cdp` | 0 | 复用用户已开的 Chrome 调试端口，可响应嗅探、执行 JS、点击 | 需嗅探/canvas 时 |
+| `browser_pw` | +40 MB | 全能力、持久化 profile | 万不得已，可选装 |
+
+macOS 探测顺序：`Google Chrome.app` → `Microsoft Edge.app` → `Brave Browser.app` → `Chromium.app`。
+**Safari 不可用**（无 headless CLI）——只有 Safari 时 `quire doctor` 明确提示装 Chrome 或 `pip install "quire[browser]"`。
+
+**限速**：按 host 令牌桶，默认 4 req/s/host、全局并发 8。**robots.txt 默认遵守**。
+
+### 6.2 站点适配（B1 落地）
+
+TOML 规则优先 → 通用启发式兜底 → Python 插件逃生。
+
+```toml
+# sites/example.toml
+name = "example"
+domains = ["example.com", "www.example.com"]
+kind = "manga"
+
+[catalogue]
+chapter_links = "div.chapter-list a"
+order = "asc"
+
+[chapter]
+image_selector = "div.reader img"
+image_attrs = ["data-src", "data-original", "src"]
+remove = ["header", "footer", ".ads"]
+order = "dom"                # dom | asc | desc | filename
+next_page = "a.next"
+
+[chapter.headers]
+Referer = "{page_url}"
+```
+
+`minidom.py` 需实现的 CSS 选择器子集：标签、`.class`、`#id`、`[attr]`、`[attr=val]`、后代/子代组合、逗号并列。约 300 行，覆盖 95% 规则写法；不够时提示装 `[fast]` 走 lxml。
+
+**B1 的成败全靠这几个命令**：`quire inspect <url> --dump-html`（打印解析结果与命中的选择器）、`quire sites test`、`quire sites new`。
+
+### 6.3 漫画：图片识别
+
+**五路收集**：静态 `<img>`（内置 20+ 懒加载属性名）→ CSS 背景图 → `<picture>/srcset` → 渲染后端响应嗅探 `image/*` → canvas 元素截图。
+
+**M0 过滤**：URL 路径黑名单（不匹配签名查询串）→ 尺寸（`w<200 or h<200`，可调）→ 横向宽高比 `>8:1` → 同 URL 去重。纵向条漫不按比例丢弃，最小字节数默认 0，避免误杀压缩良好的黑白页。M1 计划加入页面分类；dHash 仅用于提示疑似重复，启用自动删除前必须验证不会误杀相邻页。
+
+**排序校正**：默认始终保留 DOM 序；URL 数字序不同仅告警，不能据此自动反转。`--order asc|desc` 才显式使用自然排序。
+
+**完整性校验**：`Content-Length` 比对 → 纯 Python 头部探测（JPEG 必须 `FFD9` 结尾、PNG 校验 `IEND`、GIF trailer、WebP RIFF 长度）→ Pillow 可用时再 `verify()+load()` 兜底。
+
+### 6.4 失败与占位页（H 落地）
+
+单图遇到暂时性网络错误或 429/部分 5xx → 默认最多重试 3 次；403/404 不机械重试。同一节点的首选地址失效时尝试备用地址，仍失败记 `failed`，**继续跑完**，在 PDF 对应位置插入占位页：
+
+```
+┌──────────────────────────────┐
+│                              │
+│        [ 缺 页 ]              │
+│                              │
+│   第 137 页 / 共 200 页       │
+│   章节：第 12 话              │
+│   URL: https://.../137.jpg    │
+│   原因：HTTP 404              │
+│                              │
+└──────────────────────────────┘
+```
+
+micro 占位页使用不依赖中文字库的英文说明，长行换行；写入 `<书名>.report.json` 的 `failures`。进程**退出码 4** 表示"已产出但需复核"，PDF 总页数包含占位页。
+
+### 6.5 图片 → PDF
+
+`--compress lossless` 走 `img2pdf` 直嵌 JPEG 字节流（不重压，快 5–10×）；默认走压缩路径（§6.8）。`micro` 档走 `pdf_min.py`：自研最小 PDF writer（每页一个 XObject + Content 流），约 300 行。
+
+```
+原始文件
+  ├─ JPEG / JP2 ──(lossless)──► 无损直嵌
+  ├─ PNG(无 alpha) ─(lossless)─► 直嵌
+  ├─ PNG/WEBP/AVIF/GIF ────────► Pillow 转码（alpha 白底合成）
+  └─ 超长条漫（h/w > 8）───────► 按高度切片，每片一页
+```
+
+**排版选项**：`--page-size original|a4|a5`、`--fit`、`--margin`、`--dpi`（默认 150）、`--spread-split auto`、`--rtl auto`、`--page-numbers`、`--cover`。
+**结构**：pypdf 写元数据 + 每章 `add_outline_item` 书签 + 可选目录页。
+**内存铁律**：按章生成临时 PDF 再合并，绝不把整本书读进内存。
+
+### 6.6 小说：文字抽取（四层降级）
+
+```
+L1 静态 HTML 抽取（站点规则 content_selector → 通用文本密度算法）
+     校验通过 → 输出
+L2 JS 渲染后重取（系统 Chrome → CDP → playwright）
+L3 混淆检测与还原（CSS content 注入 / 自定义字体乱序）
+L4 OCR（图片正文 / canvas 正文 / 静默图片段落）
+```
+
+**质量校验**（纯函数，可单测）：
+
+```python
+def is_valid_article(text: str, html: str) -> tuple[bool, str]:
+    n = len(text.strip())
+    if n < 200:
+        return False, "too_short"
+    if cjk_ratio(text) < 0.3 and n < 800:
+        return False, "not_cjk_prose"
+    if link_density(html) > 0.25:
+        return False, "looks_like_index_page"
+    if punctuation_density(text) < 0.01:
+        return False, "looks_like_word_soup"
+    if repeated_line_ratio(text) > 0.5:
+        return False, "template_repeat"
+    return True, "ok"
+```
+
+**清洗**：选区删除（`script/style/nav/footer/.ads/#comment`）+ 逐行正则（网址、公众号、求票、"本章未完"、纯符号行）+ 末段归一化。
+
+**章节发现**：目录页规则匹配；单章页跟随 `rel=next` / "下一页 / 下一章"，带 `visited` 防环 + `--max-pages`（默认 2000）+ 域名不逃逸检查；标题用中文章节号解析（`第十二章`→12）排序生成 EPUB 目录。
+
+### 6.7 OCR 管线（A1 落地）
+
+```
+触发判定 (ocr_mode=auto)
+  ├─ 文字量 < 阈值 且 图片面积占比 > 40% → OCR
+  ├─ 正文区本身是 <img>                  → OCR
+  └─ --ocr always                        → 强制
+        ▼
+预处理（纯 Pillow，无 opencv）
+  灰度 → 对比度增强（CLAHE 查找表近似）→ 中值去噪
+  → 短边放大到 ≥1000px（小字准确率提升最明显的一步）
+  → 倾斜检测纠偏（投影方差最小化）→ 投影切行
+        ▼
+识别 OcrEngine（可插拔）
+  1) 系统 tesseract（探测到就用，增量 0）
+  2) onnxruntime + PP-OCRv4 mobile 量化模型（det≈4.7 + rec≈10 + cls≈1.4 ≈ 16 MB）
+        ▼
+后处理
+  ├─ 行合并成段：首行缩进 2 字符，或前行未以标点结尾且下行满宽 → 拼接
+  ├─ 跨页去重：全书重复短行频次 >60% 删除
+  ├─ 标点归一化：半角→全角，`...`→`……`，中英间多余空格删除
+  ├─ 常见误识修正表（保守）
+  └─ 低置信行（<0.6）→ 汇总到 review.txt
+```
+
+**模型下载契约**：HTTPS 固定 URL、**强制 SHA-256 校验**、失败即中止不留半模型、写入 `models/CHECKSUMS`、`--offline` 下缺失直接报错（退出码 6）并打印手动放置路径。
+
+### 6.8 成品压缩策略（C + K 落地）
+
+默认 **`balanced` 档 + `--target-size 50MB`**（决策 K）。
+
+| 档 | 彩色页 JPEG 质量 | 最长边上限 | 黑白页 | 相对体积（预估） |
+|---|---|---|---|---|
+| `lossless` | 不重压 | 原尺寸 | 保留 | 100% |
+| `archive` | 95 | 原尺寸 | 灰度 | ~70% |
+| `high` | 88 | 2400 px | 灰度 | ~45% |
+| **`balanced`（默认）** | 80 | 2000 px | 灰度 + 1-bit | ~22% |
+| `small` | 70 | 1600 px | 1-bit | ~10% |
+| `tiny` | 60 | 1200 px | 1-bit | ~5% |
+
+> 表为工程预估，M1 用真实漫画样本实测校准后再写进 README。
+
+**黑白漫画 1-bit 优化（最大红利，通常省 70–80%）**
+
+1. **逐页判定**（`analyze.py`）：统计饱和度分布与颜色直方图集中度 → `color` / `gray` / `bitonal`。
+2. `bitonal` 页 → 先轻微高斯模糊抹掉网点摩尔纹，再自适应二值化 → **CCITT G4 无损**。线条比 JPEG 锐利，体积小一个数量级。
+3. `color` 页保持彩色，只做质量/尺寸压缩。**混合书逐页处理，绝不整本降级。**
+4. `--no-bitonal` 一键关闭（应对网点误判）。
+
+**`--target-size` 的搜索流程**
+
+```
+1. 抽样 10 页（跨章节均匀取）按 balanced 试压 → 测压缩率 → 线性外推全书体积
+2. 外推 > 目标 → 按比例下调质量/分辨率
+   外推 < 目标 × 0.7 → 上调质量（别浪费给你的预算）
+3. 正式编码（进程池并行）
+4. 测真实体积；仍超目标则再迭代，最多 3 轮
+5. 报告：目标 / 实际 / 实际档位 / 是否达成
+```
+
+> ⚠️ **与决策 J 的交互**：原图默认不保留时，一旦编码完就删图，**事后无法改档重压**。因此 `--target-size` 生效时**自动临时保留原图直到体积校验通过**，之后再按 `--keep-images` 决定是否删除。
+
+### 6.9 小说 → PDF 路线（E 落地）
+
+| 路线 | 做法 | 体积增量 | 排版质量 | 何时用 |
+|---|---|---|---|---|
+| **1（默认，唯一路线）** | 生成样式化 HTML（`@page{size:A5;margin:18mm}`、`font-family:"Songti SC","PingFang SC"`、章节 `break-before`），调 `chrome --headless --print-to-pdf` | **0** | 好（CJK 断行与禁则由 Chrome 原生处理，用系统字体不打包字体） | 有系统 Chrome |
+| ~~2（兜底）~~ | ~~自研文本 PDF writer + `fonttools` 子集化字体 + 自实现 CJK 禁则~~ | — | — | **决策 N：不做。** |
+
+页码：用 Chrome header/footer 模板；不满意则用 CSS 在底部署页码，或后期用 pypdf 叠加。
+
+> **决策 N 的连带后果：小说 → PDF 硬依赖系统 Chrome。** 因此：
+> 1. `quire doctor` 必须显式报告 Chrome 是否存在；
+> 2. UI 的格式选择处，若 `epub/txt/pdf` 中勾了 `pdf` 而 Chrome 缺失，**要在点击"开始"之前就提示**并给出装 Chrome 的指引，不能等跑完才失败；
+> 3. 退出码 6 的错误文案要写明「小说转 PDF 需要 Chrome」而不是笼统的"缺少依赖"。
+
+### 6.10 流水线：抓完即删模式（决策 J 落地）
+
+原图默认不保留，因此流水线是**按章流水**，而不是"全下完再合成"：
+
+```
+对每一章：
+  下载该章全部图片 → 校验 → 分类 → 压缩编码
+  → 写入该章临时 PDF → 章节书签 → 删除该章原图
+合并所有章节临时 PDF → 写元数据/书签 → 输出成品 → 删除临时文件
+```
+
+好处：**磁盘峰值从"整本书的图"降到"一章的图"**，200 页单行本的峰值占用约降一个数量级。
+
+三条必须遵守的衍生规则：
+
+1. **多格式必须一次跑完**：既然原图会被删，`--format pdf,cbz,zip` 必须在同一轮内全部产出，不能分两次跑。
+2. **`--keep-images` 才能 `reassemble`**：`quire reassemble <task_id> --compress small` 只在当初保留了原图时可用；否则明确报错并提示"需重抓"。
+3. **`--target-size` 自动临时保留**（见 §6.8 末）。
+
+### 6.11 断点续传账本（SQLite，stdlib）
+
+```sql
+CREATE TABLE tasks (
+  id INTEGER PRIMARY KEY, url TEXT UNIQUE, kind TEXT, title TEXT,
+  site TEXT, created_at TEXT, status TEXT, capability TEXT,
+  options_json TEXT, keep_images INTEGER
+);
+CREATE TABLE chapters (
+  task_id INTEGER, idx INTEGER, title TEXT, url TEXT,
+  status TEXT, source TEXT, confidence REAL, error TEXT,
+  temp_pdf TEXT,                     -- 该章已完成的临时 PDF（断点用）
+  PRIMARY KEY (task_id, idx)
+);
+CREATE TABLE assets (
+  task_id INTEGER, chapter_idx INTEGER, idx INTEGER, url TEXT,
+  sha256 TEXT, dhash INTEGER, local_path TEXT, w INTEGER, h INTEGER,
+  page_kind TEXT, status TEXT, retries INTEGER, error TEXT, referer TEXT,
+  PRIMARY KEY (task_id, chapter_idx, idx)
+);
+```
+
+`local_path` 存**相对数据根**路径 → 整目录搬移后续传依然有效。
+**章级断点**：`chapters.temp_pdf` 让"抓到第 137 页断了"变成"重跑只补第 12 章"，已完成的章节直接复用，连原图都不用重下。
+
+### 6.12 书库（决策 I-3：先简单）
+
+`library.db` 只记：书名、作者、来源 URL、类型、成品路径与哈希、封面缩略图、体积、抓取时间、压缩档。
+UI 的"书库"页只做四件事：**封面墙、搜索、删除、用系统默认程序打开**。
+标签、批量导出、重新导出等延后到 M7 之后。
+
+### 6.13 系列与分卷（让「帙 = 一套多卷」落到功能上）
+
+**问题**：现有设计只覆盖「一个目录页 → 一本书」。但真实漫画站是「一部作品 → 几百话」，一次全塞进一个 PDF 既不实用也不符合「卷帙」的本义——`帙` 本来就是**装一套多卷的函套**。所以必须支持分卷。
+
+**输入粒度**（`detect.py` 自动判定）
+
+| 粒度 | 特征 | 行为 |
+|---|---|---|
+| 单章 | URL 含 `/chapter/` `/read/` `第N话` | 出一本 |
+| 单卷 | 页面存在卷列表，或 URL 含 `/volume/` `/book/` | 出该卷一本 |
+| **系列** | 作品主页，含几十到几百个章节链接 | 按 `--split-by` 分卷出多本 |
+
+**`--split-by` 选项**
+
+| 值 | 行为 |
+|---|---|
+| `none`（默认） | 全部合成一本（保持简单，向后兼容） |
+| `volume` | 按站点卷结构分卷；无卷结构时回退到标题里的「第X卷」 |
+| `chapters N` | 每 N 话一卷 |
+| `size 50MB` | 按体积上限自动切卷，复用 §6.8 的抽样估算 |
+
+**卷边界识别优先级**：站点卷列表 → 章节标题中的「第X卷 / Vol.X / 卷之X」→ `chapters N` 兜底。
+
+**输出命名**
+
+```
+<输出目录>/海贼王/
+  ├─ 第01卷.pdf
+  ├─ 第02卷.pdf
+  └─ …
+```
+
+- 序号位宽按总卷数决定（5 卷用 `第1卷`，30 卷用 `第01卷`，120 卷用 `第001卷`），保证字典序 = 阅读序。
+- 文件名清洗：替换 `/ : * ? " < > |` 与控制字符，长度上限 100 字符，**保留中文**。
+- 每卷是**独立完整的一本书**：独立封面、独立书签、独立元数据、独立体积目标。
+
+**流水线与断点**
+
+- `tasks` 增加 `series_url`；`chapters` 增加 `volume_idx`。
+- **一卷完成即可先交付这一卷的 PDF**，不必等整个系列跑完——这对几百话的长篇是刚需（用户能立刻开始看）。
+- 系列级**串行出卷**，卷内并行下载。理由：几百话对同一站点并发，是最容易被封的行为模式。
+
+**CLI**
+
+```bash
+quire series "https://site.com/comic/123" --split-by volume --target-size 50MB -o 海贼王
+quire series "https://site.com/comic/123" --split-by chapters 20 --from 1 --to 60
+```
+
+**UI**：新建任务时若判定为系列，展开卷列表让用户勾选范围，并显示每卷的预估页数与体积（M6 补充此状态）。
+
+### 6.14 规则调试工作流（B1 的落地手册）
+
+B1 选了「通用内核 + 用户写规则」，那么**写规则的体验本身就是产品体验**。固化为五步：
+
+```
+1. quire inspect <url>                     # 判定粒度 + 命中的启发式 + 找到多少张图
+2. quire inspect <url> --dump-html         # 存 HTML 到 debug/，用浏览器 F12 找选择器
+3. quire sites new example.com             # 生成 TOML 模板，填 2~4 个选择器
+4. quire sites test example.com <url>      # 即时验证：命中数、前 5 个样本、警告
+5. quire manga <url> --site example        # 正式跑
+```
+
+**诊断必须是可操作的**，不能只说"未命中"。这是这条路线成败的关键：
+
+```
+✗ chapter_links 命中 0 个。
+  但页面上发现 42 个形似章节链接的 <a>，最接近的选择器是
+      div.chapter-list a   （相似度 0.87）
+  要不要试试？  quire sites set example catalogue.chapter_links "div.chapter-list a"
+```
+
+- 选择器建议用「结构聚类 + 文本相似度」在本地猜，不联网。
+- `--explain` 输出**每张图为什么被过滤**（命中哪条黑名单 / 哪条尺寸规则），排查"少抓了图"必备。
+- 规则文件带 `version` 与 `last_verified`；站点改版后 `sites test` 失败时提示「规则可能已过期」。
+- 这套流程要同时写进 README 与 UI 的帮助面板。
+
+---
+
+## 7. CLI 设计
+
+```bash
+# 漫画：目录页 → 一本 PDF（默认压缩，默认目标 50MB）
+quire manga "https://site.com/comic/123" -o 海贼王-01.pdf --from 1 --to 30
+
+# 多格式一次跑完（因原图默认不保留，必须同轮产出）
+quire manga "..." --format pdf,cbz --target-size 50MB
+
+# 保留原图，以便日后改参数重新排版
+quire manga "..." --keep-images
+quire reassemble <task_id> --compress small --format pdf
+
+# 小说：目录页 → EPUB + TXT
+quire novel "https://site.com/novel/456" --format epub,txt
+
+# 强制 OCR
+quire novel "https://site.com/scan/789" --ocr always --ocr-engine tesseract
+
+# 侦察（写规则的主力工具）
+quire inspect "https://site.com/comic/123" --dump-html
+
+# 启动 Web UI（M6）
+quire ui
+
+# 能力/体积自检
+quire doctor
+
+# 站点规则
+quire sites list | new example.com | test example.com <url>
+
+# 存储维护
+quire gc --older-than 30d
+quire self clean --keep-library
+```
+
+全局开关：`--data-dir` / `--offline` / `--capability micro|core|full` / `--json` / `--verbose`。
+
+退出码：`0` 成功 / `1` 参数错误 / `2` 网络失败 / `3` 解析失败 / `4` 部分资源缺失（已产出需复核）/ `5` 被反爬拦截 / `6` 缺可选依赖或离线缺模型。
+
+---
+
+## 8. 并发与性能
+
+| 阶段 | 策略 | 预期 |
+|---|---|---|
+| 页面抓取 | 按 host 限速串行 | 1 页 ~300 ms |
+| 图片下载 | 异步并发 8，host 令牌桶 | 200 页 ≈ 30–60 s |
+| 校验/去重 | 进程池 | ~50 张/s |
+| 分类 + 压缩编码 | 进程池，核数-1 | ~20–40 张/s（视档位） |
+| 章 PDF 合成 | 流式按章写 | 200 页 ≈ 2–5 s |
+| OCR | 进程池，核数-1 | 1 页 ≈ 1–3 s |
+
+内存铁律：任何阶段都不允许"把整本书的图读进内存"。
+
+---
+
+## 9. 错误处理矩阵
+
+| 故障 | 处理 |
+|---|---|
+| 单图 404/超时 | 重试 5 次 → 插占位页继续，退出码 4 |
+| 防盗链 403 | 带页面 Referer + 站点自定义头重试；再失败用渲染后端取 blob |
+| 目录规则不匹配 | 降级通用启发式；仍失败 dump HTML 到 `debug/` 并提示写规则 |
+| 正文抽取成广告页 | 质量校验拦截 → 升级渲染 → 仍失败转 OCR |
+| 反爬拦截 | 升级渲染后端（Chrome → CDP → playwright） |
+| 无可用浏览器 | 退出码 6，提示装 Chrome 或 `pip install "quire[browser]"` |
+| 小说转 PDF 但无 Chrome | 退出码 6，文案必须写明「小说转 PDF 需要 Chrome」（决策 N）；UI 应在选格式时预检提示，而非跑完才失败 |
+| 系列分卷边界识别失败 | 回退到 `chapters N` 并告警；仍无法切分则整本输出并提示 |
+| 站点规则过期（改版） | `sites test` 失败时提示「规则可能已过期」，并给出重新 `inspect` 的建议 |
+| OCR 置信度偏低 | 报告标红章节，保留原图与 `--ocr-debug` 可视化 |
+| 离线且缺模型 | 退出码 6，打印缺失清单与手动放置路径 |
+| `reassemble` 但无原图 | 明确报错："该任务未保留原图，需重抓或下次加 `--keep-images`" |
+| 目标体积无法达成 | 迭代 3 轮后报告"最低可达体积"，由用户决定是否接受 |
+| 输出已存在 | 默认改名 `(1)`，`--overwrite` 覆盖 |
+| 磁盘不足 | 预取 `Content-Length` 求和预估，开跑前告警 |
+
+---
+
+## 10. 合规与边界（F 决策）
+
+**做**：公开可访问内容；遵守 robots.txt；默认限速 4 req/s/host；仅供个人离线阅读/备份；不去除来源水印，也不额外添加。
+
+**明确不做**：登录、绕过付费墙/会员鉴权、导入用户 Cookie、二次分发功能、追更调度。
+
+M0 默认检查每站 robots.txt，并缓存会话内结果；404/410 视为无规则，明确拒绝和策略查询失败会停止对应请求。当前没有 `--ignore-robots` 开关。
+
+---
+
+## 11. 测试方案
+
+| 层次 | 方法 |
+|---|---|
+| 迷你 DOM 单测 | CSS 选择器子集行为对齐 lxml（同批 fixture 跑两套实现比对） |
+| 解析器单测 | `fixtures/` 存真实 HTML 快照，golden 断言章节数/图片数/正文长度 |
+| 图片探测单测 | 截断 JPEG、无 IEND 的 PNG、异常 WebP，断言识别为损坏 |
+| 分类单测 | 彩色/灰度/纯黑白/网点页分类准确率；1-bit 产物用 Pillow 回读验证 |
+| 目标体积单测 | 给定 mock 图片集与目标体积，断言迭代收敛且不超目标 |
+| 去重单测 | dHash 阈值边界，**重点验证不误杀漫画相邻页** |
+| PDF writer 单测 | micro 版自研 writer 产物用 pypdf 回读验证页数与尺寸 |
+| 小说 PDF 单测 | 断言生成的 HTML 结构；Chrome 缺失时提前报错，按决策 N 不做兜底 |
+| 断点续传 | 章级断点：中途 kill 重跑，断言已完成章节不重下（比对请求计数） |
+| 删除语义 | `keep_images=False` 时断言原图确实被删且成品完整；`reassemble` 正确报错 |
+| 服务层单测 | 无 token 请求必须 401；仅监听回环；SSE 事件序列完整 |
+| UI 视觉回归 | 截图比对关键页面（含深色模式），防止审美退化 |
+| 前端预算 | 断言 `web/` 目录总字节 < 200 KB |
+| 端到端 | `mock_site/`：静态漫画/懒加载漫画/JS 小说/图片正文/canvas |
+| 网络异常 | mock 注入 429/超时/半截响应，断言重试与占位页 |
+| **体积回归** | CI 断言 `pip install .` 增量与 `.app` 体积不超阈值 |
+| 打包冒烟 | 在干净 macOS（无 python3）上装 `.dmg`，断言双击可用 |
+
+mock 站点是地基：**不依赖任何真实站点**，才能长期稳定回归。
+
+---
+
+## 12. 实施路线图（macOS 单平台）
+
+| 里程碑 | 内容 | 验收标准 |
+|---|---|---|
+| **M0 骨架 + micro** | 迷你 DOM、纯 Python 图片探测、自研 PDF writer、zipapp 打包 | **<400 KB** 单文件对 mock 静态漫画站生成页序正确的 PDF |
+| **M1 核心漫画** | httpx 并发、限速重试、过滤排序、dHash 去重、页面分类与压缩（§6.8）、`--target-size`、章级断点、占位页、抓完即删流水线 | 中途 kill 后 resume 只补未完成章节；`pip install` 增量 ≤8 MB；200 页样本压进 50 MB 且画质可接受 |
+| **M2 动态页** | 系统 Chrome 后端、懒加载滚动、CDP 后端 | mock 懒加载站全图抓到；**体积增量为 0** |
+| **M3 小说** | 目录/链表遍历、正文抽取、质量校验、清洗、TXT/EPUB | 章节完整、无广告残留的 EPUB |
+| **M4 小说 PDF** | HTML → Chrome `--print-to-pdf` + 样式模板 | 中文排版无断行错误、无缺字方框 |
+| **M5 OCR** | tesseract 探测、onnxruntime + 按需模型下载校验、纯 Pillow 预处理、后处理与复核清单 | mock 图片正文站可读，准确率目测 >95%；`--offline` 行为正确 |
+| **M6 Web UI（先做）** | LocalServer、REST/SSE、内嵌零构建前端、§3.3 设计语言、四个页面、系列卷列表状态 | 浏览器里完成"贴 URL → 出书 → 书库看到"全流程；前端 <200 KB；以 `ui-preview/index.html` 为视觉基准做截图回归 |
+| **M7 原生壳** | Swift + WKWebView `.app`、内嵌 Python 3.12 精简构建、进程生命周期、`.dmg` 打包、ad-hoc 签名、干净机冒烟 | 在无 python3 的干净 macOS 上双击可用；`.app` ≤35 MB、`.dmg` ≤25 MB |
+| **M8 适配与体验** | TOML 规则引擎与 §6.14 诊断、**系列分卷（§6.13）**、`cbz`/`zip` writer、`reassemble`、`doctor`、profile 导入导出 | 不改代码写一个 TOML 就能适配新站；一个系列 URL 能按卷切出多本 PDF |
+
+顺序理由：M0→M1 先打通"URL → PDF"主干并能立刻验证体积目标；M2 补最影响成功率的渲染；M3–M5 补小说与 OCR；**UI 遵循你的意见：Web 先行（M6），原生壳随后（M7）**。
+
+---
+
+## 13. 关键设计决策记录（ADR）
+
+| 决策 | 选择 | 理由 | 放弃的方案 |
+|---|---|---|---|
+| 语言 | Python | OCR/PDF/图像生态唯一齐备 | Node、Go |
+| 分发形态 | 分层 extras + micro zipapp | "350 KB 够用"与"84 MB 全能"并存 | 单体全量安装 |
+| 浏览器 | subprocess 调系统 Chrome | 省 150 MB | 打包 Chromium |
+| OCR 运行时 | onnxruntime + 按需 mobile 量化模型 | 43 MB 而非 90 MB（A1） | rapidocr 全家桶、PaddleOCR |
+| OCR 预处理 | 纯 Pillow 手写 | 省 opencv+numpy ~60 MB | opencv |
+| 去重 | dHash（Pillow） | 省 numpy/scipy ~60 MB | pHash+DCT |
+| 规则格式 | TOML | stdlib `tomllib` 零依赖 | YAML |
+| 配置校验 | dataclass | 省 13 MB | pydantic v2 |
+| 默认压缩 | balanced + `--target-size 50MB` | 决策 C + K | 默认无损（300–800 MB） |
+| 黑白页处理 | 逐页判定 + 1-bit CCITT G4 | 省 70–80%，线条更锐利 | 整本统一降级 |
+| **原图保留** | **默认删，`--keep-images` 可选** | 决策 J：磁盘峰值降一个数量级 | 默认全留（占用 2–5 倍） |
+| 小说 PDF | HTML → Chrome `--print-to-pdf` | 增量 0，CJK 排版原生正确，不打包字体 | reportlab + 内嵌 CJK 字体 |
+| **UI 顺序** | **Web 先行 → 原生壳随后** | 决策 I-1：先验证核心与交互，再做壳 | 先做壳（核心不稳时做壳是浪费） |
+| UI 外壳 | 薄壳：Swift + WKWebView（~1 MB） | 系统组件不打包，"本地程序界面"与"体积小"并存 | Electron 150 MB、Tauri（+Rust 链） |
+| 运行时 | 内嵌精简 Python | 决策 I-2：macOS 12.3+ 无 python3，双击即用 | 依赖系统 python3 |
+| 前端技术 | 零构建原生 JS，<200 KB | 守住体积，逼设计克制 | React/Vite |
+| 前端通信 | REST + SSE | 比 WebSocket 简单且够用 | WebSocket |
+| 失败策略 | 插占位页继续（H） | 书完整、缺页可见 | 缺图即整体失败 |
+| 打包签名 | ad-hoc 签名 + 免公证 + `.dmg` | 决策 M：不需要开发者账号 | 公证（$99/年） |
+| 状态存储 | SQLite（stdlib），章级断点 | 事务安全、断点复用已完成章节 | JSON 文件 |
+| 数据位置 | 单一数据根 + 可搬移 | 本地、易迁移、易卸载 | 分散写系统各处 |
+| **命名** | **卷帙 / Quire**（`quire`） | 信达雅；`quire` 是「一沓待装订的书页」，与工具动词同构（见 `NAMING.md`） | `Tome`（误译且被占）、`Bindery`（无「成套」义） |
+| **Swift 薄壳** | **接受**（决策 O） | 1 MB 方案唯一路径；约一百行，可控 | pywebview（多一层 pip 依赖） |
+| **小说 PDF 兜底** | **不做**（决策 N） | 少维护一条自研排版链路；代价是硬依赖 Chrome，须提前预检 | fonttools 自研禁则（工作量大、收益低） |
+| **系列分卷** | **支持 `--split-by`**（§6.13） | 与「帙 = 一套多卷」同构；长篇一次出多本并可增量交付 | 只出单本（几百话塞一个 PDF 不实用） |
+
+---
+
+## 14. 已确认决策速查
+
+| A | B | C | D | E | F | G |
+|---|---|---|---|---|---|---|
+| A1 按需模型 | B1 通用+规则 | 默认压缩/可选体积 | 无追更 | PDF·CBZ·ZIP／TXT·EPUB·PDF | 仅公开 | 仅 macOS |
+
+| H | I-1 | I-2 | I-3 | J | K | L | M |
+|---|---|---|---|---|---|---|---|
+| 占位页续跑 | Web 先行→原生壳 | 内嵌 Python | 书库从简 | 原图默认不保留 | 成品 ≤50 MB | PDF 默认，CBZ/ZIP 显式指定 | 免签名 `.dmg` 发 GitHub |
+
+| N | O | P | 命名 |
+|---|---|---|---|
+| 小说 PDF 不做无 Chrome 兜底 | 接受 Swift 薄壳 | 内嵌 Python 3.12 | **卷帙 / Quire** |
+
+| Q | R | S |
+|---|---|---|
+| 4 套 UI 主题（纸感·浅／暗房·浅／暗房·深／瑞士·浅） | 内嵌 Python 精简构建 | `ui-preview/` 入库作视觉基准 |
+
+---
+
+## 15. 收尾决策（本轮确认）
+
+| # | 决策项 | 选择 | 后果 |
+|---|---|---|---|
+| Q | UI 主题 | **4 套定稿**：纸感·浅 / 暗房·浅 / 暗房·深 / 瑞士网格·浅 | §3.3 已冻结设计令牌与组件状态；纸感与瑞士不做深色版 |
+| R | 内嵌 Python 精简构建 | **要**（去掉 `tkinter`/`test`/`idlelib`/`ensurepip`） | `.app` 再省约 8 MB |
+| S | `ui-preview/` 入库 | **保留**，作为 UI 基准与视觉回归对照 | CI 增加"预览文件可正常渲染"的冒烟检查 |
+
+---
+
+## 16. 本文档的使用方式
+
+- **§1–§16** 是"做什么、为什么"：需求、决策、架构、模块、UI 规格。
+- **§17–§24** 是"怎么做"：编程范式、接口契约、工程配置、构建顺序、验收基准。**开工前必须冻结的是这一部分。**
+- 决策编号 A–S 是稳定引用，后续讨论直接报编号。
+
+---
+
+# 第三部分 · 构建前规划（§17–§24）
+
+## 17. 编程范式（定稿）
+
+### 17.1 五条主线
+
+**① 函数式内核 + 命令式外壳（Functional Core, Imperative Shell）**
+
+内核 = 纯函数：解析 HTML、过滤候选、判定页序、分类页面、决定编码参数、OCR 后处理、命名与排序。
+**内核不碰网络、不碰磁盘、不看时钟、不用真随机数**（需要随机就注入 `random.Random(seed)`）。
+
+外壳 = 副作用边界：`Fetcher` / `Downloader` / `Writer` / `Ledger` / `LocalServer`。
+
+> 收益：内核 100% 可单测，**不需要 mock 网络**。整个项目的可测试性都建立在这一点上。
+
+**② 数据不可变 + 显式状态机**
+
+- 领域对象一律 `@dataclass(frozen=True, slots=True)`。
+- 变更返回新对象：`dataclasses.replace(asset, status="ok")`，**不做原地修改**。
+- 任务状态是一台显式状态机，非法迁移直接抛错：
+
+```
+pending → fetching → encoding → assembling → done
+                    ↘ partial（有缺页，产物可用）
+                    ↘ failed
+```
+
+- 持久任务状态由 `Ledger`（SQLite）管理；网络限速器、DOM 构建器、输出 writer 允许私有可变状态，跨线程共享必须加锁。领域选项和结果不可变。M0 尚未引入 Ledger。
+
+**③ 端口—适配器（依赖倒置）**
+
+- 端口用 `typing.Protocol` 声明**结构化子类型**，不用 ABC 继承。
+- 上层只依赖 Protocol；实现在 `caps.py` 探测能力后注入。
+- 测试用 fake 实现，生产用真实现，**同一套调用代码**。
+
+**④ 默认不 fail-fast，但绝不静默失败**
+
+| 失败类别 | 策略 |
+|---|---|
+| 参数 / 配置错误 | **立刻抛**，退出码 1（跑之前就该知道） |
+| 资源级失败（单图 404、某站改版、单章 OCR 失败） | **收集进 `report`，继续跑**（决策 H） |
+| 致命失败（无可用渲染后端、磁盘满、Ledger 损坏） | 立刻中止，退出码 2/5/6 |
+
+**禁止** `except Exception: pass`。每个 `except` 必须二选一：转成领域异常，或记入 report 并附上完整上下文。
+
+**⑤ 异步只到该到的地方**
+
+- `asyncio` **只用于网络 I/O 与顶层编排**。
+- 解析、图像处理、压缩编码、OCR、PDF 写入全部是**同步函数**；CPU 密集的丢进 `ProcessPoolExecutor`。
+- 理由：全异步会让纯函数也被 `async` 污染，可读性与可测试性双输；而 Pillow/OCR 是 CPU 密集，`async` 收益为零。
+- M0 以标准库线程池执行阻塞网络 I/O，窗口大小等于并发数；同步 CPU 操作留在消费端。core 后端再使用异步连接池。Pillow 部分路径释放 GIL，不能笼统判定线程是假并行；是否用进程池由实测收益和内存开销决定。
+
+### 17.2 明确不用的东西（及理由）
+
+| 不用 | 理由 |
+|---|---|
+| Django / Flask / FastAPI | 本地单机服务，stdlib `http.server` 足够；框架带来依赖与体积 |
+| pydantic | dataclass + 手工校验，省 13 MB |
+| click / typer / rich | argparse + 自研进度条，省 6 MB |
+| DI 容器 | 手工构造器注入足够，依赖图是静态的、一眼能看完 |
+| ORM / Alembic | 只有三张 SQLite 表，裸 SQL 更清楚；迁移用手写 `PRAGMA user_version` |
+| ABC 继承体系 | 本项目没有 "is-a" 关系，只有"能做什么" → 用 Protocol |
+| 全局单例 / 模块级可变状态 | 会毁掉可测试性；依赖一律从构造器进来 |
+| import 时做 I/O | 副作用必须发生在显式调用里 |
+| 裸 `print` | 统一走 logger；UI 通过 `ProgressSink` 拿事件流 |
+| 元类 / 装饰器魔法 | 站点规则用**数据**（TOML）表达，不用代码生成 |
+| 多线程共享可变对象 | 要么不可变，要么走 Ledger 事务，要么走进程池 |
+
+### 17.3 代码形状（范式落成具体样子）
+
+```python
+# ---------- 内核：纯函数，零副作用，可 100% 单测 ----------
+def parse_candidates(html: str, rule: ImageRule) -> list[Candidate]: ...
+def filter_candidates(
+    cands: Sequence[Candidate], policy: FilterPolicy
+) -> tuple[list[Candidate], list[Rejection]]: ...
+def order_pages(cands: Sequence[Candidate], mode: OrderMode) -> list[Candidate]: ...
+def classify_page(sample: bytes, probe: ImageProbe) -> PageKind: ...  # color|gray|bitonal
+def choose_encoding(kind: PageKind, budget: Budget) -> Encoding: ...
+def merge_ocr_lines(lines: Sequence[OcrLine]) -> str: ...
+def split_volumes(chapters: Sequence[ChapterRef], mode: SplitMode) -> list[Volume]: ...
+
+
+# ---------- 端口：只声明「能做什么」 ----------
+class FetchPort(Protocol):
+    async def get(
+        self, url: str, *, referer: str | None = None, headers: Mapping[str, str] = ...
+    ) -> Response: ...
+
+
+class RenderPort(Protocol):
+    async def render(self, url: str, *, scroll: bool, sniff: bool) -> RenderedPage: ...
+
+
+class OcrEngine(Protocol):
+    def available(self) -> bool: ...
+    def recognize(self, image: bytes, lang: str) -> OcrResult: ...
+
+
+class ProgressSink(Protocol):
+    def phase(self, task_id: str, phase: str) -> None: ...
+    def asset_done(self, a: Asset) -> None: ...
+    def asset_failed(self, a: Asset, err: str) -> None: ...
+    def chapter_done(self, idx: int, pdf: Path) -> None: ...
+
+
+# ---------- 外壳：组装 + 编排（唯一有副作用的地方） ----------
+@dataclass(frozen=True)
+class Deps:
+    fetch: FetchPort
+    render: RenderPort
+    ocr: OcrEngine | None
+    ledger: LedgerPort
+    sink: ProgressSink
+    pool: Executor
+
+
+async def run_manga(spec: TaskSpec, deps: Deps) -> TaskResult: ...
+```
+
+### 17.4 一致性细则
+
+| 项 | 规定 |
+|---|---|
+| 命名 | 模块=名词（`images.py`）；函数=动词（`filter_candidates`）；布尔=`is_/has_/should_`；常量=`UPPER_SNAKE`；私有=`_leading` |
+| 类型 | 公开函数 100% 注解；文件头 `from __future__ import annotations`；内核模块跑 `mypy --strict` |
+| 尺寸预算 | 单文件 ≤ 400 行，单函数 ≤ 50 行，嵌套 ≤ 3 层。超了就是该拆的信号 |
+| **依赖方向** | 编排层 `manga/cli` 依赖各能力模块；`fetch` 不导入 `parse/image/assemble`，解析与图像模块不导入网络层，底层不导入 CLI/编排。`parse.images` 允许引用 `ImageProbe` 数据类型。禁止循环的运行时依赖 |
+| 单位 | 字节=`int`；尺寸=`int`(px)；时间=`datetime`(UTC，存储 ISO8601)；路径一律 `pathlib.Path` |
+| 随机性 | 显式注入 `random.Random(seed)`，保证可复现（去重、抽样都依赖它） |
+| 字符串 | 用户可见文案集中在 `i18n.py` 常量表，便于统一改口吻（§3.3.2 的"人话"要求） |
+
+---
+
+## 18. 关键接口冻结
+
+**这份契约一旦冻结，各模块可并行开发。** 变更需在 PR 描述里引用本节。
+
+| 端口 | 方法 | 备注 |
+|---|---|---|
+| `FetchPort` | `get(url, *, referer, headers) -> Response` | 内含重试/限速/Cookie；对上层屏蔽 httpx |
+| `RenderPort` | `render(url, *, scroll, sniff) -> RenderedPage` | 三个后端（Chrome 子进程 / CDP / playwright）实现同一契约 |
+| `Adapter` | `match(url) -> bool`<br>`catalogue(ctx) -> list[ChapterRef]`<br>`chapter(ctx, ref) -> Chapter`<br>`article(ctx, ref) -> list[Page]` | TOML 规则、通用启发式、Python 插件三者同接口 |
+| `OcrEngine` | `available() -> bool`<br>`recognize(image, lang) -> OcrResult` | tesseract / onnxruntime 两实现 |
+| `LedgerPort` | `begin(task) -> task_id`<br>`upsert_asset(a)` `upsert_chapter(c)`<br>`resume_state(task_id) -> ResumeState`<br>`finish(task_id, status)` | 唯一可变状态 |
+| `Assembler` | `build(chapters, options, sink) -> list[Artifact]` | pdf / cbz / zip / txt / epub / pdf_text 六实现 |
+| `ProgressSink` | 见 §17.3 | CLI 打印、UI 走 SSE、测试用录制器 |
+| `Clock` | `now() -> datetime` `sleep(s)` | 注入以便测试超时与退避 |
+
+`Response` 只暴露 `status / headers / content / url / elapsed_ms`——**不让 httpx 的类型泄漏到业务层**，这样换实现不影响上游。
+
+---
+
+## 19. 工程配置与工具链
+
+### 19.1 `pyproject.toml` 骨架
+
+```toml
+[project]
+name = "quire"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["httpx~=0.27", "Pillow~=10.4", "img2pdf~=0.5", "pypdf~=5.0"]
+
+[project.optional-dependencies]
+fast    = ["lxml~=5.3", "selectolax~=0.3"]
+ocr     = ["onnxruntime~=1.19"]
+image   = ["opencv-python-headless~=4.10"]
+browser = ["playwright~=1.47"]
+dev     = ["pytest~=8.3", "pytest-cov", "ruff~=0.6", "mypy~=1.11"]
+
+[project.scripts]
+quire = "quire.cli:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+[tool.ruff.lint]
+select = ["E","F","W","I","N","UP","B","A","C4","SIM","RUF","T20"]  # T20 = 禁 print
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.mypy]
+strict = true
+files = ["src/quire"]
+[[tool.mypy.overrides]]
+module = ["quire.fetch.*", "quire.server.*", "quire.assemble.*"]
+disallow_untyped_defs = false        # 外壳放宽，内核严格
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+```
+
+### 19.2 依赖与体积纪律
+
+- **加任何运行时依赖都要写 ADR**（本项目最重要的一条纪律）。体积预算是产品特性，不是副作用。
+- 锁定用 `uv`：`uv lock` 产物 `uv.lock` 进仓库；`pyproject` 用 `~=` 兼容区间。
+- `tests/test_budget.py` 在 CI 中断言：核心依赖的 wheel 解压总量 ≤ 8 MB。**体积回归必须自动挡住。**
+
+### 19.3 CI（GitHub Actions，macOS runner）
+
+```
+1. ruff check .            → 风格与 print 禁令
+2. ruff format --check .   → 格式
+3. mypy src/quire          → 类型（内核 strict）
+4. pytest --cov            → 单测 + 覆盖率
+5. pytest tests/test_budget.py        → 体积回归
+6. python scripts/build_micro_zipapp.py && 断言产物 < 400 KB
+7. headless 渲染 ui-preview/index.html，断言非空白（决策 S）
+8. 干净环境安装 .dmg 冒烟（仅 tag 时）
+```
+
+### 19.4 版本、分支与提交
+
+| 项 | 规定 |
+|---|---|
+| 版本 | `0.M.0` 对齐里程碑；**1.0 = M7 完成**（.app 可双击分发给别人） |
+| 分支 | `main` 保护；`feat/*` `fix/*` 短分支；里程碑打 tag |
+| 提交 | Conventional Commits：`feat|fix|refactor|docs|test|chore|perf|build(scope): 摘要`；**正文可用中文** |
+| PR 门槛 | CI 全绿 + 涉及行为变化时同步更新 DESIGN.md 对应小节 |
+
+### 19.5 开发任务入口（`justfile`）
+
+```
+just test        pytest -q
+just lint        ruff check . && ruff format --check .
+just type        mypy src/quire
+just check       lint + type + test
+just mock        python scripts/dev_mock_server.py     # 起本地假站点
+just pyz         构建 micro 单文件并打印体积
+just app         构建 .app（含精简 Python 3.12）
+just dmg         构建 .dmg 并打印体积
+just doctor      打印能力档位与各项体积占用
+```
+
+---
+
+## 20. 编码规范细则
+
+### 20.1 异常层次与退出码映射
+
+```
+QuireError
+├─ ConfigError              参数/配置       → 退出码 1
+├─ FetchError               网络           → 2
+│  ├─ HttpStatusError (status)
+│  ├─ FetchTimeoutError
+│  └─ BlockedError          被反爬         → 5
+├─ ParseError               解析           → 3
+│  ├─ NoCatalogueError      找不到章节列表
+│  └─ NoContentError        抽不到正文
+├─ DependencyError          缺依赖/缺模型   → 6
+├─ UnsupportedError         明确不支持场景  → 6
+└─ PartialResult            不是错误：带警告的成功 → 4
+```
+
+> **退出码 4 的语义很重要**：进程成功、产物可用、但有洞。CLI 打印黄色提示，UI 显示黄色徽标——**绝不能表现成红色错误**，否则用户会以为白跑了。
+
+### 20.2 日志规范
+
+- 结构化字段固定：`task_id / chapter_idx / asset_idx / phase / url / duration_ms / outcome`。
+- 级别语义：`DEBUG` 每次网络请求与每个解析决策；`INFO` 每章完成；`WARNING` 可恢复的异常（缺页、降级、规则未命中）；`ERROR` 需要人介入。
+- **默认不记录页面正文与 URL 查询串**（可能有 token）；`--log-content` 才开。
+- 日志写 `logs/quire-YYYYMMDD.log`，滚动保留 7 天。
+
+### 20.3 数据与路径纪律
+
+- `ledger.db` 只存**相对数据根**的路径 → 整个目录可整体搬移（§2.4）。
+- 所有写入走"临时文件 + `os.replace`"原子替换，避免半截文件被误判为已完成。
+- 任何 `<output>` 已存在时默认改名 `(1)`，`--overwrite` 才覆盖。
+- 删除操作（原始图片、tmp）统一经 `workspace.py`，便于加 `--dry-run` 与审计日志。
+
+---
+
+## 21. 构建顺序（垂直切片）
+
+每个切片都**可独立验证**，且一次只引入一个新概念。这是下一轮开工的直接输入。
+
+### M0 骨架 + micro（目标：350 KB 单文件跑通 URL → PDF）
+
+| 切片 | 产出 | 验证方式 | 依赖 |
+|---|---|---|---|
+| S0.1 | `parse/minidom.py` + CSS 选择器子集 | 喂 fixture HTML，断言选择器命中；与 lxml 对拍 | — |
+| S0.2 | `image/probe.py`（纯 Python 头解析） | 构造截断 JPEG / 无 IEND PNG，断言识别为损坏 | — |
+| S0.3 | `assemble/pdf_min.py`（自研最小 PDF writer） | 产物用 pypdf 回读：页数与尺寸正确 | S0.2 |
+| S0.4 | `utils/naming.py` `utils/urls.py` | 文件名清洗、自然排序键、URL 归一化单测 | — |
+| S0.5 | `cli.py` 骨架 + `scripts/build_micro_zipapp.py` | 命令行对本地目录图片生成 PDF；**断言 pyz < 400 KB** | S0.1–S0.4 |
+| S0.6 | `tests/mock_site/` 最小版 | 假站点能起、能返回静态漫画页 | — |
+
+### M1 核心漫画
+
+| 切片 | 产出 | 验证方式 |
+|---|---|---|
+| S1.1 | `store/ledger.py` + 迁移 | 建库、写入、`resume_state` 往返 |
+| S1.2 | `fetch/session.py` `fetch/ratelimit.py` | mock 注入 429/超时，断言退避与限速 |
+| S1.3 | `image/downloader.py` | 并发下载 + 原子落盘 + 失败重试 |
+| S1.4 | `image/analyze.py` `image/compress.py` `image/dedup.py` | 分类准确率、`--target-size` 收敛、dHash 不误杀相邻页 |
+| S1.5 | `assemble/pdf.py`（压缩路径）+ 书签 + 占位页 | 产物页序、书签、缺页占位正确 |
+| S1.6 | `pipeline.py` 组装（抓完即删流水） | 中途 kill → resume 只补未完成章节 |
+| S1.7 | 端到端 | mock 站点全流程，断言页数/顺序/体积/退出码 4 |
+
+### M2–M8
+
+按 §12 的里程碑推进，每个都拆成同样粒度的切片；**M2 起新增切片必须在开工前先写进本节**。
+
+### 切片完成的定义（DoD，五条全中才算完）
+
+1. 有单测，且内核模块覆盖率 ≥ 90%；
+2. `ruff check` + `mypy` 全绿；
+3. 有一条**能在 CI 跑的验证命令**（不是"我本地试过了"）；
+4. 行为与 §6 描述不一致时，已同步更新 DESIGN.md；
+5. **没有引入新的运行时依赖**（除非先写了 ADR）。
+
+---
+
+## 22. 风险登记册与不做清单
+
+### 22.1 风险
+
+| 风险 | 触发信号 | 缓解 |
+|---|---|---|
+| 站点改版导致解析失效 | `sites test` 失败率上升 | TOML 规则 + §6.14 可操作诊断 + `version`/`last_verified` 字段 |
+| 图片 CDN 加重防盗链 | 403 比例上升 | Referer + 站点自定义头 → 渲染后端内取 blob |
+| Chrome 路径或行为变化 | `doctor` 报错 | 多路径探测 + 可配置路径 + `[browser]` playwright 兜底 |
+| Apple 收紧 ad-hoc 签名容忍 | 用户反馈"打不开" | 文档化 `xattr` 指引；预留公证开关（不改代码结构即可加） |
+| 体积悄悄膨胀 | CI 体积回归失败 | §19.2 的自动断言；ADR 纪律 |
+| 1-bit 二值化毁掉网点页 | 用户看到摩尔纹 | 逐页判定 + 阈值收紧 + `--no-bitonal` + 先拿真实样本实测 |
+| dHash 误杀相邻页 | 用户报缺页 | 阈值 ≤3 + 可关闭 + **每次判重都写日志**（便于事后追查） |
+| OCR 模型下载源失效 | 下载 404 | 多镜像 URL + SHA-256 + 手动放置路径兜底 |
+| 长篇系列跑一半断 | 断点恢复 | 章级 / 卷级断点（§6.11、§6.13） |
+| 磁盘被原图吃满 | 用户开了 `--keep-images` | 默认不保留 + `gc` 命令 + 开跑前体积预估告警 |
+
+### 22.2 明确不做（Non-goals）
+
+登录与付费墙绕过（F）· 追更调度（D）· 跨平台（G）· 内置站点库（B）· 小说 PDF 的无 Chrome 兜底（N）· 云同步与多设备 · 多用户与权限 · **JS 逆向解密（签名 / XOR 加密图片）**——遇到直接报 `UnsupportedError` 并提示写 Python 插件。
+
+---
+
+## 23. 验收基准（量化，作为 DoD 的一部分）
+
+| 指标 | 目标 |
+|---|---|
+| `micro` 单文件 | ≤ 400 KB |
+| 核心依赖 wheel 解压总量 | ≤ 8 MB |
+| `.app` / `.dmg` | ≤ 35 MB / ≤ 25 MB |
+| 内嵌前端资源 | ≤ 200 KB |
+| 冷启动 → UI 首屏 | ≤ 1.5 s |
+| 200 页单行本（目标 50 MB）端到端 | ≤ 5 min（家用宽带） |
+| 内存峰值 | ≤ 500 MB |
+| 磁盘峰值（默认不保留原图） | ≤ 250 MB |
+| 内核模块测试覆盖率 | ≥ 90% |
+
+> 这些数字全部进 CI 或 `just doctor`，**不靠人记得**。
+
+---
+
+## 24. 首轮开工清单（下一轮的第一个 PR）
+
+1. `pyproject.toml` + `justfile` + CI 工作流骨架（含体积回归与预览渲染检查）；
+2. `tests/mock_site/` 最小版（能起、能返回静态漫画页）；
+3. **S0.1 `parse/minidom.py`** —— 整个项目的第一个真模块，纯函数、零依赖、可对拍 lxml；
+4. S0.2 `image/probe.py`；S0.3 `assemble/pdf_min.py`；S0.4 `utils/naming.py`、`utils/urls.py`；
+5. S0.5 `cli.py` 骨架 + zipapp 打包，**验收：产出 < 400 KB 单文件，对 mock 站点生成页序正确的 PDF**。
+
+这一轮做完，体积目标就被**真实证明**了——而不是停留在估算表上。
+
+---
+
+## 25. 下一步
+
+授权已于本轮生效，不再等待设计审核。当前按 §26 的已完成清单继续到 M1，先实现可恢复的本地账本，再引入压缩和多格式输出。
+
+## 26. 构建记录与验收（2026-09-15）
+
+### 26.1 本轮清单
+
+- [x] 工程配置：`pyproject.toml`、`uv.lock`、`justfile`、`.gitignore`、macOS CI 工作流。
+- [x] S0.1：DOM 与 CSS 子集；子代/后代混合匹配、属性大小写和选择范围回归；与 lxml XPath 结果对拍。
+- [x] S0.2：JPEG/PNG/GIF/WebP/BMP 头尾探测；完整 PNG 检查 chunk 边界和 CRC；截断与透明图测试。
+- [x] S0.3：流式 PDF、书签、中文元数据、缺页占位、临时文件原子发布；pypdf 回读及 macOS PDFKit 实际渲染。
+- [x] S0.4：URL 校验、签名参数保留及日志脱敏、文件名 UTF-8 长度限制、自然排序、同名输出保护。
+- [x] S0.5：`manga / local / inspect / doctor`、可复现 micro zipapp；在 `python -I -S` 下真实生成 PDF。
+- [x] S0.6：本地可控测试站；验证 429、403、404、gzip、中文编码、Referer、重定向、备用地址、乱序并发、取消、原图保留、robots。
+- [x] 每个核心模块语句覆盖率 ≥90% 的自动门禁；micro ≤400,000 bytes 和预览资源 ≤200,000 bytes 的预算测试。
+- [x] 自建 200 页样本性能实测；无真实站点成功率结论。
+- [ ] GitHub 远程 CI 执行：尚无 Git 仓库/远程配置，当前验证在本机完成。
+- [ ] UI 截图回归：预览本轮未改；完整页面交互及截图门禁随 M6 接入。本轮不把旧截图算作新验证。
+
+### 26.2 实测结果与边界
+
+环境：macOS arm64、Python 3.12.13。90 项自动测试通过，无跳过；核心模块最低约 92%，全项目约 88%（CLI 的分支覆盖仍有提升空间）。ruff 和 strict mypy 纳入校验。当前 micro 为 **47,044 bytes**；它不包含 Python、Pillow 或浏览器，后续以构建命令输出为准。
+
+200 页 loopback HTTP 样本：4 req/s、4 下载任务，耗时 **51.019 秒**，子进程峰值 RSS **39,108,608 bytes / 37.3 MiB**，PDF **2,524,779 bytes**，缺页 **0**，HTTP 共 202 次（含网页和 robots）。样本是三张约 400px 宽的合成 JPEG 以独立地址重复排列。此测试证明限速与流式内存行为，**不能证明真实漫画画质、50 MB 压缩、家用宽带耗时或网站覆盖率**。
+
+执行命令见 README；产物位于 `dist/quire.pyz`、`output/smoke/`、`output/benchmark/measurements.json`。渲染样例共 3 页，第 2 页为故意注入的缺页，保持原页序。
+
+### 26.3 实施修正 / ADR
+
+1. **micro 与完整产品分层**：M0 运行时依赖为零，开发依赖单独锁定。目标压缩、50 MB 默认、CBZ/ZIP 属于 M1；不因测试环境已安装 Pillow 就宣称 core 能力可用。
+2. **不保留原图不等于必须按章实现**：M0 使用有界下载窗口、任务独立缓存、按序消费并删除，避免原实现一次积压大量响应字节。M1 体积迭代与多格式期间临时保留原图，成功提交后清理。
+3. **不可变领域结果和私有副作用边界**：`MangaOptions/MangaResult/Response/Candidate` 为 frozen dataclass；网络共享状态由明确锁保护；持久账本随后接入。
+4. **micro 同步端口**：`FetchPort.get` 是同步协议，线程池仅做 I/O；M1 异步端口独立定义，不能让同名签名一会同步一会返回协程。
+5. **完整性有限度**：头尾及 CRC 校验不能证明 JPEG 熵编码或 PNG IDAT 的完整解码正确性。M1 必须用成熟图像库 decode/verify 加强验证；micro 明确拒绝不支持的变体。
+6. **模块尺寸**：拆出 `selectors.py`、`png.py`、`pdf_text.py`、`workspace.py` 等实际职责。函数 50 行作为拆分信号，argparse 声明及格式序列化允许有理由的例外；不为凑行数牺牲可读性。
+7. **来源过滤的局限**：通用启发式仍可能误判正文或广告；`--selector` 和阈值是当前修正入口。`picture` 的复杂 media/type 选择、CSS 外链、data/blob、JS/canvas 暂不覆盖。不能声称“已识别所有网站所有图片”。
+
+### 26.4 M1 下一批可执行清单
+
+- [ ] S1.1：SQLite schema/user_version、任务/资源状态、参数指纹、相对路径、单写者事务；重启恢复和损坏缓存测试。
+- [ ] S1.2：httpx 连接池、每主机限速、Retry-After 与取消传播；和 micro 结果语义一致。
+- [ ] S1.3：下载与账本对接、按资源校验后提交；中断重跑只下载缺失/损坏资源，目录章节规则显式配置。
+- [ ] S1.4：Pillow 格式支持、方向修正、条漫切页、分类与编码；目标 50,000,000 bytes，可调；质量下限和最低可达体积反馈，不无止境压缩。
+- [ ] S1.5：成熟 PDF 库的压缩输出路径、章节书签、CBZ（含 ComicInfo.xml）、图片 ZIP（含 manifest.json），同轮导出。
+- [ ] S1.6：清理时机与恢复一致性；未达到目标或有失败时保留必要诊断，遵守原图保留选择。
+- [ ] S1.7：真实授权公开样本校准；记录页数、图像缺失率、耗时、RSS、磁盘峰值和可读性，不能只以请求 200 比例衡量成功率。
+
+后续主题继续保留：纸感浅、暗房浅、暗房深、瑞士浅。小说 TXT/EPUB/PDF、先文字后本地 OCR、简单本地书库、Swift 薄壳内嵌 Python 3.12、未公证 `.dmg` 分发等决策保持在后续里程碑，不提前标完成。

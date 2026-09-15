@@ -1,0 +1,9 @@
+"""卷帙 Quire —— 把漫画与小说抓成一本本本地的书。
+
+设计文档见仓库根目录的 ``DESIGN.md``，命名决策见 ``NAMING.md``。
+"""
+
+from __future__ import annotations
+
+__version__ = "0.0.1"
+__all__ = ["__version__"]
