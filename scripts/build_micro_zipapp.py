@@ -19,7 +19,13 @@ def build(destination: Path) -> int:
         for p in sorted((source / "quire").rglob("*.py"))
         if "store" not in p.relative_to(source / "quire").parts
         and p.relative_to(source).as_posix()
-        not in {"quire/fetch/session.py", "quire/fetch/async_policy.py", "quire/fetch/decoding.py"}
+        not in {
+            "quire/fetch/session.py",
+            "quire/fetch/async_policy.py",
+            "quire/fetch/decoding.py",
+            "quire/core_manga.py",
+            "quire/image/downloader.py",
+        }
     }
     entries["__main__.py"] = b"from quire.cli import main\nraise SystemExit(main())\n"
     staged = destination.with_suffix(".pyz.tmp")

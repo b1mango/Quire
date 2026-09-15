@@ -116,6 +116,15 @@ class Ledger:
         except sqlite3.Error as exc:
             raise LedgerError("Cannot read ledger task") from exc
 
+    def contains(self, task_id: str) -> bool:
+        try:
+            return (
+                self._db.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,)).fetchone()
+                is not None
+            )
+        except sqlite3.Error as exc:
+            raise LedgerError("Cannot look up ledger task") from exc
+
     def start(self, task_id: str) -> None:
         with self._transaction() as db:
             changed = db.execute(

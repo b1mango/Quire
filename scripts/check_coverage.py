@@ -16,6 +16,7 @@ prefixes = (
     "src/quire/fetch/session.py",
     "src/quire/fetch/async_policy.py",
     "src/quire/fetch/decoding.py",
+    "src/quire/core_manga.py",
 )
 failed = []
 for path, details in report["files"].items():

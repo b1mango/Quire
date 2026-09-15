@@ -26,3 +26,6 @@ ledger-smoke:
 
 session-smoke:
     {{python}} scripts/smoke_session.py
+
+resume-smoke:
+    {{python}} scripts/smoke_resume.py

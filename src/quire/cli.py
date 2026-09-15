@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 import platform
 import shutil
 import sys
-import time
 from pathlib import Path
 from typing import Never
 
 from . import __version__
-from .errors import QuireError
+from .cli_progress import Progress
+from .errors import ConfigError, QuireError, UnsupportedError
 from .manga import MangaOptions, MangaResult, run_local, run_manga
 from .parse.images import FilterPolicy
 from .parse.minidom import SelectorError
@@ -42,31 +43,6 @@ class ArgumentParser(argparse.ArgumentParser):
         raise ConfigError(message)
 
 
-class Progress:
-    """极简进度条。刻意不用 rich —— 省 6 MB（项目设计.md §2.2）。"""
-
-    def __init__(self, *, enabled: bool = True, width: int = 24) -> None:
-        self.enabled = enabled and sys.stderr.isatty()
-        self.width = width
-        self._last = 0.0
-
-    def update(self, done: int, total: int, result: MangaResult) -> None:
-        if not self.enabled:
-            return
-        now = time.monotonic()
-        if done < total and now - self._last < 0.1:
-            return
-        self._last = now
-        ratio = done / total if total else 0
-        filled = int(self.width * ratio)
-        bar = "█" * filled + "·" * (self.width - filled)
-        tail = f"失败 {result.pages_failed}" if result.pages_failed else ""
-        sys.stderr.write(f"\r  {bar} {done:>4}/{total}  {tail}   ")
-        sys.stderr.flush()
-        if done >= total:
-            sys.stderr.write("\n")
-
-
 # ============================================================ 输出
 
 
@@ -94,6 +70,12 @@ def human_size(num: int) -> str:
 
 
 def cmd_manga(args: argparse.Namespace) -> int:
+    if args.resume and not args.core:
+        raise ConfigError("--resume 需要 --core")
+    if args.core and (not _module_available("httpx") or not _module_available("quire.core_manga")):
+        raise UnsupportedError(
+            "缺少 core 下载能力", hint="安装 quire-local[core]；micro 不包含断点恢复"
+        )
     out = Path(args.output) if args.output else Path.cwd() / "comic.pdf"
     if out.exists():
         if not args.overwrite:
@@ -126,13 +108,27 @@ def cmd_manga(args: argparse.Namespace) -> int:
     info(f"→ {redact(args.url)}")
     progress = Progress(enabled=not args.quiet)
     try:
-        result = run_manga(
-            args.url,
-            out,
-            options=options,
-            workdir=args.workdir,
-            progress=progress,
-        )
+        if args.core:
+            from .core_manga import run_core_manga
+
+            result = asyncio.run(
+                run_core_manga(
+                    args.url,
+                    out,
+                    options=options,
+                    workdir=args.workdir,
+                    resume=args.resume,
+                    progress=progress,
+                )
+            )
+        else:
+            result = run_manga(
+                args.url,
+                out,
+                options=options,
+                workdir=args.workdir,
+                progress=progress,
+            )
     except KeyboardInterrupt:
         fail("已取消")
         return EXIT_FETCH
@@ -168,6 +164,8 @@ def _report(result: MangaResult, args: argparse.Namespace) -> None:
         info(f"  原图：{result.images_dir}")
     if result.report:
         info(f"  报告：{result.report}")
+    if result.task_id:
+        info(f"  任务：{result.task_id[:12]} · 复用 {result.resources_reused} 张")
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
@@ -253,6 +251,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     info("")
     info("能力档位")
     info("  micro：静态网页 / 本地 JPEG、PNG → 无损 PDF，零第三方运行时依赖")
+    if _module_available("httpx") and _module_available("quire.core_manga"):
+        info("  core：静态漫画异步下载、校验缓存与 --resume 恢复")
     info("  压缩、动态渲染、小说、OCR 和应用界面尚未实现")
 
     info("")
@@ -305,6 +305,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     m = sub.add_parser("manga", help="抓一页漫画并合成 PDF")
     m.add_argument("url")
+    m.add_argument("--core", action="store_true", help="使用 core 连接池和本地账本")
+    m.add_argument("--resume", action="store_true", help="校验并复用 core 任务已完成图片")
     m.add_argument("-o", "--output", help="输出 PDF 路径")
     m.add_argument("--selector", help="限定图片所在区域的选择器，如 'div.reader img'")
     m.add_argument(

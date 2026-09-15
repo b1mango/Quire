@@ -61,6 +61,8 @@ class MangaResult:
     failures: tuple[tuple[str, str], ...] = ()
     images_dir: Path | None = None
     report: Path | None = None
+    task_id: str | None = None
+    resources_reused: int = 0
 
     @property
     def partial(self) -> bool:

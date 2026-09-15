@@ -1,0 +1,138 @@
+"""Core static-page capture with explicit verified resource recovery."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from dataclasses import asdict, replace
+from pathlib import Path
+from typing import cast
+
+from .assemble.pdf_min import MiniPdfWriter
+from .errors import ConfigError
+from .fetch.session import AsyncFetcher
+from .image.downloader import download_images
+from .manga import _missing, _save_report, discover_page, embed_bytes
+from .models import MangaOptions, MangaResult, ProgressSink
+from .parse.images import Candidate
+from .parse.minidom import parse as parse_html
+from .store.cache import read_cached, remove_cached
+from .store.ledger import Ledger
+from .store.models import JsonValue, ResourceSpec, task_identity
+
+
+def _identity_options(opts: MangaOptions, candidates: list[Candidate]) -> dict[str, JsonValue]:
+    identity = cast(dict[str, JsonValue], json.loads(json.dumps(asdict(opts))))
+    for key in ("concurrency", "rate", "timeout", "retries", "overwrite", "keep_images"):
+        identity.pop(key)
+    identity["alternatives"] = [list(c.alternatives) for c in candidates]
+    return identity
+
+
+async def run_core_manga(
+    url: str,
+    out: Path | str,
+    *,
+    options: MangaOptions | None = None,
+    workdir: Path | str | None = None,
+    resume: bool = False,
+    fetcher: AsyncFetcher | None = None,
+    progress: ProgressSink | None = None,
+) -> MangaResult:
+    opts = options or MangaOptions()
+    output = Path(out)
+    if output.exists() and not opts.overwrite:
+        raise ConfigError(f"目标已存在：{output}")
+    if opts.selector:
+        parse_html("").select(opts.selector)
+    started = time.monotonic()
+    root = Path(workdir) if workdir else output.parent / ".quire-core"
+    client = fetcher or AsyncFetcher(
+        timeout=opts.timeout,
+        retries=opts.retries,
+        concurrency=opts.concurrency,
+        rate=opts.rate,
+        max_bytes=opts.max_bytes,
+    )
+    async with client:
+        page = await client.get(url, referer=opts.referer)
+        candidates, result = discover_page(url, opts, page)
+        specs = [ResourceSpec(1, i + 1, c.url, c.referer) for i, c in enumerate(candidates)]
+        identity = _identity_options(opts, candidates)
+        task_id, _ = task_identity(url, identity, specs)
+        with Ledger(root) as ledger:
+            if ledger.contains(task_id) and not resume:
+                raise ConfigError("已有相同采集任务，请使用 --resume 继续或选择其他 --workdir")
+            ledger.create_task(url, identity, specs)
+            if resume:
+                ledger.recover(task_id)
+            downloads = await download_images(
+                client,
+                ledger,
+                task_id,
+                candidates,
+                concurrency=opts.concurrency,
+                max_bytes=opts.max_bytes,
+            )
+            cache = ledger.root / "cache" / task_id
+            result = replace(
+                result,
+                output=output,
+                task_id=task_id,
+                resources_reused=downloads.reused,
+                images_dir=cache if opts.keep_images else None,
+            )
+            with MiniPdfWriter(
+                output, title=result.title, dpi=opts.dpi, paper=opts.paper, overwrite=opts.overwrite
+            ) as pdf:
+                for index, (record, candidate) in enumerate(
+                    zip(downloads.snapshot.resources, candidates, strict=True)
+                ):
+                    if record.local_path is not None:
+                        assert record.sha256 is not None and record.size is not None
+                        data = read_cached(
+                            ledger.root,
+                            task_id,
+                            record.local_path,
+                            sha256=record.sha256,
+                            size=record.size,
+                        )
+                        result = embed_bytes(
+                            pdf,
+                            data,
+                            result,
+                            index,
+                            len(candidates),
+                            candidate,
+                            opts,
+                        )
+                    else:
+                        result = _missing(
+                            pdf,
+                            result,
+                            index,
+                            len(candidates),
+                            candidate,
+                            record.error_code or "network",
+                        )
+                    if progress:
+                        progress.update(index + 1, len(candidates), result)
+                    await asyncio.sleep(0)
+            if result.partial:
+                result = replace(
+                    result, warnings=result.warnings + ("恢复缓存已保留，可用 --resume 重试",)
+                )
+            result = _save_report(
+                replace(
+                    result, bytes_out=output.stat().st_size, elapsed_s=time.monotonic() - started
+                ),
+                opts.overwrite,
+            )
+            if result.partial:
+                return result
+            if not opts.keep_images and result.report is not None:
+                for record in downloads.snapshot.resources:
+                    if record.local_path is not None:
+                        remove_cached(ledger.root, task_id, record.local_path)
+            return result

@@ -10,6 +10,7 @@ build/
 dist/
 *.egg-info/
 .quire-work/
+.quire-core/
 output/
 .DS_Store
 .env

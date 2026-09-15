@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .assemble.pdf_min import MiniPdfWriter
 from .errors import ConfigError, FetchError, NoImagesError
-from .fetch.simple import Fetcher, FetchPort
+from .fetch.simple import Fetcher, FetchPort, Response
 from .image.probe import probe_bytes
 from .models import MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate, collect, order_candidates, postfilter, prefilter
@@ -29,6 +29,12 @@ def _discover(
     if opts.selector:
         parse_html("").select(opts.selector)
     page = client.get(url, referer=opts.referer)
+    return discover_page(url, opts, page)
+
+
+def discover_page(
+    url: str, opts: MangaOptions, page: Response
+) -> tuple[list[Candidate], MangaResult]:
     doc = parse_html(page.text, base_url=page.url)
     title_node = doc.select_one("h1") or doc.select_one("title")
     title = safe_filename(title_node.text if title_node else "comic", max_len=80)
@@ -157,6 +163,18 @@ def _embed(
     opts: MangaOptions,
 ) -> MangaResult:
     data = path.read_bytes()
+    return embed_bytes(pdf, data, result, index, total, candidate, opts)
+
+
+def embed_bytes(
+    pdf: MiniPdfWriter,
+    data: bytes,
+    result: MangaResult,
+    index: int,
+    total: int,
+    candidate: Candidate,
+    opts: MangaOptions,
+) -> MangaResult:
     kept, rejected = postfilter([(candidate, probe_bytes(data), len(data))], opts.policy)
     if kept and pdf.add_image_bytes(data):
         return replace(result, pages_written=result.pages_written + 1)
@@ -205,6 +223,8 @@ def _save_report(result: MangaResult, overwrite: bool) -> MangaResult:
         ],
         "images_dir": str(result.images_dir) if result.images_dir else None,
     }
+    if result.task_id is not None:
+        payload.update(task_id=result.task_id, resources_reused=result.resources_reused)
     try:
         write_bytes(
             report,
