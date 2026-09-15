@@ -48,6 +48,14 @@ class MangaOptions:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactResult:
+    format: str
+    path: Path
+    bytes: int
+    target_met: bool | None
+
+
+@dataclass(frozen=True, slots=True)
 class MangaResult:
     output: Path
     pages_written: int = 0
@@ -70,6 +78,13 @@ class MangaResult:
     encoding_rounds: int = 0
     quality: int | None = None
     max_edge: int | None = None
+    artifacts: tuple[ArtifactResult, ...] = ()
+
+    @property
+    def total_bytes(self) -> int:
+        return (
+            sum(artifact.bytes for artifact in self.artifacts) if self.artifacts else self.bytes_out
+        )
 
     @property
     def partial(self) -> bool:

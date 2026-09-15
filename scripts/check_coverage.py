@@ -18,6 +18,8 @@ prefixes = (
     "src/quire/fetch/decoding.py",
     "src/quire/core_manga.py",
     "src/quire/core_export.py",
+    "src/quire/core_pages.py",
+    "src/quire/export_options.py",
 )
 failed = []
 for path, details in report["files"].items():

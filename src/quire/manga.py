@@ -237,6 +237,19 @@ def _save_report(result: MangaResult, overwrite: bool) -> MangaResult:
                 "max_edge": result.max_edge,
             },
         )
+    if result.artifacts:
+        payload.update(
+            total_bytes=result.total_bytes,
+            artifacts=[
+                {
+                    "format": a.format,
+                    "file": a.path.name,
+                    "bytes": a.bytes,
+                    "target_met": a.target_met,
+                }
+                for a in result.artifacts
+            ],
+        )
     try:
         write_bytes(
             report,

@@ -15,6 +15,7 @@ from . import __version__
 from .cli_options import add_manga_options, compression_options
 from .cli_progress import Progress
 from .errors import ConfigError, QuireError, UnsupportedError
+from .export_options import available_output, parse_formats
 from .manga import MangaOptions, MangaResult, run_local, run_manga
 from .parse.images import FilterPolicy
 from .parse.minidom import SelectorError
@@ -72,16 +73,21 @@ def human_size(num: int) -> str:
 
 def cmd_manga(args: argparse.Namespace) -> int:
     compression = compression_options(args)
+    formats = parse_formats(args.format)
+    if args.format is not None and not args.core:
+        raise ConfigError("--format 需要 --core")
     if args.resume and not args.core:
         raise ConfigError("--resume 需要 --core")
     if args.core and not all(
-        _module_available(name) for name in ("httpx", "PIL", "quire.core_manga")
+        _module_available(name) for name in ("httpx", "PIL", "pypdf", "quire.core_manga")
     ):
         raise UnsupportedError(
             "缺少 core 下载能力", hint="安装 quire-local[core]；micro 不包含断点恢复"
         )
-    out = Path(args.output) if args.output else Path.cwd() / "comic.pdf"
-    if out.exists():
+    out = Path(args.output) if args.output else Path.cwd() / f"comic.{formats[0]}"
+    if args.core:
+        out = available_output(out, formats, overwrite=args.overwrite)
+    elif out.exists():
         if not args.overwrite:
             out = unique_path(out)
             warn(f"目标已存在，改写到 {out.name}")
@@ -124,6 +130,7 @@ def cmd_manga(args: argparse.Namespace) -> int:
                     resume=args.resume,
                     progress=progress,
                     compression=compression,
+                    formats=formats,
                 )
             )
         else:
@@ -180,6 +187,12 @@ def _report(result: MangaResult, args: argparse.Namespace) -> None:
             )
         )
         info(f"  {result.compression} · {result.encoding_rounds} 轮 · {target}")
+    if result.artifacts:
+        for artifact in result.artifacts:
+            state = " · 未达体积目标" if artifact.target_met is False else ""
+            info(
+                f"  {artifact.format.upper()}：{artifact.path} · {human_size(artifact.bytes)}{state}"
+            )
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
@@ -265,8 +278,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     info("")
     info("能力档位")
     info("  micro：静态网页 / 本地 JPEG、PNG → 无损 PDF，零第三方运行时依赖")
-    if all(_module_available(name) for name in ("httpx", "PIL", "quire.core_manga")):
-        info("  core：静态漫画下载恢复、Pillow 转码切页、默认压缩及体积目标")
+    if all(_module_available(name) for name in ("httpx", "PIL", "pypdf", "quire.core_manga")):
+        info("  core：静态漫画下载恢复、转码切页、体积目标、PDF/CBZ/ZIP")
     info("  动态渲染、小说、OCR 和应用界面尚未实现")
 
     info("")

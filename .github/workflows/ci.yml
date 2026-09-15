@@ -23,9 +23,11 @@ jobs:
       - run: uv run python scripts/smoke_session.py
       - run: uv run python scripts/smoke_resume.py
       - run: uv run python scripts/smoke_compression.py
+      - run: uv run python scripts/smoke_formats.py
       - run: uv run python scripts/measure_core_dependencies.py
       - run: swift scripts/render_pdf.swift output/smoke/quire-sample.pdf output/smoke/page
       - run: swift scripts/render_pdf.swift output/compression-smoke/sample.pdf output/compression-smoke/page
+      - run: swift scripts/render_pdf.swift output/formats-smoke/sample.pdf output/formats-smoke/page
       - uses: actions/upload-artifact@v4
         with:
           name: quire-micro

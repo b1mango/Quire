@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import copy
 import hashlib
 import json
 import math
@@ -300,7 +299,6 @@ def compare_page(reference, actual, directory: Path, stem: str) -> dict:
 
 def pdf_pixels(obj):
     from PIL import Image
-    from pypdf.generic import NameObject, NumberObject
 
     if obj["/Filter"] == "/DCTDecode":
         with Image.open(BytesIO(obj.get_data())) as decoded:
@@ -310,16 +308,7 @@ def pdf_pixels(obj):
         if obj["/BitsPerComponent"] == 1
         else ("L" if obj["/ColorSpace"] == "/DeviceGray" else "RGB")
     )
-    stream = obj
-    if mode == "1" and obj.get("/DecodeParms", {}).get("/Predictor") == 15:
-        # pypdf 6.18 computes bpp=0 for packed pixels. PNG filters act on bytes;
-        # equivalent byte-wide predictor parameters fix readback without changing the PDF.
-        stream = copy.copy(obj)
-        params = copy.copy(obj["/DecodeParms"])
-        params[NameObject("/Columns")] = NumberObject((obj["/Width"] + 7) // 8)
-        params[NameObject("/BitsPerComponent")] = NumberObject(8)
-        stream[NameObject("/DecodeParms")] = params
-    return Image.frombytes(mode, (obj["/Width"], obj["/Height"]), stream.get_data()).convert("RGB")
+    return Image.frombytes(mode, (obj["/Width"], obj["/Height"]), obj.get_data()).convert("RGB")
 
 
 def inspect_pdf(root: Path, case: str, specs: list[dict], run: dict) -> dict:
@@ -416,8 +405,7 @@ def run_smoke(root: Path) -> dict:
             "visible and do not fail the target-behavior smoke check.",
             "Lossy PDFs can exceed lossless size for simple PNG art; no size guarantee.",
             "PDF streams decoded by pypdf/Pillow; PDFKit rendering pending separately.",
-            "Packed 1-bit Predictor is decoded with equivalent byte-wide parameters "
-            "to avoid pypdf 6.18 bpp=0; the PDF itself is unmodified.",
+            "Core PNG pixels use FlateDecode without PNG Predictor, including packed 1-bit.",
             "No ICC, CMYK, animation, real scan noise or website coverage here.",
             "RSS is child lifetime high-water mark including imports and processing; "
             "excludes fixture generation, PDF readback and comparison generation.",

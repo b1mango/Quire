@@ -8,8 +8,10 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from typing import cast
 
-from .core_export import export_pdf
+from .assemble.models import clean_metadata_text
+from .core_export import export_books
 from .errors import ConfigError
+from .export_options import output_paths
 from .fetch.session import AsyncFetcher
 from .image.downloader import download_images
 from .image.options import CompressionOptions
@@ -40,12 +42,17 @@ async def run_core_manga(
     fetcher: AsyncFetcher | None = None,
     progress: ProgressSink | None = None,
     compression: CompressionOptions | None = None,
+    formats: tuple[str, ...] = ("pdf",),
 ) -> MangaResult:
     opts = options or MangaOptions()
     encoding = compression or CompressionOptions()
-    output = Path(out)
-    if output.exists() and not opts.overwrite:
-        raise ConfigError(f"目标已存在：{output}")
+    destinations = output_paths(Path(out), formats)
+    output = destinations[0]
+    for destination in destinations:
+        if destination.is_symlink() or (destination.exists() and not destination.is_file()):
+            raise ConfigError(f"目标不是普通文件：{destination}")
+        if destination.exists() and not opts.overwrite:
+            raise ConfigError(f"目标已存在：{destination}")
     if opts.selector:
         parse_html("").select(opts.selector)
     started = time.monotonic()
@@ -60,6 +67,7 @@ async def run_core_manga(
     async with client:
         page = await client.get(url, referer=opts.referer)
         candidates, result = discover_page(url, opts, page)
+        result = replace(result, title=clean_metadata_text(result.title))
         specs = [ResourceSpec(1, i + 1, c.url, c.referer) for i, c in enumerate(candidates)]
         identity = _identity_options(opts, candidates)
         task_id, _ = task_identity(url, identity, specs)
@@ -85,8 +93,16 @@ async def run_core_manga(
                 resources_reused=downloads.reused,
                 images_dir=cache if opts.keep_images else None,
             )
-            result = await export_pdf(
-                ledger.root, downloads.snapshot, candidates, opts, encoding, result, progress
+            result = await export_books(
+                ledger.root,
+                downloads.snapshot,
+                candidates,
+                opts,
+                encoding,
+                result,
+                progress,
+                formats=formats,
+                source_url=url,
             )
             if result.partial:
                 result = replace(

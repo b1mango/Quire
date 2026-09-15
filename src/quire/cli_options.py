@@ -38,6 +38,7 @@ def add_manga_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument("--compress", choices=tuple(PRESETS), help="core 默认 balanced")
     parser.add_argument("--target-size", help="core 成品目标，例如 50MB 或 50MiB")
+    parser.add_argument("--format", help="core 输出格式，可组合 pdf,cbz,zip；默认 pdf")
     parser.add_argument("--no-bitonal", action="store_true", help="禁用纯黑白页 1-bit 编码")
     parser.add_argument("--no-split-tall", action="store_true", help="保留长条漫为一页")
 

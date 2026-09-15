@@ -609,6 +609,7 @@ source = { editable = "." }
 core = [
     { name = "httpx" },
     { name = "pillow" },
+    { name = "pypdf" },
 ]
 dev = [
     { name = "lxml" },
@@ -627,6 +628,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11,<2" },
     { name = "pillow", marker = "extra == 'core'", specifier = ">=10.4,<13" },
     { name = "pillow", marker = "extra == 'dev'", specifier = ">=10.4,<13" },
+    { name = "pypdf", marker = "extra == 'core'", specifier = ">=6.18,<7" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=5,<7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<10" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5,<8" },

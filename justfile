@@ -32,3 +32,6 @@ resume-smoke:
 
 compression-smoke:
     {{python}} scripts/smoke_compression.py
+
+formats-smoke:
+    {{python}} scripts/smoke_formats.py

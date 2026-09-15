@@ -201,8 +201,8 @@ def test_cancel_during_final_copy_never_commits_or_cleans_cache(tmp_path, monkey
     from quire.workspace import atomic_output
 
     @contextmanager
-    def cancelling_output(path, *, overwrite):
-        with atomic_output(path, overwrite=overwrite) as target:
+    def cancelling_output(path, *, overwrite, on_commit):
+        with atomic_output(path, overwrite=overwrite, on_commit=on_commit) as target:
 
             class Handle:
                 def write(self, block):
@@ -228,7 +228,7 @@ def test_reject_encoded_failure_without_publishing(tmp_path, monkeypatch):
     from quire.image.compress import EncodedPage
 
     monkeypatch.setattr(
-        "quire.core_export.encode_pages", lambda *_: iter([EncodedPage(b"bad", 1, 1, "color")])
+        "quire.core_pages.encode_pages", lambda *_: iter([EncodedPage(b"bad", 1, 1, "color")])
     )
     with pytest.raises(FetchError):
         capture(tmp_path, image_bytes())

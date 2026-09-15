@@ -1,67 +1,30 @@
-"""Build bounded compression trials and publish the selected complete PDF."""
+"""Build shared encoding trials and publish a selected set of book formats."""
 
 from __future__ import annotations
 
 import asyncio
+import shutil
 import tempfile
+from contextlib import ExitStack, closing
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
-from .assemble.pdf_min import MiniPdfWriter
+from .assemble.archive import ArchiveWriter
+from .assemble.models import clean_metadata_text
+from .assemble.pdf import CorePdfWriter
+from .core_pages import source_pages
 from .errors import FetchError
-from .image.codec import inspect_image
-from .image.compress import encode_pages
+from .export_options import output_paths
 from .image.options import CompressionOptions, Encoding
-from .image.probe import ImageProbe
-from .manga import _missing
-from .models import MangaOptions, MangaResult, ProgressSink
-from .parse.images import Candidate, postfilter
-from .store.cache import read_cached
-from .store.models import ResourceRecord, TaskSnapshot
+from .models import ArtifactResult, MangaOptions, MangaResult, ProgressSink
+from .parse.images import Candidate
+from .store.models import TaskSnapshot
 from .workspace import atomic_output
 
 
-def _source_bytes(root: Path, snapshot: TaskSnapshot, record: ResourceRecord) -> bytes:
-    assert record.local_path is not None and record.sha256 is not None and record.size is not None
-    return read_cached(
-        root, snapshot.task_id, record.local_path, sha256=record.sha256, size=record.size
-    )
-
-
-def _add_source(
-    pdf: MiniPdfWriter,
-    data: bytes,
-    candidate: Candidate,
-    index: int,
-    total: int,
-    opts: MangaOptions,
-    compression: CompressionOptions,
-    encoding: Encoding,
-    result: MangaResult,
-) -> MangaResult:
-    info = inspect_image(data)
-    probe = ImageProbe(format=info.format, width=info.width, height=info.height, complete=True)
-    _, rejected = postfilter([(candidate, probe, len(data))], opts.policy)
-    if rejected:
-        result = replace(
-            result,
-            pages_rejected=result.pages_rejected + 1,
-            rejections=result.rejections + tuple(rejected),
-        )
-        return _missing(pdf, result, index, total, candidate, rejected[0].reason)
-    if info.frames > 1:
-        result = replace(
-            result, warnings=result.warnings + (f"来源图片 {index + 1} 为多帧，仅采第一帧",)
-        )
-    for page in encode_pages(data, encoding, compression):
-        if not pdf.add_image_bytes(page.data):
-            raise FetchError("Encoded image is not supported by the PDF writer")
-        result = replace(result, pages_written=result.pages_written + 1)
-    return result
-
-
 async def _trial(
-    output: Path,
+    directory: Path,
     root: Path,
     snapshot: TaskSnapshot,
     candidates: list[Candidate],
@@ -70,28 +33,66 @@ async def _trial(
     encoding: Encoding,
     result: MangaResult,
     progress: ProgressSink | None,
+    formats: tuple[str, ...],
+    source_url: str,
 ) -> MangaResult:
-    total = len(candidates)
-    with MiniPdfWriter(output, title=result.title, dpi=opts.dpi, paper=opts.paper) as pdf:
+    directory.mkdir()
+    with ExitStack() as stack:
+        writers: list[CorePdfWriter | ArchiveWriter] = []
+        for format in formats:
+            path = directory / f"book.{format}"
+            if format == "pdf":
+                writers.append(
+                    stack.enter_context(
+                        CorePdfWriter(
+                            path,
+                            title=result.title,
+                            source_url=source_url,
+                            dpi=opts.dpi,
+                            paper=opts.paper,
+                        )
+                    )
+                )
+            else:
+                writers.append(
+                    stack.enter_context(
+                        ArchiveWriter(
+                            path, format=format, title=result.title, source_url=source_url
+                        )
+                    )
+                )
         for index, (record, candidate) in enumerate(
             zip(snapshot.resources, candidates, strict=True)
         ):
-            if record.local_path is None:
-                result = _missing(
-                    pdf, result, index, total, candidate, record.error_code or "network"
+            with closing(
+                source_pages(
+                    root, snapshot, record, candidate, index, opts, compression, encoding, result
                 )
-            else:
-                data = _source_bytes(root, snapshot, record)
-                result = _add_source(
-                    pdf, data, candidate, index, total, opts, compression, encoding, result
-                )
+            ) as pages:
+                for page, updated in pages:
+                    for writer in writers:
+                        writer.add_page(page)
+                    result = updated
+                    await asyncio.sleep(0)
             if progress:
-                progress.update(index + 1, total, result)
+                progress.update(index + 1, len(candidates), result)
             await asyncio.sleep(0)
-    return replace(result, bytes_out=output.stat().st_size)
+    artifacts = tuple(
+        ArtifactResult(
+            format,
+            path,
+            path.stat().st_size,
+            None
+            if compression.target_bytes is None
+            else path.stat().st_size <= compression.target_bytes,
+        )
+        for format in formats
+        for path in (directory / f"book.{format}",)
+    )
+    return replace(result, bytes_out=artifacts[0].bytes, artifacts=artifacts)
 
 
-async def export_pdf(
+async def export_books(
     root: Path,
     snapshot: TaskSnapshot,
     candidates: list[Candidate],
@@ -99,19 +100,20 @@ async def export_pdf(
     compression: CompressionOptions,
     result: MangaResult,
     progress: ProgressSink | None,
+    *,
+    formats: tuple[str, ...],
+    source_url: str,
 ) -> MangaResult:
+    destinations = output_paths(result.output, formats)
     result.output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
         prefix=".quire-encode-", dir=result.output.parent
     ) as directory:
         best: MangaResult | None = None
         selected: Encoding | None = None
-        selected_path: Path | None = None
-        rounds = 0
         for rounds, encoding in enumerate(compression.passes(), 1):
-            trial_path = Path(directory) / f"pass-{rounds}.pdf"
             trial = await _trial(
-                trial_path,
+                Path(directory) / f"pass-{rounds}",
                 root,
                 snapshot,
                 candidates,
@@ -120,28 +122,32 @@ async def export_pdf(
                 encoding,
                 result,
                 progress,
+                formats,
+                clean_metadata_text(source_url),
             )
-            if best is None or trial.bytes_out < best.bytes_out:
-                if selected_path is not None:
-                    selected_path.unlink()
-                best, selected, selected_path = trial, encoding, trial_path
+            if best is None or max(a.bytes for a in trial.artifacts) < max(
+                a.bytes for a in best.artifacts
+            ):
+                if best is not None:
+                    shutil.rmtree(best.artifacts[0].path.parent)
+                best, selected = trial, encoding
             else:
-                trial_path.unlink()
-            if compression.target_bytes is None or best.bytes_out <= compression.target_bytes:
+                shutil.rmtree(trial.artifacts[0].path.parent)
+            if all(a.target_met is not False for a in best.artifacts):
                 break
-        assert best is not None and selected is not None and selected_path is not None
+        assert best is not None and selected is not None
         met = (
-            None if compression.target_bytes is None else best.bytes_out <= compression.target_bytes
+            None if compression.target_bytes is None else all(a.target_met for a in best.artifacts)
         )
         if met is False:
             best = replace(
                 best,
                 warnings=best.warnings
                 + (
-                    f"未达目标 {compression.target_bytes} bytes；已测最小 {best.bytes_out} bytes，已保留恢复缓存",
+                    f"未达目标 {compression.target_bytes} bytes；已测最小组合最大成品 {max(a.bytes for a in best.artifacts)} bytes，已保留恢复缓存",
                 ),
             )
-        await _publish(selected_path, result.output, overwrite=opts.overwrite)
+        await _publish_all(best.artifacts, destinations, overwrite=opts.overwrite)
         return replace(
             best,
             source_resources=len(candidates),
@@ -151,16 +157,32 @@ async def export_pdf(
             encoding_rounds=rounds,
             quality=selected.quality or None,
             max_edge=selected.max_edge or None,
+            artifacts=tuple(
+                replace(a, path=p) for a, p in zip(best.artifacts, destinations, strict=True)
+            ),
         )
 
 
-async def _publish(source_path: Path, destination: Path, *, overwrite: bool) -> None:
-    with (
-        source_path.open("rb") as source,
-        atomic_output(destination, overwrite=overwrite) as target,
-    ):
-        while block := source.read(1024 * 1024):
-            target.write(block)
+async def _publish_all(
+    artifacts: tuple[ArtifactResult, ...], destinations: tuple[Path, ...], *, overwrite: bool
+) -> None:
+    # Stage every candidate before committing any destination; cancellation still rolls back here.
+    committed: list[str] = []
+    try:
+        with ExitStack() as stack:
+            for artifact, destination in zip(artifacts, destinations, strict=True):
+                target = stack.enter_context(
+                    atomic_output(
+                        destination,
+                        overwrite=overwrite,
+                        on_commit=partial(committed.append, destination.name),
+                    )
+                )
+                with artifact.path.open("rb") as source:
+                    while block := source.read(1024 * 1024):
+                        target.write(block)
+                        await asyncio.sleep(0)
             await asyncio.sleep(0)
-        # The final checkpoint is before atomic_output commits the destination.
-        await asyncio.sleep(0)
+    except OSError:
+        names = ", ".join(committed) or "无"
+        raise FetchError(f"成品发布失败；已发布：{names}；恢复缓存已保留") from None
