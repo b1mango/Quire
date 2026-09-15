@@ -1,4 +1,4 @@
-"""漫画图片的收集、过滤与排序。**全部是纯函数**（DESIGN.md §17.1 ①）。
+"""漫画图片的收集、过滤与排序。**全部是纯函数**（项目设计.md §17.1 ①）。
 
 "效率与成功率"在这里体现为两件事：
   * **收集要贪**：网页里图片地址有五种藏法（懒加载属性、srcset、
@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from ..image.probe import ImageProbe
 from ..parse.minidom import Document, Node
 from ..utils.naming import natural_key
-from ..utils.urls import guess_ext, is_image_url, is_usable_url, join_url
+from ..utils.urls import is_image_url, is_usable_url, join_url
 
 #: 懒加载属性的尝试顺序。``src`` 放最后是因为懒加载站点的 ``src``
 #: 通常是占位 GIF，真正的地址在 ``data-*`` 里。
@@ -337,15 +337,3 @@ def order_candidates(
     if [c.url for c in dom] == [c.url for c in by_number]:
         return dom, None
     return dom, "DOM 序与图片编号不一致，已保留 DOM 序（可用 --order asc/desc 覆盖）"
-
-
-def guess_image_ext(url: str, content_type: str | None = None) -> str:
-    return guess_ext(url, content_type)
-
-
-def urls_look_like_pages(cands: Sequence[Candidate]) -> bool:
-    """快速判断：这些 URL 是否带连续编号（决定要不要做数字序交叉校验）。"""
-    if not cands:
-        return False
-    numbered = sum(1 for c in cands if re.search(r"\d{2,}", c.url))
-    return numbered >= max(3, len(cands) // 2)

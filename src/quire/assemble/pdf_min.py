@@ -6,6 +6,7 @@ samples are flattened to white by the bounded decoder in png.py.
 
 from __future__ import annotations
 
+import sys
 import zlib
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -46,7 +47,7 @@ class _PendingPage:
 
 
 class MiniPdfWriter:
-    """顺序写 PDF，边写边落盘，不把整本书攒在内存里（DESIGN.md §8）。
+    """顺序写 PDF，边写边落盘，不把整本书攒在内存里（项目设计.md §8）。
 
     用法::
 
@@ -91,26 +92,23 @@ class MiniPdfWriter:
     # -------------------------------------------------- 上下文管理
     def __enter__(self) -> MiniPdfWriter:
         self._fh = self._transaction.__enter__()
-        self._raw(_PDF_HEADER)
-        # 注意：Catalog（对象 1）刻意留到 close() 再写——
-        # 它要引用 /Outlines，而大纲根对象号要等所有页都加完才知道。
-        info = (
-            b"<< /Title "
-            + pdf_text(self.title)
-            + b" /Author "
-            + pdf_text(self.author)
-            + b" /Producer "
-            + pdf_text(self.producer)
-            + b" /CreationDate ("
-            + _pdf_date().encode()
-            + b") >>"
-        )
-        self._write_object(3, info)
+        try:
+            self._raw(_PDF_HEADER)
+            fields = (
+                (b"Title", self.title),
+                (b"Author", self.author),
+                (b"Producer", self.producer),
+            )
+            info = b" ".join(b"/" + key + b" " + pdf_text(value) for key, value in fields)
+            self._write_object(
+                3, b"<< " + info + b" /CreationDate (" + _pdf_date().encode() + b") >>"
+            )
+        except BaseException:
+            self.__exit__(*sys.exc_info())
+            raise
         return self
 
     def __exit__(self, *exc: object) -> None:
-        import sys
-
         try:
             if exc[0] is None:
                 self.close()
@@ -256,6 +254,8 @@ class MiniPdfWriter:
                 + f" /BitsPerComponent {probe.bits or 8}".encode()
                 + b" /Filter /DCTDecode >>"
             )
+            if channels == 4 and probe.adobe_transform in (0, 2):
+                header = header[:-2] + b" /Decode [1 0 1 0 1 0 1 0] >>"
             payload = data
         elif probe.format == "png":
             try:

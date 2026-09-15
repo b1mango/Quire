@@ -50,6 +50,19 @@ def test_nested_ancestor_backtracking():
     assert len(doc.select("a > b c")) == 1
 
 
+def test_quoted_attribute_punctuation_and_invalid_groups():
+    doc = parse('<img data-key="a],b" id="page">')
+    assert doc.select_one('[data-key="a],b"]').get("id") == "page"
+    for selector in ["img,", ",img", "div*", "[data-key=]", "img ]"]:
+        with pytest.raises(SelectorError):
+            doc.select(selector)
+
+
+def test_ancestor_states_are_not_repeated():
+    doc = parse("<div>" * 80 + "<img>" + "</div>" * 80)
+    assert doc.select("main div div div div div div div img") == []
+
+
 def test_base_text_and_implicit_closure():
     doc = parse(
         '<base href="../assets/"><title>卷帙</title><p><b>Hello</b> <i>world</i><p>next',

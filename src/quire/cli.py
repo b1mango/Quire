@@ -43,7 +43,7 @@ class ArgumentParser(argparse.ArgumentParser):
 
 
 class Progress:
-    """极简进度条。刻意不用 rich —— 省 6 MB（DESIGN.md §2.2）。"""
+    """极简进度条。刻意不用 rich —— 省 6 MB（项目设计.md §2.2）。"""
 
     def __init__(self, *, enabled: bool = True, width: int = 24) -> None:
         self.enabled = enabled and sys.stderr.isatty()
@@ -244,7 +244,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         info(f"  ✓ {chrome}")
     else:
         warn("没找到 Chrome / Edge / Brave / Chromium")
-        warn("  JS 渲染与「小说转 PDF」都需要它（DESIGN.md 决策 N）")
+        warn("  JS 渲染与「小说转 PDF」都需要它（项目设计.md 决策 N）")
     if shutil.which("tesseract"):
         info("  ✓ 系统 tesseract 已安装，OCR 接入尚未实现")
     else:

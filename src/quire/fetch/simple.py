@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import http.client
+import io
 import math
 import random
 import threading
@@ -10,9 +11,8 @@ import time
 import urllib.error
 import urllib.request
 import zlib
-from collections.abc import Callable, Mapping
+from collections.abc import Buffer, Callable, Mapping
 from dataclasses import dataclass
-from email.message import Message
 from email.utils import parsedate_to_datetime
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -50,10 +50,28 @@ class FetchPort(Protocol):
     ) -> Response: ...
 
 
-class BodyPort(Protocol):
-    headers: Message
+class _CheckedReader(io.RawIOBase):
+    """Check between socket reads, including HTTP chunk metadata read by urllib."""
 
-    def read(self, size: int = -1) -> bytes: ...
+    def __init__(self, source: io.BufferedReader, check: Callable[[], None]) -> None:
+        self.source, self.check = source, check
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Buffer) -> int:
+        self.check()
+        view = memoryview(buffer).cast("B")
+        data = self.source.read1(len(view))
+        self.check()
+        view[: len(data)] = data
+        return len(data)
+
+    def close(self) -> None:
+        try:
+            self.source.close()
+        finally:
+            super().close()
 
 
 def retry_after(value: str, now: float) -> float:
@@ -72,6 +90,8 @@ class _HttpOnlyRedirect(urllib.request.HTTPRedirectHandler):
         self.check = check
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        # urllib otherwise drains the entire redirect body with an unbounded read.
+        fp.close()
         if not is_usable_url(newurl) or urlsplit(newurl).scheme not in {"http", "https"}:
             raise NetworkError("Redirect target must be HTTP(S)")
         self.check(newurl)
@@ -187,17 +207,24 @@ class Fetcher:
                 int((time.monotonic() - started) * 1000),
             )
 
-    def _read_body(self, response: BodyPort) -> bytes:
+    def _read_body(self, response: http.client.HTTPResponse) -> bytes:
         declared = response.headers.get("Content-Length", "")
         if declared.isdigit() and int(declared) > self.max_bytes:
             raise FetchError("Response exceeds configured size limit")
         raw = bytearray()
         deadline = time.monotonic() + self.timeout
-        while True:
+
+        def check() -> None:
             self._sleep(0)
             if time.monotonic() > deadline:
                 raise TimeoutError("Response deadline exceeded")
-            chunk = response.read(min(65536, self.max_bytes + 1 - len(raw)))
+
+        if response.fp is not None:
+            response.fp = io.BufferedReader(_CheckedReader(response.fp, check))
+        while True:
+            check()
+            chunk = response.read1(min(65536, self.max_bytes + 1 - len(raw)))
+            check()
             if not chunk:
                 break
             raw.extend(chunk)
@@ -216,15 +243,22 @@ class Fetcher:
         modes = [31] if encoding == "gzip" else [15, -15]
         for index, mode in enumerate(modes):
             try:
-                decoder = zlib.decompressobj(mode)
-                decoded = decoder.decompress(raw, self.max_bytes + 1)
+                decoded = bytearray()
+                pending = raw
+                while True:
+                    self._sleep(0)
+                    decoder = zlib.decompressobj(mode)
+                    decoded.extend(decoder.decompress(pending, self.max_bytes + 1 - len(decoded)))
+                    if len(decoded) > self.max_bytes:
+                        raise FetchError("Decoded response exceeds configured size limit")
+                    if not decoder.eof:
+                        raise zlib.error("Incomplete compressed response")
+                    pending = decoder.unused_data
+                    if not pending:
+                        return bytes(decoded)
+                    if encoding != "gzip":
+                        raise zlib.error("Trailing data after compressed response")
             except zlib.error:
                 if index == len(modes) - 1:
                     raise
-                continue
-            if len(decoded) > self.max_bytes:
-                raise FetchError("Decoded response exceeds configured size limit")
-            if not decoder.eof:
-                raise zlib.error("Incomplete compressed response")
-            return decoded
         raise zlib.error("Invalid compressed response")

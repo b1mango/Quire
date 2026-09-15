@@ -1,6 +1,6 @@
 """迷你 DOM：stdlib ``html.parser`` 之上的容错树 + CSS 选择器子集。
 
-为什么不用 lxml（DESIGN.md §2.1）：lxml 要多背约 6 MB 且需要编译。
+为什么不用 lxml（项目设计.md §2.1）：lxml 要多背约 6 MB 且需要编译。
 而我们要的选择器只是 ``div.reader img[data-src]`` 这一档，
 自带一个 ~350 行的实现换掉 6 MB，是本项目"体积是产品特性"的具体兑现。
 
@@ -318,9 +318,6 @@ class _TreeBuilder(HTMLParser):
         if not data:
             return
         self._append(Node(None, None, data))
-
-    def error(self, message: str) -> None:  # pragma: no cover - Python 3.10+ 已弃用
-        pass
 
 
 def parse(html: str, *, base_url: str = "") -> Document:

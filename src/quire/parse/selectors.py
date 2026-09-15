@@ -16,7 +16,7 @@ class SelectorError(ValueError):
 _ATTR_RE = re.compile(
     r"""\[\s*(?P<name>[\w:-]+)\s*
         (?:(?P<op>[~^$*|]?=)\s*
-           (?:"(?P<dq>[^"]*)"|'(?P<sq>[^']*)'|(?P<bare>[^\]\s]*))
+           (?:"(?P<dq>[^"]*)"|'(?P<sq>[^']*)'|(?P<bare>[^\]\s]+))
         )?\s*\]""",
     re.VERBOSE,
 )
@@ -24,7 +24,7 @@ _TOKEN_RE = re.compile(
     r"(?P<tag>\*|[a-zA-Z][\w-]*)"
     r"|#(?P<id>[\w-]+)"
     r"|\.(?P<cls>[\w-]+)"
-    r"|\[(?P<attr>[^\]]*)\]"
+    r"|\[(?P<attr>(?:\"[^\"]*\"|'[^']*'|[^\]\"'])*)\]"
 )
 
 
@@ -60,18 +60,28 @@ def _split_top_level_commas(selector: str) -> list[str]:
     out: list[str] = []
     buf: list[str] = []
     depth = 0
+    quote = ""
     for ch in selector:
-        if ch == "[":
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "[":
             depth += 1
         elif ch == "]":
-            depth = max(0, depth - 1)
-        if ch == "," and depth == 0:
+            depth -= 1
+        if depth < 0:
+            raise SelectorError("Unmatched attribute bracket")
+        if ch == "," and depth == 0 and not quote:
             out.append("".join(buf))
             buf = []
         else:
             buf.append(ch)
     out.append("".join(buf))
-    return [s for s in (p.strip() for p in out) if s]
+    if depth or quote or any(not part.strip() for part in out):
+        raise SelectorError("Incomplete selector group")
+    return [part.strip() for part in out]
 
 
 def _parse_group(text: str) -> list[tuple[str, _Compound]]:
@@ -112,7 +122,7 @@ def _parse_group(text: str) -> list[tuple[str, _Compound]]:
         while m:
             if m.group("tag"):
                 if compound.tag is not None:
-                    break
+                    raise SelectorError("Multiple tags in one compound selector")
                 compound.tag = m.group("tag").lower()
             elif m.group("id"):
                 compound.id = m.group("id")
@@ -132,7 +142,7 @@ def _parse_group(text: str) -> list[tuple[str, _Compound]]:
 
 
 def _parse_attr(spec: str) -> tuple[str, str, str]:
-    m = _ATTR_RE.match(f"[{spec}]")
+    m = _ATTR_RE.fullmatch(f"[{spec}]")
     if not m:
         raise SelectorError(f"不支持的属性选择器：[{spec}]")
     name = m.group("name").lower()
@@ -183,15 +193,20 @@ def _match_compound(node: Node, c: _Compound) -> bool:
 
 
 def _matches_selector(node: Node, group: list[tuple[str, _Compound]]) -> bool:
-    """从右向左匹配——这是选择器引擎的标准做法，也让它天然是 O(depth)。"""
+    """Match from right to left, visiting each ancestor/state pair at most once."""
     combinator, compound = group[-1]
     if not _match_compound(node, compound):
         return False
 
     # Backtrack over ancestor alternatives for mixed child/descendant queries.
     pending = [(node, len(group) - 1)]
+    seen: set[tuple[int, int]] = set()
     while pending:
         current, index = pending.pop()
+        state = (id(current), index)
+        if state in seen:
+            continue
+        seen.add(state)
         if not _match_compound(current, group[index][1]):
             continue
         if index == 0:

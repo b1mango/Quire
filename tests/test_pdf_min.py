@@ -14,8 +14,10 @@ import zlib
 import pytest
 from PIL import Image
 from pypdf import PdfReader
+from pypdf.generic import NameObject
 
 from quire.assemble.pdf_min import MiniPdfWriter, pdf_text, write_images_to_pdf
+from quire.image.probe import probe_bytes
 
 
 def _unpack_bits(raw: bytes, width: int, height: int, bpc: int) -> bytes:
@@ -261,3 +263,77 @@ def _iter_chunks(data: bytes):  # type: ignore[no-untyped-def]
         if data[i + 4 : i + 8] == b"IEND":
             break
         i += 12 + length
+
+
+@pytest.mark.parametrize("color", [(0, 0, 0, 0), (0, 255, 255, 0), (0, 0, 0, 255)])
+def test_adobe_cmyk_pdf_decode_preserves_color(tmp_path, color):
+    source = io.BytesIO()
+    Image.new("CMYK", (20, 20), color).save(source, "JPEG")
+    assert probe_bytes(source.getvalue()).adobe_transform == 0
+    out = tmp_path / "cmyk.pdf"
+    with MiniPdfWriter(out, dpi=72) as pdf:
+        assert pdf.add_image_bytes(source.getvalue())
+    reader = PdfReader(out)
+    image = reader.pages[0]["/Resources"]["/XObject"]["/Im0"]
+    assert image["/ColorSpace"] == "/DeviceCMYK"
+    assert image["/Decode"] == [1, 0] * 4
+    # pypdf applies PDF color interpretation; opening only the JPEG bypasses /Decode.
+    got = reader.pages[0].images[0].image.convert("RGB")
+    want = Image.open(source).convert("RGB")
+    assert _mean_diff(got, want) < 1
+    del image[NameObject("/Decode")]
+    if color == (0, 0, 0, 0):
+        assert _mean_diff(reader.pages[0].images[0].image.convert("RGB"), want) > 200
+
+
+@pytest.mark.parametrize("mode", ["RGB", "L"])
+def test_other_jpeg_colors_are_not_inverted(tmp_path, mode):
+    source = io.BytesIO()
+    Image.new(mode, (20, 20)).save(source, "JPEG")
+    out = tmp_path / "ordinary.pdf"
+    with MiniPdfWriter(out) as pdf:
+        assert pdf.add_image_bytes(source.getvalue())
+    image = PdfReader(out).pages[0]["/Resources"]["/XObject"]["/Im0"]
+    assert "/Decode" not in image
+
+
+def test_cmyk_without_adobe_marker_is_not_automatically_inverted(tmp_path):
+    source = io.BytesIO()
+    Image.new("CMYK", (20, 20)).save(source, "JPEG")
+    data = source.getvalue()
+    start = data.index(b"\xff\xee")
+    end = start + 2 + int.from_bytes(data[start + 2 : start + 4], "big")
+    data = data[:start] + data[end:]
+    assert probe_bytes(data).adobe_transform is None
+    out = tmp_path / "no-adobe.pdf"
+    with MiniPdfWriter(out) as pdf:
+        assert pdf.add_image_bytes(data)
+    assert "/Decode" not in PdfReader(out).pages[0]["/Resources"]["/XObject"]["/Im0"]
+
+
+@pytest.mark.parametrize("failure", ["title", "write", "interrupt"])
+def test_enter_failure_closes_handle_and_discards_staging(tmp_path, monkeypatch, failure):
+    out = tmp_path / "book.pdf"
+    out.write_bytes(b"original")
+    writer = MiniPdfWriter(out, title="\udcff" if failure == "title" else "book", overwrite=True)
+    handles = []
+    error = UnicodeEncodeError if failure == "title" else OSError
+    if failure == "interrupt":
+        error = KeyboardInterrupt
+    original_raw = writer._raw
+
+    def record_and_write(data):
+        handles.append(writer._fh)
+        original_raw(data)
+        if failure != "title":
+            raise error("simulated initialization failure")
+        return 0
+
+    monkeypatch.setattr(writer, "_raw", record_and_write)
+    with pytest.raises(error):
+        with writer:
+            pytest.fail("The body must not run after failed initialization")
+    assert handles and all(handle.closed for handle in handles)
+    assert writer._fh is None
+    assert out.read_bytes() == b"original"
+    assert list(tmp_path.iterdir()) == [out]

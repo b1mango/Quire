@@ -1,4 +1,4 @@
-"""URL 处理。纯函数，零依赖，可 100% 单测（DESIGN.md §17.1 ①）。
+"""URL 处理。纯函数，零依赖，可 100% 单测（项目设计.md §17.1 ①）。
 
 这里是"成功率"的第一道关：页面里的图片地址有十几种写法——
 相对路径、协议相对、带 query 的、带 hash 的、CSS 里 url() 包着的、
@@ -137,7 +137,7 @@ def guess_ext(url: str, content_type: str | None = None) -> str:
 
 
 def redact(url: str) -> str:
-    """用于日志：抹掉 query，避免把 token 写进日志（DESIGN.md §20.2）。"""
+    """用于日志：抹掉 query，避免把 token 写进日志（项目设计.md §20.2）。"""
     try:
         parts = urlsplit(url)
         host = parts.netloc.rsplit("@", 1)[-1]

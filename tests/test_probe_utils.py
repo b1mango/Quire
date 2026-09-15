@@ -5,6 +5,7 @@ import struct
 import pytest
 
 from quire.image.probe import probe_bytes, probe_file, sniff_format
+from quire.manga import run_local
 from quire.utils.naming import image_filename, natural_key, safe_filename, unique_path, volume_label
 from quire.utils.urls import (
     guess_ext,
@@ -136,3 +137,70 @@ def test_safe_names_and_existing_files(tmp_path):
     assert unique_path(path) == path
     path.touch()
     assert unique_path(path).name == "file (1).pdf"
+
+
+@pytest.mark.parametrize("progressive", [False, True])
+def test_jpeg_structure_accepts_baseline_and_progressive(tmp_path, progressive):
+    data = make_image_bytes("JPEG", size=(256, 340), progressive=progressive)
+    path = tmp_path / "image.jpg"
+    path.write_bytes(data + b"trailing metadata")
+    assert probe_bytes(data).ok and probe_file(path).ok
+
+
+@pytest.mark.parametrize("damage", ["no_sos", "short_sof", "short_sos", "no_scan", "bad_sos_id"])
+def test_jpeg_structure_rejects_missing_or_invalid_scan(tmp_path, damage):
+    data = make_image_bytes("JPEG", size=(256, 340))
+    sof = data.index(b"\xff\xc0")
+    sos = data.index(b"\xff\xda")
+    sof_end = sof + 2 + int.from_bytes(data[sof + 2 : sof + 4], "big")
+    sos_end = sos + 2 + int.from_bytes(data[sos + 2 : sos + 4], "big")
+    if damage == "no_sos":
+        data = data[:sof_end] + b"\xff\xd9"
+    elif damage == "short_sof":
+        data = data[: sof + 12] + b"\xff\xd9"
+    elif damage == "short_sos":
+        data = data[: sos + 6] + b"\xff\xd9"
+    elif damage == "no_scan":
+        data = data[:sos_end] + b"\xff\xd9"
+    elif damage == "bad_sos_id":
+        data = data[: sos + 5] + b"\xff" + data[sos + 6 :]
+    images = tmp_path / "images"
+    images.mkdir()
+    path = images / "1.jpg"
+    path.write_bytes(data)
+    assert not probe_bytes(data).ok and not probe_file(path).ok
+    result = run_local(images, tmp_path / "out.pdf")
+    assert result.pages_written == 0 and result.pages_failed == 1
+
+
+def test_jpeg_eoi_inside_metadata_does_not_replace_real_eoi():
+    data = make_image_bytes("JPEG", size=(256, 340))
+    app = b"\xff\xe1\x00\x06xx\xff\xd9"
+    assert not probe_bytes(data[:2] + app + data[2:-2]).ok
+
+
+def test_large_jpeg_eoi_at_tail_window_start(tmp_path):
+    data = make_image_bytes("JPEG", size=(1024, 1024)) + b"x" * 4094
+    assert len(data) > 64 * 1024 and data[-4096:-4094] == b"\xff\xd9"
+    path = tmp_path / "large.jpg"
+    path.write_bytes(data)
+    assert probe_bytes(data).ok and probe_file(path).ok
+
+
+@pytest.mark.parametrize("extra", [b"", b"extension metadata" * 3])
+def test_jpeg_adobe_header_accepts_extension_metadata(tmp_path, extra):
+    data = make_image_bytes("JPEG", size=(256, 340), progressive=True)
+    payload = b"Adobe\x00\x64\x00\x00\x00\x00\x01" + extra
+    marker = b"\xff\xee" + struct.pack(">H", len(payload) + 2) + payload
+    data = data[:2] + marker + data[2:]
+    path = tmp_path / "adobe.jpg"
+    path.write_bytes(data)
+    assert probe_bytes(data).ok and probe_file(path).ok
+    assert probe_bytes(data).adobe_transform == 1
+
+
+def test_jpeg_adobe_header_rejects_missing_transform():
+    data = make_image_bytes("JPEG")
+    payload = b"Adobe\x00\x64\x00\x00\x00\x00"
+    marker = b"\xff\xee" + struct.pack(">H", len(payload) + 2) + payload
+    assert not probe_bytes(data[:2] + marker + data[2:]).ok

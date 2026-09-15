@@ -17,7 +17,7 @@ from .models import MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate, collect, order_candidates, postfilter, prefilter
 from .parse.minidom import parse as parse_html
 from .utils.naming import image_filename, natural_key, safe_filename
-from .utils.urls import guess_ext, is_image_url, redact
+from .utils.urls import is_image_url, redact
 from .workspace import task_cache, write_bytes
 
 __all__ = ["MangaOptions", "MangaResult", "run_manga", "run_local"]
@@ -30,7 +30,7 @@ def _discover(
         parse_html("").select(opts.selector)
     page = client.get(url, referer=opts.referer)
     doc = parse_html(page.text, base_url=page.url)
-    title_node = doc.select_one("h1, title")
+    title_node = doc.select_one("h1") or doc.select_one("title")
     title = safe_filename(title_node.text if title_node else "comic", max_len=80)
     candidates = collect(
         doc, doc.effective_base() or page.url, selector=opts.selector, attrs=opts.attrs
@@ -139,7 +139,7 @@ def _download_one(
             last = exc
             continue
         extension = "." + ("jpg" if probe.format == "jpeg" else probe.format)
-        path = cache / image_filename(index + 1, extension or guess_ext(url, response.content_type))
+        path = cache / image_filename(index + 1, extension)
         if len(response.content) > opts.max_bytes:
             raise FetchError("Image exceeds configured size limit")
         write_bytes(path, response.content)

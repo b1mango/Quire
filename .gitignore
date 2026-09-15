@@ -12,4 +12,6 @@ dist/
 .quire-work/
 output/
 .DS_Store
-
+.env
+.env.*
+!.env.example

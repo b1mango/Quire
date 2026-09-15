@@ -8,6 +8,7 @@ from pypdf import PdfReader
 
 from quire.cli import main
 from quire.errors import ConfigError
+from quire.fetch.simple import Response
 from quire.manga import MangaOptions, run_local, run_manga
 from tests.mock_site.server import page_image, serve
 
@@ -44,6 +45,25 @@ def test_order_parallel_progress_cleanup_and_report(site, tmp_path):
     assert not list((tmp_path / ".quire-work").iterdir())
     assert json.loads(result.report.read_text())["status"] == "done"
     assert not site.counts["/placeholder.gif"]
+
+
+def test_heading_has_priority_over_page_title(tmp_path):
+    class FakeFetcher:
+        def get(self, url, **kwargs):
+            content = (
+                b'<title>Website name</title><h1>Chapter name</h1><img src="/1.jpg">'
+                if url.endswith("/chapter")
+                else page_image(1)
+            )
+            return Response(url, 200, {}, content, 0)
+
+    result = run_manga(
+        "https://example.org/chapter",
+        tmp_path / "book.pdf",
+        fetcher=FakeFetcher(),
+        options=MangaOptions(),
+    )
+    assert result.title == "Chapter name"
 
 
 def test_partial_and_keep_images(site, tmp_path):

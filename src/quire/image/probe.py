@@ -6,11 +6,11 @@
 
 本模块做三件事：
   1. 从头部解析出格式、宽高、通道数、是否有 alpha；
-  2. 从尾部判断文件是否**完整**（JPEG 的 EOI、PNG 的 IEND、GIF 的 trailer）；
+  2. 检查 JPEG 的 SOF/SOS 和尾部标记；结构通过不代表像素解码完整；
   3. 全部只用标准库，因此 ``micro`` 档也能用它守住质量。
 
 效率：:func:`probe_file` 只 seek 读头 64 KB 与尾 4 KB，
-不为校验一张 2 MB 的图把整个文件读进内存（DESIGN.md §8 内存铁律）。
+不为校验一张 2 MB 的图把整个文件读进内存（项目设计.md §8 内存铁律）。
 """
 
 from __future__ import annotations
@@ -43,10 +43,11 @@ class ImageProbe:
     has_alpha: bool = False
     complete: bool = False
     error: str = ""
+    adobe_transform: int | None = None
 
     @property
     def ok(self) -> bool:
-        """能不能进 PDF：解析出尺寸 + 文件完整。"""
+        """尺寸及结构检查通过；不保证像素解码或 PDF 后端支持。"""
         return bool(self.format) and self.width > 0 and self.height > 0 and self.complete
 
     @property
@@ -89,7 +90,7 @@ def probe_bytes(data: bytes) -> ImageProbe:
 
 
 def probe_file(path: Path | str) -> ImageProbe:
-    """从磁盘探测，只读头尾（DESIGN.md §8 内存铁律）。"""
+    """从磁盘探测，只读头尾（项目设计.md §8 内存铁律）。"""
     p = Path(path)
     try:
         size = p.stat().st_size
@@ -120,7 +121,7 @@ def probe_bytes_from_parts(head: bytes, tail: bytes, size: int) -> ImageProbe:
     if not fmt:
         return ImageProbe(error="无法识别的图片格式")
     if fmt == "jpeg":
-        return _probe_jpeg(head, tail)
+        return _probe_jpeg(head, tail if len(head) < size else None)
     if fmt == "png":
         return _probe_png(head, tail if len(head) < size else None)
     if fmt == "gif":
@@ -136,69 +137,81 @@ def probe_bytes_from_parts(head: bytes, tail: bytes, size: int) -> ImageProbe:
 
 
 def _probe_jpeg(data: bytes, tail: bytes | None = None) -> ImageProbe:
-    """扫描 JPEG 段，找到 SOFn 拿宽高；用尾部 EOI 判完整。"""
-    if len(data) < 4:
-        return ImageProbe(format="jpeg", error="数据过短")
-
+    """Validate headers through the first SOS and an EOI, without decoding entropy data."""
+    invalid = ImageProbe(format="jpeg", error="Invalid or unsupported JPEG structure")
     i = 2  # 跳过 SOI
     width = height = channels = bits = 0
+    component_ids: set[int] = set()
+    adobe_transform = None
     n = len(data)
-
     while i < n - 1:
         if data[i] != 0xFF:
-            i += 1
-            continue
+            return invalid
         marker = data[i + 1]
         if marker == 0xFF:  # 填充字节
             i += 1
             continue
-        if marker == 0x00:  # 转义的 FF00，出现在熵编码数据里
-            i += 2
-            continue
-        if marker == 0xD9:  # EOI
-            break
-        if marker in JPEG_STANDALONE:
-            i += 2
-            continue
-        if i + 4 > n:
-            break
+        if marker in {0x00, 0xD8, 0xD9, *JPEG_STANDALONE} or i + 4 > n:
+            return invalid
         seg_len = struct.unpack_from(">H", data, i + 2)[0]
-        if seg_len < 2:
-            break
-        if marker in JPEG_SOF and i + 9 <= n:
+        end = i + 2 + seg_len
+        if seg_len < 2 or end > n:
+            return invalid
+        if marker in JPEG_SOF:
+            if marker not in (0xC0, 0xC1, 0xC2) or seg_len < 8 or component_ids:
+                return invalid
             bits = data[i + 4]
             height = struct.unpack_from(">H", data, i + 5)[0]
             width = struct.unpack_from(">H", data, i + 7)[0]
-            channels = data[i + 9] if i + 9 < n else 0
-            break  # SOF 就够判定"是不是渐进式"之外的一切了
-        if marker == 0xDA:  # SOS：后面是熵编码数据，头解析到此为止
-            break
-        i += 2 + seg_len
+            channels = data[i + 9]
+            component_ids = set(data[i + 10 : end : 3])
+            if (
+                bits != 8
+                or channels not in (1, 3, 4)
+                or not width
+                or not height
+                or seg_len != 8 + 3 * channels
+                or len(component_ids) != channels
+            ):
+                return invalid
+        elif marker == 0xEE and data[i + 4 : i + 9] == b"Adobe":
+            if seg_len < 14:
+                return invalid
+            adobe_transform = data[i + 15]
+        elif marker == 0xDA:
+            if seg_len < 6 or not component_ids:
+                return invalid
+            count = data[i + 4]
+            scan_ids = set(data[i + 5 : end - 3 : 2])
+            if (
+                not 1 <= count <= channels
+                or seg_len != 6 + 2 * count
+                or len(scan_ids) != count
+                or not scan_ids <= component_ids
+            ):
+                return invalid
+            complete = _jpeg_has_eoi(data, end) if tail is None else _jpeg_has_eoi(tail)
+            return ImageProbe(
+                format="jpeg",
+                width=width,
+                height=height,
+                channels=channels,
+                bits=bits,
+                complete=complete,
+                adobe_transform=adobe_transform,
+                error="" if complete else "Missing JPEG scan data or EOI",
+            )
+        i = end
+    return invalid
 
-    if width <= 0 or height <= 0:
-        return ImageProbe(
-            format="jpeg", channels=channels, bits=bits, error="没找到 SOF 段，文件可能被截断"
-        )
 
-    complete = _jpeg_has_eoi(data if tail is None else tail)
-    return ImageProbe(
-        format="jpeg",
-        width=width,
-        height=height,
-        channels=channels,
-        bits=bits,
-        complete=complete,
-        error="" if complete else "缺少 JPEG 结束标记（文件被截断）",
-    )
-
-
-def _jpeg_has_eoi(tail: bytes) -> bool:
+def _jpeg_has_eoi(tail: bytes, scan_start: int = -1) -> bool:
     """在尾部窗口里搜 FFD9。
 
     不能只看最后两字节：不少站点会在 JPEG 后面追加元数据或换行。
     """
     idx = tail.rfind(b"\xff\xd9")
-    return idx != -1
+    return idx > scan_start
 
 
 def _probe_png(data: bytes, tail: bytes | None = None) -> ImageProbe:
