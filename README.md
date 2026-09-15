@@ -52,6 +52,7 @@ uv sync --locked --extra dev --python 3.12
 .venv/bin/python scripts/build_micro_zipapp.py
 .venv/bin/python scripts/smoke_micro.py
 swift scripts/render_pdf.swift output/smoke/quire-sample.pdf output/smoke/page
+.venv/bin/python scripts/smoke_ledger.py
 ```
 
 `Pillow`、`pypdf`、`lxml` 仅用于开发验证，不进入 micro 包。`uv.lock` 固定开发依赖，2026-09-15 pip-audit 未发现已知漏洞；不覆盖系统组件。CI 工作流已提供，仅有本地 Git 仓库，未在 GitHub 运行。
@@ -61,6 +62,8 @@ swift scripts/render_pdf.swift output/smoke/quire-sample.pdf output/smoke/page
 2026-09-15 本地 200 页测试：默认 4 req/s、4 并发，**51.0 秒**、子进程峰值 RSS **37.3 MiB**、成品 **2.41 MiB**、缺页 **0**。样本为 400px 左右宽的合成 JPEG，运行于回环 HTTP，不能推算真实漫画画质、目标压缩效果或公网成功率。复现：`.venv/bin/python scripts/benchmark_micro.py`。
 
 ## 下一阶段
+
+M1/S1.1 提供独立的本地账本：任务身份、资源状态、单写者 SQLite、缓存哈希校验和中断恢复。`scripts/smoke_ledger.py` 不访问网络，模拟子进程被强制终止后复用已提交资源，并检查损坏文件回到待下载状态。当前 CLI 下载流程尚未接入账本，因此还没有用户可用的 `--resume`；状态与验收结果以项目进度为准。
 
 M1：SQLite 断点账本、连接池下载、Pillow 转码与体积控制、PDF/CBZ/图片 ZIP 同轮输出。最终产品默认目标 50 MB，可由用户调整；当前 micro 保留原编码，**尚不实施 50 MB 压缩上限**。
 

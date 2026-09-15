@@ -17,6 +17,7 @@ def build(destination: Path) -> int:
     entries = {
         p.relative_to(source).as_posix(): p.read_bytes()
         for p in sorted((source / "quire").rglob("*.py"))
+        if "store" not in p.relative_to(source / "quire").parts
     }
     entries["__main__.py"] = b"from quire.cli import main\nraise SystemExit(main())\n"
     staged = destination.with_suffix(".pyz.tmp")

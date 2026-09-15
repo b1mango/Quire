@@ -7,7 +7,13 @@ import sys
 from pathlib import Path
 
 report = json.loads(Path(sys.argv[1]).read_text())
-prefixes = ("src/quire/parse/", "src/quire/image/", "src/quire/utils/", "src/quire/assemble/")
+prefixes = (
+    "src/quire/parse/",
+    "src/quire/image/",
+    "src/quire/utils/",
+    "src/quire/assemble/",
+    "src/quire/store/",
+)
 failed = []
 for path, details in report["files"].items():
     if path.startswith(prefixes) and details["summary"]["percent_covered"] < 90:

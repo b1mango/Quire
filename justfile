@@ -20,3 +20,6 @@ doctor: pyz
 
 mock:
     {{python}} scripts/dev_mock_server.py
+
+ledger-smoke:
+    {{python}} scripts/smoke_ledger.py

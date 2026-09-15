@@ -48,6 +48,12 @@ class NetworkError(FetchError):
     """连不上、DNS 失败、连接重置等。"""
 
 
+class LedgerError(QuireError):
+    """Local ledger, cache integrity or state transition failure."""
+
+    exit_code = 2
+
+
 # ---------------------------------------------------------------- 退出码 5
 class BlockedError(FetchError):
     """站点拒绝或 robots 禁止访问；停止对应请求。"""

@@ -19,6 +19,7 @@ jobs:
       - run: uv run python scripts/build_micro_zipapp.py
       - run: uv run python -S dist/quire.pyz doctor
       - run: uv run python scripts/smoke_micro.py
+      - run: uv run python scripts/smoke_ledger.py
       - run: swift scripts/render_pdf.swift output/smoke/quire-sample.pdf output/smoke/page
       - uses: actions/upload-artifact@v4
         with:

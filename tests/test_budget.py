@@ -20,6 +20,7 @@ def test_micro_budget_reproducibility_and_isolated_execution(tmp_path):
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == digest
     with zipfile.ZipFile(archive) as zipped:
         assert all(name.endswith(".py") for name in zipped.namelist())
+        assert not any(name.startswith("quire/store/") for name in zipped.namelist())
     images = tmp_path / "images"
     images.mkdir()
     (images / "1.jpg").write_bytes(page_image(1))
