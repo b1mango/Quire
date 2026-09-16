@@ -43,7 +43,7 @@ def discover_page(
     )
     kept, rejected = prefilter(candidates)
     if not kept:
-        raise NoImagesError(url, hint="尝试指定 --selector；动态网页支持将在 M2 加入。")
+        raise NoImagesError(url, hint="尝试指定 --selector；动态网页可用 --core --render。")
     ordered, warning = order_candidates(kept, opts.order)
     selected = ordered[opts.first - 1 : opts.last or None]
     if not selected:

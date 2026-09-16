@@ -1,4 +1,4 @@
-"""Core static-page capture with explicit verified resource recovery."""
+"""Core page capture with explicit verified resource recovery."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from .core_publish import begin, complete, preflight, prepare, recover_export
 from .errors import ConfigError, LedgerError
 from .export_options import output_paths
 from .export_receipt import export_key, read_receipt
+from .fetch.browser import RenderOptions, render_page
 from .fetch.session import AsyncFetcher
 from .image.downloader import download_images
 from .image.options import CompressionOptions
@@ -44,6 +45,7 @@ async def run_core_manga(
     progress: ProgressSink | None = None,
     compression: CompressionOptions | None = None,
     formats: tuple[str, ...] = ("pdf",),
+    render: RenderOptions | None = None,
 ) -> MangaResult:
     opts = options or MangaOptions()
     encoding = compression or CompressionOptions()
@@ -69,8 +71,15 @@ async def run_core_manga(
     )
     async with client:
         page = await client.get(url, referer=opts.referer)
+        render_warnings: tuple[str, ...] = ()
+        if render is not None:
+            page, render_warnings = await render_page(page, client, render)
         candidates, result = discover_page(url, opts, page)
-        result = replace(result, title=clean_metadata_text(result.title))
+        result = replace(
+            result,
+            title=clean_metadata_text(result.title),
+            warnings=result.warnings + render_warnings,
+        )
         specs = [ResourceSpec(1, i + 1, c.url, c.referer) for i, c in enumerate(candidates)]
         identity = _identity_options(opts, candidates)
         task_id, _ = task_identity(url, identity, specs)

@@ -16,6 +16,7 @@ prefixes = (
     "src/quire/fetch/session.py",
     "src/quire/fetch/async_policy.py",
     "src/quire/fetch/decoding.py",
+    "src/quire/fetch/browser",
     "src/quire/core_manga.py",
     "src/quire/core_export.py",
     "src/quire/core_publish.py",

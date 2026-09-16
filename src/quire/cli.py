@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Never
 
 from . import __version__
-from .cli_options import add_manga_options, compression_options
+from .cli_options import add_manga_options, compression_options, render_options
 from .cli_progress import Progress
 from .errors import ConfigError, QuireError, UnsupportedError
 from .export_options import available_output, parse_formats
@@ -45,9 +45,6 @@ class ArgumentParser(argparse.ArgumentParser):
         raise ConfigError(message)
 
 
-# ============================================================ 输出
-
-
 def info(message: str) -> None:
     sys.stdout.write(message + "\n")
 
@@ -73,13 +70,15 @@ def human_size(num: int) -> str:
 
 def cmd_manga(args: argparse.Namespace) -> int:
     compression = compression_options(args)
+    render = render_options(args)
     formats = parse_formats(args.format)
     if args.format is not None and not args.core:
         raise ConfigError("--format 需要 --core")
     if args.resume and not args.core:
         raise ConfigError("--resume 需要 --core")
     if args.core and not all(
-        _module_available(name) for name in ("httpx", "PIL", "pypdf", "quire.core_manga")
+        _module_available(name)
+        for name in ("httpx", "PIL", "pypdf", "websockets", "quire.core_manga")
     ):
         raise UnsupportedError(
             "缺少 core 下载能力", hint="安装 quire-local[core]；micro 不包含断点恢复"
@@ -131,6 +130,7 @@ def cmd_manga(args: argparse.Namespace) -> int:
                     progress=progress,
                     compression=compression,
                     formats=formats,
+                    render=render,
                 )
             )
         else:
@@ -280,9 +280,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     info("")
     info("能力档位")
     info("  micro：静态网页 / 本地 JPEG、PNG → 无损 PDF，零第三方运行时依赖")
-    if all(_module_available(name) for name in ("httpx", "PIL", "pypdf", "quire.core_manga")):
-        info("  core：静态漫画下载恢复、转码切页、体积目标、PDF/CBZ/ZIP")
-    info("  动态渲染、小说、OCR 和应用界面尚未实现")
+    if all(
+        _module_available(name)
+        for name in ("httpx", "PIL", "pypdf", "websockets", "quire.core_manga")
+    ):
+        info("  core：漫画下载恢复、转码切页、PDF/CBZ/ZIP；--render使用系统Chrome加载动态页面")
+    info("  小说、OCR 和应用界面尚未实现")
 
     info("")
     info("数据目录")

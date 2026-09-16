@@ -3,15 +3,26 @@
 from __future__ import annotations
 
 import argparse
+from typing import TYPE_CHECKING
 
 from .errors import ConfigError
 from .image.options import PRESETS, CompressionOptions, parse_size
+
+if TYPE_CHECKING:
+    from .fetch.browser import RenderOptions
 
 
 def add_manga_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("url")
     parser.add_argument("--core", action="store_true", help="使用 core 连接池、压缩和本地账本")
     parser.add_argument("--resume", action="store_true", help="校验并复用 core 任务已完成图片")
+    parser.add_argument(
+        "--render", action="store_true", help="core使用系统Chrome加载动态页面并滚动"
+    )
+    parser.add_argument("--chrome", help="Chrome可执行文件路径，需要--render")
+    parser.add_argument("--render-timeout", type=float, default=None, help="渲染总期限秒，默认30")
+    parser.add_argument("--max-scrolls", type=int, default=None, help="滚动上限，默认100")
+    parser.add_argument("--render-wait", type=float, default=None, help="到底后的稳定等待秒，默认1")
     parser.add_argument("-o", "--output", help="输出 PDF 路径")
     parser.add_argument("--selector", help="图片区域选择器，如 'div.reader img'")
     parser.add_argument("--order", default="auto", choices=["auto", "dom", "asc", "desc"])
@@ -54,3 +65,36 @@ def compression_options(args: argparse.Namespace) -> CompressionOptions | None:
     if args.target_size is not None:
         target = parse_size(args.target_size)
     return CompressionOptions(preset, target, not args.no_bitonal, not args.no_split_tall)
+
+
+def render_options(args: argparse.Namespace) -> RenderOptions | None:
+    requested = (
+        args.chrome is not None
+        or args.render_timeout is not None
+        or args.max_scrolls is not None
+        or args.render_wait is not None
+    )
+    if not args.render:
+        if requested:
+            raise ConfigError("浏览器参数需要--render")
+        return None
+    if not args.core:
+        raise ConfigError("--render需要--core")
+    from .errors import UnsupportedError
+
+    try:
+        from .fetch.browser import RenderOptions
+        from .fetch.browser_process import find_chrome
+    except ImportError:
+        raise UnsupportedError("缺少动态采集能力", hint="安装quire-local[core]") from None
+    executable = find_chrome(args.chrome)
+    if executable is None:
+        raise UnsupportedError(
+            "动态采集需要系统Chrome/Edge/Brave/Chromium", hint="安装Chrome或指定--chrome"
+        )
+    return RenderOptions(
+        executable=executable,
+        timeout=30 if args.render_timeout is None else args.render_timeout,
+        max_scrolls=100 if args.max_scrolls is None else args.max_scrolls,
+        settle=1 if args.render_wait is None else args.render_wait,
+    )

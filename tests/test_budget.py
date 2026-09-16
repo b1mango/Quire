@@ -24,6 +24,7 @@ def test_micro_budget_reproducibility_and_isolated_execution(tmp_path):
         assert "quire/fetch/session.py" not in zipped.namelist()
         assert "quire/fetch/decoding.py" not in zipped.namelist()
         assert "quire/fetch/async_policy.py" not in zipped.namelist()
+        assert not any(name.startswith("quire/fetch/browser") for name in zipped.namelist())
         assert "quire/assemble/pdf.py" not in zipped.namelist()
         assert "quire/assemble/archive.py" not in zipped.namelist()
         assert "quire/core_pages.py" not in zipped.namelist()
