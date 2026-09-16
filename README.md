@@ -1,33 +1,37 @@
-# 卷帙 / Quire
+<p align="center">
+  <img src="docs/assets/quire.svg" width="88" height="88" alt="Quire 图标">
+</p>
 
-一款面向 macOS 的本地漫画与小说采集工具，把网页内容整理成方便离线阅读的文件，数据保存在本机。
+<h1 align="center">卷帙 / Quire</h1>
 
-目前支持公开漫画网页和本地图片，漫画可导出为 PDF、CBZ 或图片 ZIP。小说采集、桌面界面和安装包正在开发中，当前通过命令行使用。
+<p align="center">把漫画与小说，收进自己的书库。</p>
 
-## 开始使用
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS-252525?style=flat-square" alt="平台：macOS">
+  <img src="https://img.shields.io/badge/status-in_development-e3aa43?style=flat-square" alt="状态：开发中">
+  <img src="https://img.shields.io/badge/storage-local-397565?style=flat-square" alt="数据本地存储">
+  <a href="#license"><img src="https://img.shields.io/badge/license-pending-777777?style=flat-square" alt="许可证：待定"></a>
+</p>
 
-需要 Python 3.12 或更新版本。在终端中执行：
+<p align="center"><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
 
-```sh
-git clone https://github.com/b1mango/Quire.git
-cd Quire
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install '.[core]'
-```
+## 简介
 
-将漫画网页保存为 PDF：
+卷帙是一款正在开发的 macOS 本地桌面工具，用于采集漫画与小说，整理成方便离线阅读的文件。以简洁的图形界面完成采集与导出，书籍和数据保存在自己的电脑上。
 
-```sh
-quire manga '漫画网页地址'
-```
+## 功能
 
-将本地图片整理为 PDF：
+- **漫画采集**：支持公开网页、动态加载的图片和本地图片整理。
+- **多格式导出**：漫画可保存为 PDF、CBZ 或图片 ZIP。
+- **阅读整理**：图片压缩、长图切页、缺页占位与中断恢复。
+- **后续支持**：小说 TXT / EPUB / PDF、本地 OCR、书库与四种界面主题。
 
-```sh
-quire local '图片文件夹路径'
-```
+## 获取应用
 
-替换示例中的地址或路径后运行，完成时会显示文件保存位置。
+目前已完成漫画采集核心，桌面界面与 `.dmg` 安装包尚未发布。桌面版发布后，可从 [Releases](https://github.com/b1mango/Quire/releases) 下载，在应用界面中添加链接或图片并导出。
 
-[使用示例与测试站点](测试站点.md) · [项目进度](项目进度.md)
+<a id="license"></a>
+
+## 许可证
+
+许可证待确定，确定后将在仓库中公布。
