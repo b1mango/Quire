@@ -44,6 +44,12 @@ try:  # micro 分发不包含小说命令，导入失败即视为没有该子命
 except ImportError:  # pragma: no cover - 只在缺少 core 模块的分发里发生
     _cmd_novel = None
 
+_cmd_ui: Callable[[argparse.Namespace], int] | None
+try:  # micro 分发不包含 Web UI
+    from .cli_ui import cmd_ui as _cmd_ui
+except ImportError:  # pragma: no cover - 只在缺少 core 模块的分发里发生
+    _cmd_ui = None
+
 
 def cmd_manga(args: argparse.Namespace) -> int:
     compression = compression_options(args)
@@ -279,7 +285,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if all(_module_available(name) for name in ("httpx", "websockets", "quire.core_novel")):
         info("  core：小说目录、正文抽取、EPUB/TXT/PDF，章级断点恢复（quire novel）")
         info("        图片正文本地 OCR：tesseract 或内置 PP-OCRv4（--ocr，模型按需下载）")
-    info("  应用界面尚未实现（M6）")
+    if _cmd_ui is not None and all(
+        _module_available(name)
+        for name in ("httpx", "PIL", "pypdf", "websockets", "quire.core_manga")
+    ):
+        info("  Web 界面：quire ui（回环地址 + 随机令牌）")
 
     info("")
     info("数据目录")
@@ -308,6 +318,12 @@ def build_parser() -> argparse.ArgumentParser:
         n = sub.add_parser("novel", help="抓一本小说并导出 EPUB / TXT / PDF")
         add_novel_options(n)
         n.set_defaults(func=_cmd_novel)
+
+    if _cmd_ui is not None:
+        u = sub.add_parser("ui", help="启动本地 Web 界面（回环地址 + 随机令牌）")
+        u.add_argument("--port", type=int, default=0, help="监听端口，默认随机")
+        u.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+        u.set_defaults(func=_cmd_ui)
 
     i = sub.add_parser("inspect", help="侦察页面结构（写站点规则用）")
     i.add_argument("url")

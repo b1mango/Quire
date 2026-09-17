@@ -77,6 +77,10 @@ def test_layer_boundaries_and_module_sizes():
                 and target.startswith("quire.fetch")
             ), (module, target)
             assert not (
+                layer in {"fetch", "parse", "image", "assemble", "utils", "store", "text", "ocr"}
+                and target.startswith("quire.server")
+            ), (module, target)
+            assert not (
                 layer == "fetch"
                 and target.startswith(("quire.parse", "quire.image", "quire.assemble"))
             ), (module, target)

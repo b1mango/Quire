@@ -30,6 +30,8 @@ prefixes = (
     "src/quire/export_receipt.py",
     "src/quire/core_pages.py",
     "src/quire/export_options.py",
+    "src/quire/server/",
+    "src/quire/cli_ui.py",
 )
 failed = []
 for path, details in report["files"].items():

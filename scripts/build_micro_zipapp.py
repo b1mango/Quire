@@ -19,6 +19,7 @@ def build(destination: Path) -> int:
         for p in sorted((source / "quire").rglob("*.py"))
         if "store" not in p.relative_to(source / "quire").parts
         and "ocr" not in p.relative_to(source / "quire").parts
+        and "server" not in p.relative_to(source / "quire").parts
         and p.relative_to(source).as_posix()
         not in {
             "quire/fetch/session.py",

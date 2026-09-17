@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="paper" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>卷帙 Quire</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<header class="toolbar">
+  <div class="brand"><b>卷帙</b><span>Quire</span></div>
+  <div class="spacer"></div>
+  <div class="seg" id="themeSeg" role="group" aria-label="UI 主题">
+    <button data-preset="paper:light" aria-pressed="true">纸感 · 浅</button>
+    <button data-preset="darkroom:light" aria-pressed="false">暗房 · 浅</button>
+    <button data-preset="darkroom:dark" aria-pressed="false">暗房 · 深</button>
+    <button data-preset="swiss:light" aria-pressed="false">瑞士网格 · 浅</button>
+  </div>
+</header>
+
+<main>
+  <div class="window">
+    <div class="titlebar">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="tb-title" id="tbTitle">卷帙 — 新建任务</div>
+    </div>
+    <div class="win-body">
+      <aside class="sidebar">
+        <button class="side-item" data-view-btn="new" aria-current="true">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3.5v9M3.5 8h9"/></svg>新建任务
+        </button>
+        <button class="side-item" data-view-btn="run" aria-current="false">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.5 3v2.6h2.6"/></svg>进行中
+        </button>
+        <button class="side-item" data-view-btn="lib" aria-current="false">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="2.5" width="4.6" height="11"/><rect x="8.9" y="2.5" width="4.6" height="11"/></svg>书库
+        </button>
+        <button class="side-item" data-view-btn="set" aria-current="false">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 2v1.4M8 12.6V14M2 8h1.4M12.6 8H14M3.8 3.8l1 1M11.2 11.2l1 1M12.2 3.8l-1 1M4.8 11.2l-1 1"/></svg>设置
+        </button>
+        <div class="side-foot" id="sideFoot"></div>
+      </aside>
+
+      <section class="content">
+
+        <!-- ============ 新建任务 ============ -->
+        <div class="view" data-view="new">
+          <div class="vhead">
+            <h1>新建任务</h1>
+            <p class="sub">粘贴漫画或小说的目录页链接</p>
+          </div>
+
+          <div class="field">
+            <label for="urlInput">链接</label>
+            <div class="input-row">
+              <input class="input" id="urlInput" placeholder="https://" spellcheck="false" autocomplete="off">
+              <button class="btn ghost" id="pasteBtn" type="button">粘贴</button>
+            </div>
+            <div class="hint" id="probeHint" hidden></div>
+          </div>
+
+          <div class="field" id="kindField" hidden>
+            <label>类型</label>
+            <div class="segmented" id="kindSeg">
+              <button data-kind="manga" aria-pressed="true">漫画</button>
+              <button data-kind="novel" aria-pressed="false">小说</button>
+            </div>
+          </div>
+
+          <div class="field" id="formatField" hidden>
+            <label>输出格式</label>
+            <div class="chips" id="formatChips"></div>
+            <div class="hint warn-hint" id="chromeHint" hidden>转 PDF 需要 Chrome，这台机器上没找到。安装 Chrome 后再试。</div>
+          </div>
+
+          <div class="field" id="compressField" hidden>
+            <label>画质与体积</label>
+            <div class="segmented" id="compressSeg">
+              <button data-compress="lossless" aria-pressed="false">无损</button>
+              <button data-compress="archive" aria-pressed="false">归档</button>
+              <button data-compress="high" aria-pressed="false">高</button>
+              <button data-compress="balanced" aria-pressed="true">均衡</button>
+              <button data-compress="small" aria-pressed="false">小</button>
+              <button data-compress="tiny" aria-pressed="false">极小</button>
+            </div>
+            <div class="hint">
+              目标体积 <input class="input sm nofx" id="targetInput" value="50" inputmode="numeric"> MB
+              <span style="color:var(--faint)">·</span> 黑白页自动转 1-bit
+            </div>
+          </div>
+
+          <div class="field" id="ocrField" hidden>
+            <label>图片正文 OCR</label>
+            <div class="segmented" id="ocrSeg">
+              <button data-ocr="auto" aria-pressed="true">自动</button>
+              <button data-ocr="always" aria-pressed="false">强制</button>
+              <button data-ocr="never" aria-pressed="false">关闭</button>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn primary" id="startBtn" disabled>开始抓取</button>
+            <span class="meta" id="startMeta"></span>
+          </div>
+        </div>
+
+        <!-- ============ 进行中 ============ -->
+        <div class="view" data-view="run" hidden>
+          <div class="vhead row">
+            <div>
+              <h1 id="runTitle">准备中</h1>
+              <p class="sub" id="runSub">正在连接……</p>
+            </div>
+            <div class="actions" style="margin:0">
+              <button class="btn danger" id="cancelBtn">取消</button>
+            </div>
+          </div>
+
+          <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+
+          <div class="stats">
+            <div><span class="k">已完成</span><span class="v" id="statDone">0</span></div>
+            <div><span class="k">缺页</span><span class="v warn" id="statFailed">0</span></div>
+            <div><span class="k">总数</span><span class="v" id="statTotal">—</span></div>
+            <div><span class="k">用时</span><span class="v" id="statElapsed">0.0 s</span></div>
+          </div>
+
+          <div class="notice warn" id="partialNote" hidden></div>
+          <div class="notice error" id="failedNote" hidden></div>
+          <div class="actions" id="runDoneActions" hidden>
+            <button class="btn primary" id="openBookBtn">打开成品</button>
+            <button class="btn ghost" id="goLibBtn">去书库看看</button>
+            <button class="btn ghost" id="retryBtn" hidden>重试</button>
+          </div>
+
+          <div class="stream" id="stream"></div>
+          <div class="empty-note" id="runEmpty">缩略图会随下载逐页出现在这里。</div>
+        </div>
+
+        <!-- ============ 书库 ============ -->
+        <div class="view" data-view="lib" hidden>
+          <div class="lib-head">
+            <div>
+              <h1>书库</h1>
+              <p class="sub" id="libSub"></p>
+            </div>
+            <input class="input nofx" id="searchInput" placeholder="搜索书名或作者">
+          </div>
+          <div class="book-actions" id="bookActions" hidden>
+            <b id="bookActionsTitle"></b>
+            <button class="btn primary" id="bookOpenBtn">打开</button>
+            <button class="btn danger" id="bookDeleteBtn">删除</button>
+            <button class="btn ghost" id="bookActionsClose">收起</button>
+          </div>
+          <div class="grid" id="grid"></div>
+          <div class="empty-state" id="libEmpty" hidden>
+            <p>还没有书。贴一个链接试试。</p>
+            <button class="btn primary" id="emptyNewBtn">新建任务</button>
+          </div>
+        </div>
+
+        <!-- ============ 设置 ============ -->
+        <div class="view" data-view="set" hidden>
+          <div class="vhead">
+            <h1>设置</h1>
+            <p class="sub">数据全部保存在本机</p>
+          </div>
+          <div class="field">
+            <label for="setOutput">输出目录</label>
+            <input class="input" id="setOutput" spellcheck="false">
+          </div>
+          <div class="field">
+            <label>默认压缩档</label>
+            <div class="segmented" id="setCompressSeg">
+              <button data-compress="archive" aria-pressed="false">归档</button>
+              <button data-compress="balanced" aria-pressed="true">均衡</button>
+              <button data-compress="small" aria-pressed="false">小</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>并发与限速</label>
+            <div class="hint">
+              并发 <input class="input sm nofx" id="setConcurrency" inputmode="numeric">
+              每站限速 <input class="input sm nofx" id="setRate" inputmode="decimal"> req/s
+            </div>
+          </div>
+          <div class="field">
+            <label>图片正文 OCR</label>
+            <div class="segmented" id="setOcrSeg">
+              <button data-ocr="auto" aria-pressed="true">自动</button>
+              <button data-ocr="always" aria-pressed="false">强制</button>
+              <button data-ocr="never" aria-pressed="false">关闭</button>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" id="saveSettingsBtn">保存设置</button>
+            <span class="meta" id="settingsMeta"></span>
+          </div>
+          <div class="field" style="margin-top:30px">
+            <label>运行环境</label>
+            <dl class="doctor" id="doctorList"></dl>
+          </div>
+        </div>
+
+      </section>
+    </div>
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

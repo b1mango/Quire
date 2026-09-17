@@ -21,6 +21,7 @@ def test_micro_budget_reproducibility_and_isolated_execution(tmp_path):
     with zipfile.ZipFile(archive) as zipped:
         assert all(name.endswith(".py") for name in zipped.namelist())
         assert not any(name.startswith("quire/store/") for name in zipped.namelist())
+        assert not any(name.startswith("quire/server/") for name in zipped.namelist())
         assert "quire/fetch/session.py" not in zipped.namelist()
         assert "quire/fetch/decoding.py" not in zipped.namelist()
         assert "quire/fetch/async_policy.py" not in zipped.namelist()
@@ -56,6 +57,8 @@ def test_runtime_and_frontend_budget():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
     assert project["project"]["dependencies"] == []
     assert sum(p.stat().st_size for p in (ROOT / "ui-preview").rglob("*") if p.is_file()) < 200_000
+    web = ROOT / "src" / "quire" / "server" / "web"
+    assert sum(p.stat().st_size for p in web.rglob("*") if p.is_file()) < 200_000
 
 
 def test_current_core_dependency_budget():
