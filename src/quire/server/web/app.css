@@ -101,8 +101,10 @@ body{
 main{flex:1;display:flex;flex-direction:column}
 .win-body{flex:1;display:grid;grid-template-columns:220px 1fr;min-height:600px}
 
-/* 侧栏 */
+/* 侧栏：sticky 固定在 sticky 顶栏（实测高 62px）之下，内容区滚动时不跟随 */
 .sidebar{
+  position:sticky; top:62px; align-self:start;
+  max-height:calc(100vh - 62px); overflow-y:auto;
   border-right:1px solid var(--border);padding:14px 10px;
   background:var(--surface-2);display:flex;flex-direction:column;gap:2px;
 }
@@ -126,7 +128,7 @@ main{flex:1;display:flex;flex-direction:column}
 /* 窄窗口：侧栏收成顶部横排 */
 @media(max-width:720px){
   .win-body{grid-template-columns:1fr}
-  .sidebar{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--border)}
+  .sidebar{position:static;max-height:none;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--border)}
   .side-item{width:auto}
   .side-foot{display:none}
 }
