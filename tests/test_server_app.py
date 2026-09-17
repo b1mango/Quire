@@ -449,6 +449,39 @@ def test_malformed_bodies_and_routes(server):
     assert status == 200
 
 
+def test_job_chapter_range(server):
+    srv, _ = server
+    base = {"kind": "manga", "url": "http://x.c", "title": "t", "formats": ["pdf"]}
+    # 自定义范围与预选卷号互斥（按范围重新分卷）
+    status, error = _request(srv, "POST", "/api/jobs", {**base, "volumes": [1], "chapter_first": 2})
+    assert status == 400 and "重新分卷" in error["error"]
+    status, error = _request(srv, "POST", "/api/jobs", {**base, "volumes": [2], "chapter_last": 9})
+    assert status == 400 and "重新分卷" in error["error"]
+    # 单章模式不能选范围
+    status, error = _request(
+        srv, "POST", "/api/jobs", {**base, "capture_mode": "single", "chapter_last": 5}
+    )
+    assert status == 400 and "单章" in error["error"]
+    # 非法范围
+    for bad in (
+        {"chapter_first": 0},
+        {"chapter_last": 20001},
+        {"chapter_first": 5, "chapter_last": 2},
+    ):
+        status, _ = _request(srv, "POST", "/api/jobs", {**base, **bad})
+        assert status == 400, bad
+    # 合法范围透传到 JobSpec；快照带 chapters 字段
+    status, job = _request(
+        srv, "POST", "/api/jobs", {**base, "chapter_first": 2, "chapter_last": 9}
+    )
+    assert status == 201
+    spec = srv.manager.get(job["id"]).spec
+    assert (spec.chapter_first, spec.chapter_last) == (2, 9)
+    done = _wait_job(srv, job["id"])
+    assert done["status"] == "done"
+    assert done["chapters"] == []
+
+
 def test_novel_pdf_requires_chrome(server, monkeypatch):
     srv, _ = server
     import quire.server.endpoints as endpoints

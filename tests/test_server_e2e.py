@@ -190,6 +190,44 @@ def test_novel_full_flow(ui):
         assert opened == [epub]
 
 
+def test_novel_chapter_range_flow(ui):
+    """选目录范围的端到端：probe 返回章节标题，快照与 SSE 带已落定章节。"""
+    server, _ = ui
+    with novel_site() as site:
+        status, probe = _request(server, "POST", "/api/probe", {"url": f"{site.url}/book/"})
+        assert status == 200
+        assert [c["index"] for c in probe["chapters"]] == [1, 2, 3, 4, 5]
+        assert probe["chapters"][0]["title"] == "第一章 起点"
+
+        status, job = _request(
+            server,
+            "POST",
+            "/api/jobs",
+            {
+                "kind": "novel",
+                "url": probe["url"],
+                "title": probe["title"],
+                "formats": ["txt"],
+                "ocr": "never",
+                "chapter_first": 2,
+                "chapter_last": 3,
+            },
+        )
+        assert status == 201
+        done = _wait_job(server, job["id"])
+        assert done["status"] == "done"  # 第 2、3 章都正常，不含 404 的第 4 章
+        chapters = done["chapters"]
+        assert sorted(c["title"] for c in chapters) == ["第三章 岔路", "第二章 分页"]
+        assert all(c["status"] == "done" and not c["reused"] for c in chapters)
+
+        raw = _sse_events(server, job["id"])
+        assert "event: chapter" in raw
+
+        txt = (server.data_root / "library" / f"{probe['title']}.txt").read_text("utf-8")
+        assert "第2章第1页第1段" in txt
+        assert "第1章第1页第1段" not in txt
+
+
 def test_probe_rejects_page_without_content(ui):
     server, _ = ui
     with novel_site() as site:

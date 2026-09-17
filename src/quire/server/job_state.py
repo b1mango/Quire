@@ -14,6 +14,7 @@ from ..errors import ConfigError
 from ..export_options import validate_formats
 from ..image.options import PRESETS
 from ..novel_options import validate_novel_formats
+from ..parse.chapter_range import validate_range
 from ..parse.series import split_spec
 from ..store.models import JsonValue
 from ..utils.naming import safe_filename
@@ -34,12 +35,21 @@ class JobSpec:
     volumes: tuple[int, ...] = ()
     capture_mode: str = "auto"
     render: bool = False
+    chapter_first: int = 1
+    chapter_last: int = 0
 
     def __post_init__(self) -> None:
         from .probe import validate_capture_mode, validate_task_url
 
         validate_task_url(self.url)
         validate_capture_mode(self.kind, self.capture_mode)
+        validate_range(self.chapter_first, self.chapter_last)
+        if self.capture_mode == "single" and (
+            self.chapter_first != 1 or self.chapter_last not in (0, 1)
+        ):
+            raise ConfigError("单章模式不能选择目录范围")
+        if self.volumes and (self.chapter_first != 1 or self.chapter_last != 0):
+            raise ConfigError("自定义章节范围按范围重新分卷，不能同时预选原目录卷号")
         if type(self.render) is not bool:
             raise ConfigError("动态页面设置须为布尔值")
         if self.series and self.capture_mode == "single":
@@ -99,6 +109,7 @@ class Job:
         self.book_id: str | None = None
         self.condition = threading.Condition()
         self._events: list[JobEvent] = []
+        self._chapters: dict[str, dict[str, JsonValue]] = {}
         self._seq = itertools.count(1)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task[Any] | None = None
@@ -111,6 +122,14 @@ class Job:
             if len(self._events) > 1000:
                 del self._events[:200]
             self.condition.notify_all()
+
+    def record_chapter(self, chapter: dict[str, JsonValue]) -> None:
+        with self.condition:
+            key = str(chapter["id"])
+            if self._chapters.get(key) == chapter:
+                return
+            self._chapters[key] = dict(chapter)
+            self.emit("chapter", dict(chapter))
 
     def attach(self, loop: asyncio.AbstractEventLoop, task: asyncio.Task[Any]) -> None:
         with self.condition:
@@ -158,4 +177,5 @@ class Job:
                 "hint": self.hint,
                 "book_id": self.book_id,
                 "created_at": self.created_at,
+                "chapters": [dict(chapter) for chapter in self._chapters.values()],
             }

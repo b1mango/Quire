@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -47,6 +48,7 @@ async def run_core_manga(
     resume: bool = False,
     fetcher: AsyncFetcher | None = None,
     progress: ProgressSink | None = None,
+    on_task: Callable[[str], None] | None = None,
     compression: CompressionOptions | None = None,
     formats: tuple[str, ...] = ("pdf",),
     render: RenderOptions | None = None,
@@ -102,6 +104,8 @@ async def run_core_manga(
                     raise LedgerError("Export receipt does not match the current task")
                 reused = await recover_export(ledger.root, receipt, ledger.snapshot(task_id), opts)
                 if reused is not None:
+                    if on_task:
+                        on_task(task_id)
                     return replace(reused, elapsed_s=time.monotonic() - started)
             before = preflight(
                 output,
@@ -111,6 +115,8 @@ async def run_core_manga(
             )
             if resume:
                 ledger.recover(task_id)
+            if on_task:
+                on_task(task_id)
             downloads = await download_images(
                 client,
                 ledger,

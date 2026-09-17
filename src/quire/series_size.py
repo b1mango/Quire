@@ -32,6 +32,7 @@ async def export_by_size(
     client: AsyncFetcher,
     progress: ProgressSink | None,
     on_volume: Callable[[MangaResult], None] | None,
+    on_task: Callable[[str], None] | None = None,
 ) -> tuple[MangaResult, ...]:
     candidates = list(plan.candidates)
     identity = _identity_options(opts, candidates)
@@ -45,6 +46,8 @@ async def export_by_size(
     with Ledger(root) as ledger:
         task_id = ledger.create_task(url, identity, plan.specs)
         ledger.recover(task_id)
+        if on_task:
+            on_task(task_id)
         downloaded = await download_images(
             client,
             ledger,

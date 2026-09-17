@@ -17,16 +17,18 @@
   --mono:ui-monospace,"SF Mono",Menlo,monospace;
   --track:.02em; --ease:cubic-bezier(.2,.8,.2,1);
 }
-/* ---------- 暗房 Darkroom · 深（主场） ---------- */
+/* ---------- 暗房 Darkroom · 深（主场） ----------
+   冷调深灰底色（非纯黑），surface 三层明度均匀递进；
+   accent / ok / warn 同明度同饱和体系，参考 GitHub Dark / Linear 的克制层级。 */
 [data-theme="darkroom"][data-mode="dark"]{
-  --bg:#0B0B0D; --surface:#151518; --surface-2:#1D1D22; --surface-3:#26262D;
-  --text:#ECECEF; --muted:#8B8B94; --faint:#5C5C64;
-  --border:#25252B; --border-strong:#34343D;
-  --accent:#4C8DFF; --accent-soft:#16233C; --accent-fg:#FFFFFF;
-  --ok:#3FBF7F; --warn:#E0A33A;
+  --bg:#0F1216; --surface:#161A20; --surface-2:#1C2129; --surface-3:#252B35;
+  --text:#E8EAF0; --muted:#9AA1AE; --faint:#666D7A;
+  --border:#272D38; --border-strong:#39414F;
+  --accent:#4F8DF5; --accent-soft:#1A2A47; --accent-fg:#FFFFFF;
+  --ok:#45B981; --warn:#D9A03C;
   --radius:10px; --radius-sm:7px;
-  --shadow:0 1px 0 rgba(255,255,255,.03) inset, 0 16px 40px rgba(0,0,0,.55);
-  --shadow-sm:0 1px 0 rgba(255,255,255,.04) inset;
+  --shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 16px 40px rgba(0,0,0,.5);
+  --shadow-sm:0 1px 0 rgba(255,255,255,.05) inset;
   --fd:var(--fb); --fb:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
   --mono:ui-monospace,"SF Mono",Menlo,monospace;
   --track:-.01em; --ease:cubic-bezier(.2,.8,.2,1);
@@ -300,6 +302,29 @@ html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--faint) 45%,tra
 .command-menu > button { display:block; width:100%; margin-top:8px; text-align:left; }
 .help-panel { margin-bottom:24px; color:var(--muted); font-size:13px; line-height:1.8; }
 .help-panel pre { overflow:auto; }
+
+/* 章节范围与已落定章节 */
+.range-row{display:flex;gap:10px;align-items:center}
+.range-row .input{flex:1;min-width:0;text-overflow:ellipsis}
+.range-sep{color:var(--faint);font-size:12.5px;flex:none}
+.chapters{margin:2px 0 20px}
+.chapters-head{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+.chapters-head .k{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.13em;font-weight:600}
+.chapters-head .meta{font-size:12px;color:var(--muted)}
+.chapter-list{
+  max-height:264px;overflow:auto;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);
+}
+.chapter-row{
+  display:flex;align-items:center;gap:10px;padding:7px 12px;
+  font-size:12.5px;border-top:1px solid var(--border);
+}
+.chapter-row:first-child{border-top:0}
+.cdot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--ok)}
+.cdot.failed{background:var(--warn)}
+.cdot.reused{background:var(--faint)}
+.chapter-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chapter-meta{flex:none;font-family:var(--mono);font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
 
 .hint.is-loading{display:flex;align-items:center;gap:8px}
 .hint.is-loading::before{content:"";width:10px;height:10px;flex:none;border:1.5px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:probe-spin .8s linear infinite}

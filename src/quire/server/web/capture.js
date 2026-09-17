@@ -43,6 +43,8 @@ function probeUrl(url) {
     $("probeHint").classList.remove("is-loading");
     state.probe = result;
     renderVolumes(result);
+    renderRange(result);
+    syncSeriesAvailability();
     state.kind = result.kind;
     setSeg($("kindSeg"), "kind", result.kind);
     renderFormatChips();
@@ -72,7 +74,6 @@ function updateKindFields() {
 }
 
 function renderVolumes(result) {
-  $("seriesField").hidden = !result.series;
   $("volumeList").textContent = "";
   if (!result.series || $("splitMode").value.startsWith("size")) return;
   for (const volume of result.volumes) {
@@ -89,6 +90,8 @@ function startJob() {
   const formats = chosenFormats();
   if (!formats.length) { $("startMeta").textContent = "至少选一种格式"; return; }
   const compress = segValue($("compressSeg"), "compress") || "balanced";
+  const range = chapterRangeSpec();
+  const customRange = range.chapter_first !== 1 || range.chapter_last !== 0;
   const spec = {
     kind: state.kind,
     capture_mode: state.captureMode,
@@ -99,9 +102,13 @@ function startJob() {
     compress,
     target_mb: parseInt($("targetInput").value, 10) || 50,
     ocr: segValue($("ocrSeg"), "ocr") || "auto",
-    series: Boolean(state.probe && state.probe.series && state.kind === "manga"),
+    series: Boolean(!customRange && state.probe && state.probe.series && state.kind === "manga"),
     split_by: $("splitMode").value,
-    volumes: [...$("volumeList").querySelectorAll("input:checked")].map(x => Number(x.value)),
+    volumes: customRange
+      ? []
+      : [...$("volumeList").querySelectorAll("input:checked")].map(x => Number(x.value)),
+    chapter_first: range.chapter_first,
+    chapter_last: range.chapter_last,
   };
   if (spec.series && !spec.split_by.startsWith("size") && !spec.volumes.length) {
     $("startMeta").textContent = "至少选择一卷"; return;
@@ -120,6 +127,7 @@ function startJob() {
 function resetProbe() {
   state.probeRequest = Symbol(); state.probe = null;
   $("seriesField").hidden = true;
+  $("rangeField").hidden = true;
   $("startBtn").disabled = true;
   $("probeHint").hidden = true;
   $("probeHint").classList.remove("is-loading");

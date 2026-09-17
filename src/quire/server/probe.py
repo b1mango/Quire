@@ -28,6 +28,7 @@ class ProbeResult:
     volumes: tuple[Volume, ...] = ()
     series: bool = False
     render: bool = False
+    chapters: tuple[str, ...] = ()
 
 
 def validate_task_url(url: str) -> str:
@@ -106,10 +107,20 @@ def _inspect(
                 volume_selector=rule.volume_selector if rule else None,
                 order=rule.chapter_order if rule else "auto",
             )
-            return ProbeResult("manga", title, len(links), page.url, volumes, True)
+            return ProbeResult(
+                "manga",
+                title,
+                len(links),
+                page.url,
+                volumes,
+                True,
+                chapters=tuple(c.title for v in volumes for c in v.chapters),
+            )
         if len(links) > 20000:
             raise ParseError("目录超过 20000 章上限", hint="请拆分目录后再抓取。")
-        return ProbeResult("novel", title, len(links), page.url)
+        return ProbeResult(
+            "novel", title, len(links), page.url, chapters=tuple(c.title for c in links)
+        )
     if mode == "catalogue":
         raise ParseError("这个链接没找到章节列表", hint="请检查目录地址，或切换到单章抓取。")
     if rule:

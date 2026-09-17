@@ -85,6 +85,7 @@ def probe(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
         "chrome": find_chrome() is not None,
         "series": result.series,
         "render": result.render,
+        "chapters": [{"index": i, "title": title} for i, title in enumerate(result.chapters, 1)],
         "volumes": [
             {
                 "index": v.index,
@@ -130,6 +131,8 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
         volumes=_volumes(payload.get("volumes", [])),
         capture_mode=payload.get("capture_mode", "auto"),
         render=payload.get("render", False),
+        chapter_first=payload.get("chapter_first", 1),
+        chapter_last=payload.get("chapter_last", 0),
     )
     job = ctx.manager.submit(spec, settings_mod.load(ctx.settings_path, ctx.data_root))
     return dict(job.snapshot())

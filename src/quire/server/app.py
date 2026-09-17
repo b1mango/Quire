@@ -33,6 +33,7 @@ _STATIC = {
     "app.css": "text/css; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
     "capture.js": "text/javascript; charset=utf-8",
+    "chapters.js": "text/javascript; charset=utf-8",
 }
 
 

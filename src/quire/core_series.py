@@ -72,6 +72,7 @@ async def run_series(
     render: RenderOptions | None = None,
     progress: ProgressSink | None = None,
     on_volume: Callable[[MangaResult], None] | None = None,
+    on_task: Callable[[str], None] | None = None,
 ) -> SeriesResult:
     mode, _ = split_spec(split_by)
     opts = options or MangaOptions()
@@ -139,6 +140,7 @@ async def run_series(
                     client,
                     progress,
                     on_volume,
+                    on_task,
                 )
                 results.extend(sized)
                 break
@@ -154,6 +156,7 @@ async def run_series(
                 shared_fetcher=True,
                 plan=plan,
                 progress=progress,
+                on_task=on_task,
             )
             results.append(result)
             if on_volume:

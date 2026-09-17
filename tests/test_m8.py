@@ -13,7 +13,7 @@ from pypdf import PdfReader
 from quire.cli import main
 from quire.core_reassemble import run_reassemble
 from quire.core_series import run_series
-from quire.errors import ConfigError, LedgerError, NoChaptersError
+from quire.errors import ConfigError, LedgerError
 from quire.fetch.session import AsyncFetcher
 from quire.image.options import CompressionOptions
 from quire.models import MangaOptions, NovelOptions
@@ -261,7 +261,8 @@ def test_volume_detection_fallback_order_range():
             plan_volumes(doc, URL, first=first, last=last)
     with pytest.raises(ConfigError):
         plan_volumes(doc, URL, fallback_chapters=0)
-    with pytest.raises(NoChaptersError):
+    # 范围超出目录是参数错误（fail-fast），不是解析失败
+    with pytest.raises(ConfigError, match="超出当前目录"):
         plan_volumes(doc, URL, first=100)
 
 

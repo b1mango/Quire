@@ -102,6 +102,16 @@
             </div>
           </div>
 
+          <div class="field" id="rangeField" hidden>
+            <label>章节范围</label>
+            <div class="range-row">
+              <select class="input nofx" id="rangeFirst" aria-label="起始章节"></select>
+              <span class="range-sep">至</span>
+              <select class="input nofx" id="rangeLast" aria-label="结束章节"></select>
+            </div>
+            <p class="hint" id="rangeSummary"></p>
+          </div>
+
           <div class="field" id="seriesField" hidden>
             <label for="splitMode">分卷方式</label>
             <div class="hint">
@@ -141,6 +151,14 @@
             <div><span class="k">缺页</span><span class="v warn" id="statFailed">0</span></div>
             <div><span class="k">总数</span><span class="v" id="statTotal">—</span></div>
             <div><span class="k">用时</span><span class="v" id="statElapsed">0.0 s</span></div>
+          </div>
+
+          <div class="chapters" id="chapterPanel" hidden>
+            <div class="chapters-head">
+              <span class="k">章节进度</span>
+              <span class="meta" id="chapterMeta"></span>
+            </div>
+            <div class="chapter-list" id="chapterList"></div>
           </div>
 
           <div class="notice warn" id="partialNote" hidden></div>
@@ -242,5 +260,6 @@ quire manga URL --core --site example.com</pre>
 </dialog>
 <script src="/static/capture.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/chapters.js"></script>
 </body>
 </html>

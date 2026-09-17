@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from ..errors import ConfigError, NoChaptersError
 from ..image.options import parse_size
 from ..utils.urls import join_document_url as join_url
+from .chapter_range import select_range
 from .chapters import ChapterLink, discover_chapters
 from .minidom import Document
 
@@ -71,9 +72,9 @@ def plan_volumes(
         links = tuple(sorted(links, key=lambda link: positions.get(link.url, 0)))
     elif order not in {"auto", "asc"}:
         raise ConfigError("目录排序参数无效")
-    links = links[first - 1 : last or None]
     if not links:
         raise NoChaptersError(url)
+    links = select_range(links, first, last)
     groups: list[tuple[str, list[ChapterLink]]] = []
     warnings: tuple[str, ...] = ()
     if mode == "volume":

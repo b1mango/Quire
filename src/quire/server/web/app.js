@@ -94,10 +94,11 @@ function attachJob(job) {
   state.lastSeq = 0;
   state.startedAt = Date.now();
   resetRunView(job);
+  appendChapters(job.chapters || []);
   if (job.status === "pending" || job.status === "running") {
     const source = new EventSource(`/api/jobs/${job.id}/events?token=${encodeURIComponent(TOKEN)}`);
     state.events = source;
-    ["phase", "progress", "thumb", "volume", "done", "failed", "cancelled"].forEach((kind) =>
+    ["phase", "progress", "thumb", "volume", "chapter", "done", "failed", "cancelled"].forEach((kind) =>
       source.addEventListener(kind, (e) => {
         state.lastSeq = parseInt(e.lastEventId, 10) || state.lastSeq;
         onJobEvent(kind, JSON.parse(e.data));
@@ -112,6 +113,7 @@ function resetRunView(job) {
   $("runTitle").textContent = job.title || "准备中";
   $("runSub").textContent = "正在连接……";
   $("stream").textContent = "";
+  resetChapters();
   $("runEmpty").hidden = false;
   $("partialNote").hidden = true;
   $("failedNote").hidden = true;
@@ -152,6 +154,8 @@ function onJobEvent(kind, data) {
     pg.textContent = data.page;
     tile.append(img, pg);
     $("stream").appendChild(tile);
+  } else if (kind === "chapter") {
+    appendChapters([data]);
   } else if (kind === "done") {
     finishRunView(data.partial ? "partial" : "done", data);
   } else if (kind === "failed" || kind === "cancelled") {

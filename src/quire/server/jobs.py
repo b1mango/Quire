@@ -29,6 +29,7 @@ from ..sites.rules import resolve_rule
 from ..store import library
 from ..store.models import JsonValue
 from ..utils.naming import safe_filename
+from .chapter_stream import ChapterTracker
 from .job_state import Job, JobSpec
 from .progress import ChapterSink, ExportSink, make_thumbs, task_counts
 from .settings import UiSettings
@@ -176,6 +177,18 @@ class JobManager:
     async def _capture(
         self, job: Job, settings: UiSettings
     ) -> MangaResult | NovelResult | SeriesResult:
+        chapters = ChapterTracker(job, settings.output_path / ".quire-core")
+        watcher = asyncio.create_task(chapters.watch())
+        try:
+            return await self._run_capture(job, settings, chapters)
+        finally:
+            watcher.cancel()
+            await asyncio.gather(watcher, return_exceptions=True)
+            chapters.sweep()
+
+    async def _run_capture(
+        self, job: Job, settings: UiSettings, chapters: ChapterTracker
+    ) -> MangaResult | NovelResult | SeriesResult:
         spec = job.spec
         job.attach(asyncio.get_running_loop(), asyncio.current_task())  # type: ignore[arg-type]
         out_dir = settings.output_path
@@ -205,6 +218,8 @@ class JobManager:
             model_dir=self.data_root / "models",
             capture_mode=spec.capture_mode,
             max_chapters=20000,
+            chapter_first=spec.chapter_first,
+            chapter_last=spec.chapter_last,
         )
         render = RenderOptions(timeout=60, max_scrolls=1000) if spec.render else None
         if rule:
@@ -223,6 +238,8 @@ class JobManager:
                 spec.url,
                 base,
                 split_by=spec.split_by,
+                first=spec.chapter_first,
+                last=spec.chapter_last,
                 selected=spec.volumes,
                 rule=rule,
                 options=manga_options,
@@ -231,6 +248,7 @@ class JobManager:
                 formats=spec.formats,
                 on_volume=delivered,
                 render=render,
+                on_task=chapters.register,
             )
         poll = asyncio.create_task(self._poll(job, workdir, thumbs))
         try:
@@ -248,6 +266,7 @@ class JobManager:
                     compression=CompressionOptions(spec.compress, spec.target_bytes),
                     formats=spec.formats,
                     render=render,
+                    on_task=chapters.register,
                 )
             out = available_novel_output(
                 base.with_suffix(f".{spec.formats[0]}"), spec.formats, overwrite=False
@@ -260,6 +279,7 @@ class JobManager:
                 formats=spec.formats,
                 progress=ChapterSink(job),
                 render=render,
+                on_task=chapters.register,
             )
         finally:
             poll.cancel()

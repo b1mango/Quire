@@ -36,6 +36,7 @@ from .novel_options import novel_output_paths, validate_novel_formats
 from .ocr.base import ReviewEntry
 from .ocr.postprocess import drop_repeated_short_lines
 from .parse.article import extract_article, page_title, validate_article
+from .parse.chapter_range import select_range
 from .parse.chapters import ChapterLink, discover_chapters, looks_like_catalogue
 from .parse.minidom import Document
 from .parse.minidom import parse as parse_html
@@ -79,6 +80,7 @@ def plan_chapters(page: Response, opts: NovelOptions, warnings: Sequence[str] = 
     if truncated:
         links = links[: opts.max_chapters]
         notes.append(f"章节数超过上限 {opts.max_chapters}，只抓前 {opts.max_chapters} 章")
+    links = select_range(links, opts.chapter_first, opts.chapter_last)
     return _Plan(title, links, {}, tuple(notes), truncated)
 
 
@@ -104,6 +106,8 @@ def novel_identity(opts: NovelOptions, links: tuple[ChapterLink, ...]) -> dict[s
         "max_chapters": opts.max_chapters,
         "max_pages": opts.max_pages,
         "capture_mode": opts.capture_mode,
+        "chapter_first": opts.chapter_first,
+        "chapter_last": opts.chapter_last,
         "clean_version": opts.clean_version,
         "ocr_mode": opts.ocr_mode,
         "ocr_engine": opts.ocr_engine,
@@ -202,6 +206,7 @@ async def run_core_novel(
     render: RenderOptions | None = None,
     pdf_chrome: str | None = None,
     progress: ChapterProgress | None = None,
+    on_task: Callable[[str], None] | None = None,
 ) -> NovelResult:
     opts = options or NovelOptions()
     chosen = validate_novel_formats(formats)
@@ -263,6 +268,8 @@ async def run_core_novel(
             ledger.create_task(url, identity, specs)
             # 每次运行都校验缓存：已提交且哈希正确的章节直接复用，失败或损坏的重取。
             ledger.recover(task_id)
+            if on_task:
+                on_task(task_id)
             # A fresh directory avoids trusting old diagnostic files or links.
             html_dir = None
             if opts.keep_html:
