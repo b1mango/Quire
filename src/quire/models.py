@@ -117,7 +117,7 @@ class NovelOptions:
     chapter_selector: str | None = None
     next_selector: str | None = None
     max_chapters: int = 2000
-    max_pages: int = 20
+    max_pages: int = 50
     concurrency: int = 3
     rate: float = 4.0
     retries: int = 3

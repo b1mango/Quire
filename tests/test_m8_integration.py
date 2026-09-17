@@ -207,6 +207,30 @@ def test_pagination_removal_dedup_and_cycle():
         asyncio.run(loop())
 
 
+def test_manga_pagination_follows_beyond_twenty_pages():
+    """漫画章内分页上限 50：25 页章节完整收集（旧上限 20 会报错）。"""
+
+    def handler(request):
+        if request.url.path == "/robots.txt":
+            return answer(request, data=b"User-agent: *\nAllow: /")
+        number = int(request.url.params.get("page", "1"))
+        next_link = f'<a class="next" href="?page={number + 1}">下一页</a>' if number < 25 else ""
+        return answer(
+            request, data=(f'<main><img src="/{number}.jpg"></main>' + next_link).encode()
+        )
+
+    async def run():
+        async with AsyncFetcher(rate=10000, transport=httpx.MockTransport(handler)) as fetcher:
+            return await discover_manga(
+                fetcher, URL + "?page=1", MangaOptions(next_selector="a.next")
+            )
+
+    candidates, _ = asyncio.run(run())
+    assert [c.url for c in candidates] == [
+        f"https://series.test/{number}.jpg" for number in range(1, 26)
+    ]
+
+
 def test_sequential_large_trial_keeps_same_books(tmp_path, monkeypatch):
     from quire import core_export
 

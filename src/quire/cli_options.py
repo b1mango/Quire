@@ -116,7 +116,7 @@ def add_novel_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--content-selector", help="正文容器选择器")
     parser.add_argument("--next-selector", help="分页的下一页链接选择器")
     parser.add_argument("--max-chapters", type=int, default=2000)
-    parser.add_argument("--max-pages", type=int, default=20, help="单章最多跟随的分页数")
+    parser.add_argument("--max-pages", type=int, default=50, help="单章最多跟随的分页数")
     parser.add_argument("--referer")
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--rate", type=float, default=4.0, help="每站请求/秒")

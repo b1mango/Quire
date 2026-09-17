@@ -24,8 +24,8 @@ async def discover_manga(
     current: str | None = url
     result: MangaResult | None = None
     while current:
-        if current in visited or len(visited) >= 20:
-            raise ConfigError("漫画章节分页循环或超过 20 页；请检查 chapter.next_page 规则")
+        if current in visited or len(visited) >= 50:
+            raise ConfigError("漫画章节分页循环或超过 50 页；请检查 chapter.next_page 规则")
         visited.add(current)
         page = await client.get(current, referer=opts.referer or (url if current != url else None))
         notes: tuple[str, ...] = ()

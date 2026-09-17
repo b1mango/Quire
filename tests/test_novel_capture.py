@@ -338,6 +338,25 @@ def test_max_pages_truncation_is_reported_and_marked(tmp_path: Path) -> None:
     assert fetcher.requests == [SOURCE + "1.html", SOURCE + "1_2.html"]
 
 
+def test_default_cap_merges_thirty_page_chapter(tmp_path: Path) -> None:
+    """默认上限 50：超过旧默认 20 页的长章不再被截断，完整合并。"""
+    links = (ChapterLink("第一章 长章", SOURCE + "1.html"),)
+    pages = {}
+    for number in range(1, 31):
+        following = f"<a href='{SOURCE}1_{number + 1}.html'>下一页</a>" if number < 30 else ""
+        pages[SOURCE + ("1.html" if number == 1 else f"1_{number}.html")] = chapter_html(
+            "第一章 长章", PROSE + f"<p>这是第{number}页独有的句子。</p>", tail=following
+        )
+    fetcher = StubFetcher(pages)
+    captured, snapshot = run_capture(tmp_path, links, fetcher)
+    assert snapshot.resources[0].status == "done"
+    cached = _cached_chapter(tmp_path / "work", snapshot)
+    assert cached.pages == 30 and cached.truncated is False
+    assert "这是第30页独有的句子。" in "".join(cached.paragraphs)
+    assert not any("--max-pages" in warning for warning in captured.warnings)
+    assert len(fetcher.requests) == 30
+
+
 @pytest.mark.parametrize(
     ("stage", "target"),
     [
