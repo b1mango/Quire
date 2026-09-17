@@ -123,7 +123,11 @@ class NovelOptions:
     overwrite: bool = False
     referer: str | None = None
     max_bytes: int = 32 * 1024 * 1024
-    clean_version: int = 3
+    clean_version: int = 4
+    ocr_mode: str = "auto"  # auto|always|never（项目设计.md §6.7）
+    ocr_engine: str = "auto"  # auto|tesseract|onnx
+    offline: bool = False  # 离线：缺 OCR 模型直接报错（退出码 6），不下载
+    model_dir: Path | None = None  # OCR 模型目录；None 用数据根下的 models/
 
     def __post_init__(self) -> None:
         if not 1 <= self.concurrency <= 16 or not 0 <= self.retries <= 10:
@@ -134,6 +138,10 @@ class NovelOptions:
             raise ConfigError("速率和超时须为有限正数")
         if not 1 <= self.max_bytes <= 128 * 1024 * 1024:
             raise ConfigError("单个资源大小上限须在 1 byte 到 128 MiB 之间")
+        if self.ocr_mode not in {"auto", "always", "never"}:
+            raise ConfigError("OCR 模式须为 auto、always 或 never")
+        if self.ocr_engine not in {"auto", "tesseract", "onnx"}:
+            raise ConfigError("OCR 引擎须为 auto、tesseract 或 onnx")
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +182,8 @@ class NovelResult:
     pages_fetched: int = 0
     html_dir: Path | None = None
     truncated: bool = False
+    ocr_chapters: int = 0
+    review: Path | None = None
 
     @property
     def total_bytes(self) -> int:

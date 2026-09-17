@@ -55,7 +55,7 @@ def test_layer_boundaries_and_module_sizes():
             if node.level:
                 target = importlib.util.resolve_name("." * node.level + target, package)
             assert not (
-                layer in {"fetch", "parse", "image", "assemble", "utils", "store", "text"}
+                layer in {"fetch", "parse", "image", "assemble", "utils", "store", "text", "ocr"}
                 and target
                 in {
                     "quire.cli",
@@ -73,7 +73,7 @@ def test_layer_boundaries_and_module_sizes():
                 }
             ), (module, target)
             assert not (
-                layer in {"parse", "image", "utils", "store", "text"}
+                layer in {"parse", "image", "utils", "store", "text", "ocr"}
                 and target.startswith("quire.fetch")
             ), (module, target)
             assert not (

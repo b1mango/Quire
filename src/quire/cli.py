@@ -249,10 +249,24 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     else:
         warn("没找到 Chrome / Edge / Brave / Chromium")
         warn("  JS 渲染与「小说转 PDF」都需要它（项目设计.md 决策 N）")
+    info("")
+    info("OCR 引擎")
     if shutil.which("tesseract"):
-        info("  ✓ 系统 tesseract 已安装，OCR 接入尚未实现")
+        info("  ✓ 系统 tesseract（优先引擎，增量 0）")
     else:
-        info("  · 无系统 tesseract，OCR 将在 M5 实现")
+        info("  · 无系统 tesseract")
+    if _module_available("onnxruntime"):
+        info("  ✓ onnxruntime（内置引擎，quire-local[ocr]）")
+        from .ocr.models import check_models
+
+        status = check_models(data_home() / "models")
+        if status.ready:
+            info(f"  ✓ PP-OCRv4 模型已就绪：{status.model_dir}")
+        else:
+            missing = "、".join((*status.missing, *status.corrupt))
+            info(f"  · 模型未就绪（{missing}），首次 OCR 时按需下载到 {status.model_dir}")
+    else:
+        info("  · 无 onnxruntime（内置引擎需 quire-local[ocr]）")
 
     info("")
     info("能力档位")
@@ -264,7 +278,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         info("  core：漫画下载恢复、转码切页、PDF/CBZ/ZIP；--render使用系统Chrome加载动态页面")
     if all(_module_available(name) for name in ("httpx", "websockets", "quire.core_novel")):
         info("  core：小说目录、正文抽取、EPUB/TXT/PDF，章级断点恢复（quire novel）")
-    info("  OCR 和应用界面尚未实现")
+        info("        图片正文本地 OCR：tesseract 或内置 PP-OCRv4（--ocr，模型按需下载）")
+    info("  应用界面尚未实现（M6）")
 
     info("")
     info("数据目录")

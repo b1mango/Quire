@@ -33,6 +33,8 @@ from .models import (
 )
 from .novel_export import export_novel, preflight
 from .novel_options import novel_output_paths, validate_novel_formats
+from .ocr.base import ReviewEntry
+from .ocr.postprocess import drop_repeated_short_lines
 from .parse.article import extract_article, page_title, validate_article
 from .parse.chapters import ChapterLink, discover_chapters, looks_like_catalogue
 from .parse.minidom import Document
@@ -98,6 +100,8 @@ def novel_identity(opts: NovelOptions, links: tuple[ChapterLink, ...]) -> dict[s
         "max_chapters": opts.max_chapters,
         "max_pages": opts.max_pages,
         "clean_version": opts.clean_version,
+        "ocr_mode": opts.ocr_mode,
+        "ocr_engine": opts.ocr_engine,
         "chapters": [[link.title, link.url] for link in links],
     }
 
@@ -133,6 +137,8 @@ def load_chapters(
                     source_url=link.url,
                     pages=cached.pages,
                     truncated=cached.truncated,
+                    source=cached.source,
+                    review=cached.review,
                 )
             )
             continue
@@ -144,12 +150,24 @@ def load_chapters(
 
 
 def export_chapters(chapters: tuple[NovelChapter, ...]) -> tuple[NovelChapter, ...]:
-    """导出用章节：被分页上限截断的章追加一行说明，读者不会以为书是完整的。"""
-    return tuple(
+    """导出用章节：被分页上限截断的章追加一行说明，读者不会以为书是完整的。
+
+    OCR 章节另做跨页去重：整书超过 60% 的章都出现的短行是页眉页脚，
+    删掉（§6.7 后处理）；HTML 章节已由正文清洗处理，不在此列。
+    """
+    noted = tuple(
         replace(chapter, paragraphs=(*chapter.paragraphs, TRUNCATION_NOTE))
         if chapter.truncated and chapter.missing_reason is None
         else chapter
         for chapter in chapters
+    )
+    ocr_paragraphs = drop_repeated_short_lines(
+        [chapter.paragraphs for chapter in noted if chapter.source == "ocr"]
+    )
+    deduped = iter(ocr_paragraphs)
+    return tuple(
+        replace(chapter, paragraphs=next(deduped)) if chapter.source == "ocr" else chapter
+        for chapter in noted
     )
 
 
@@ -189,12 +207,29 @@ async def run_core_novel(
             raise UnsupportedError(
                 "小说 PDF 需要系统 Chrome/Edge/Brave/Chromium", hint="安装 Chrome 或指定 --chrome"
             )
+    ocr_runner = None
+    if opts.ocr_mode != "never":
+        from .ocr.capture import OcrRunner
+
+        model_dir = opts.model_dir
+        if model_dir is None:
+            from .cli_console import data_home
+
+            model_dir = data_home() / "models"
+        ocr_runner = OcrRunner(
+            engine=opts.ocr_engine,
+            model_dir=model_dir,
+            offline=opts.offline,
+            content_selector=opts.content_selector,
+            max_bytes=opts.max_bytes,
+        )
     destinations = novel_output_paths(Path(out).absolute(), chosen)
     output = destinations[0]
     output.parent.mkdir(parents=True, exist_ok=True)
-    before = preflight(
-        (*destinations, output.with_suffix(".report.json")), overwrite=opts.overwrite
-    )
+    report_path = output.with_suffix(".report.json")
+    review_path = output.with_suffix(".review.txt")
+    stamps = preflight((*destinations, report_path, review_path), overwrite=opts.overwrite)
+    before, report_stamp, review_stamp = stamps[: len(destinations)], stamps[-2], stamps[-1]
     for selector in (opts.content_selector, opts.chapter_selector, opts.next_selector):
         if selector:
             parse_html("").select(selector)
@@ -237,19 +272,28 @@ async def run_core_novel(
                 plan.links,
                 options=opts,
                 render=renderer,
+                ocr=ocr_runner,
                 preloaded=plan.preloaded,
                 html_dir=html_dir,
                 on_progress=on_progress,
             )
             chapters = load_chapters(ledger, task_id, plan.links)
             written = sum(1 for chapter in chapters if chapter.missing_reason is None)
+            review_entries = tuple(
+                ReviewEntry(chapter.index, text, confidence)
+                for chapter in chapters
+                for text, confidence in chapter.review
+            )
+            warnings = plan.warnings + captured.warnings
+            if review_entries:
+                warnings += (f"OCR 低置信行 {len(review_entries)} 条，详见 review.txt",)
             result = NovelResult(
                 output=output,
                 title=plan.title,
                 chapters_written=written,
                 chapters_failed=len(chapters) - written,
                 characters=sum(chapter.chars for chapter in chapters),
-                warnings=plan.warnings + captured.warnings,
+                warnings=warnings,
                 failures=tuple(
                     (redact(chapter.source_url), chapter.missing_reason or "")
                     for chapter in chapters
@@ -264,11 +308,16 @@ async def run_core_novel(
                 pages_fetched=captured.pages_fetched,
                 html_dir=html_dir,
                 truncated=plan.truncated,
+                ocr_chapters=sum(
+                    1
+                    for chapter in chapters
+                    if chapter.source == "ocr" and chapter.missing_reason is None
+                ),
             )
             if not written:
                 # 一章都没成功：先落报告，再报错——否则用户看不到每章的具体原因。
                 result = replace(result, elapsed_s=time.monotonic() - started)
-                saved = await export_novel(result, (), (), (), (before[-1],), source_url=url)
+                saved = await export_novel(result, (), (), (), (report_stamp,), source_url=url)
                 raise NoTextError(
                     url,
                     hint="这页可能是目录或动态页面：用 --chapter-selector 指定章节链接，"
@@ -281,9 +330,12 @@ async def run_core_novel(
                 export_chapters(chapters),
                 destinations,
                 chosen,
-                before,
+                (*before, report_stamp),
                 source_url=url,
                 pdf_chrome=executable,
+                review=review_entries,
+                review_destination=review_path,
+                review_stamp=review_stamp,
             )
 
 

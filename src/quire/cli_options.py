@@ -131,5 +131,19 @@ def add_novel_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--render-timeout", type=float, default=None, help="渲染总期限秒，默认30")
     parser.add_argument("--max-scrolls", type=int, default=None, help="滚动上限，默认100")
     parser.add_argument("--render-wait", type=float, default=None, help="到底后的稳定等待秒，默认1")
+    parser.add_argument(
+        "--ocr",
+        default="auto",
+        choices=["auto", "always", "never"],
+        help="图片正文 OCR：auto 文本优先抽不到才识别，always 强制，never 关闭",
+    )
+    parser.add_argument(
+        "--ocr-engine",
+        default="auto",
+        choices=["auto", "tesseract", "onnx"],
+        help="OCR 引擎：auto 优先系统 tesseract，其次内置 onnx 模型",
+    )
+    parser.add_argument("--offline", action="store_true", help="不下载 OCR 模型，缺失即报错")
+    parser.add_argument("--data-dir", help="数据根目录（OCR 模型在其 models/ 下）")
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.set_defaults(core=True)

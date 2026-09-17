@@ -324,7 +324,7 @@ def clean_workspace(path: Path, identity: tuple[int, int], formats: tuple[str, .
             listings: dict[int, set[str]] = {}
             passes = {f"pass-{index}" for index in (1, 2, 3)}
             root_files = (
-                {"book.report.json", "publish-report.tmp"}
+                {"book.report.json", "publish-report.tmp", "book.review.txt", "publish-review.tmp"}
                 | {f"publish-{fmt}.tmp" for fmt in formats}
                 | {f"book.{fmt}" for fmt in formats}
             )

@@ -30,7 +30,11 @@ class ExportPage:
 
 @dataclass(frozen=True, slots=True)
 class NovelChapter:
-    """一章已清洗的正文。``missing_reason`` 非空表示这一章抓取失败。"""
+    """一章已清洗的正文。``missing_reason`` 非空表示这一章抓取失败。
+
+    ``source`` 记录正文来源（``html`` 或 ``ocr``，项目设计.md §5 Page.source）；
+    ``review`` 是 OCR 低置信行 ``(文本, 置信度)`` 清单，供导出期汇总 review.txt。
+    """
 
     index: int
     title: str
@@ -39,6 +43,8 @@ class NovelChapter:
     missing_reason: str | None = None
     pages: int = 1
     truncated: bool = False
+    source: str = "html"
+    review: tuple[tuple[str, float], ...] = ()
 
     @property
     def chars(self) -> int:

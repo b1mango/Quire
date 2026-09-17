@@ -18,6 +18,7 @@ from .export_commit import publish, sync_file
 from .export_receipt import ExportReceipt, PublishedFile
 from .fetch.browser_pdf import print_pdf
 from .models import ArtifactResult, NovelResult
+from .ocr.base import ReviewEntry
 from .store.export_files import (
     Stamp,
     check_workspace,
@@ -59,6 +60,8 @@ def report_payload(result: NovelResult) -> dict[str, object]:
         "source_resources": result.source_resources,
         "pages_fetched": result.pages_fetched,
         "html_dir": str(result.html_dir) if result.html_dir else None,
+        "ocr_chapters": result.ocr_chapters,
+        "review": str(result.review) if result.review else None,
         "chapter_list": [
             {
                 "index": item.index,
@@ -75,6 +78,13 @@ def report_payload(result: NovelResult) -> dict[str, object]:
     }
 
 
+def review_text(title: str, entries: tuple[ReviewEntry, ...]) -> str:
+    """低置信行复核清单：供人工抽查，不改写正文。"""
+    lines = [f"# {title} OCR 低置信行复核清单（置信度 < 0.6）", ""]
+    lines.extend(f"第{entry.chapter}章 [{entry.confidence:.3f}] {entry.text}" for entry in entries)
+    return "\n".join(lines) + "\n"
+
+
 async def export_novel(
     result: NovelResult,
     chapters: tuple[NovelChapter, ...],
@@ -84,6 +94,9 @@ async def export_novel(
     *,
     source_url: str,
     pdf_chrome: str | None = None,
+    review: tuple[ReviewEntry, ...] = (),
+    review_destination: Path | None = None,
+    review_stamp: Stamp | None = None,
 ) -> NovelResult:
     started = time.monotonic()
     assert result.task_id is not None
@@ -117,9 +130,11 @@ async def export_novel(
                         await asyncio.sleep(0)
             candidates.append(path)
         report = result.output.with_suffix(".report.json")
+        review_path = result.output.with_suffix(".review.txt") if review else None
         final = replace(
             result,
             report=report,
+            review=review_path,
             elapsed_s=result.elapsed_s + time.monotonic() - started,
             artifacts=tuple(
                 ArtifactResult(fmt, destination, sync_file(path).size, None)
@@ -131,10 +146,21 @@ async def export_novel(
         with report_file.open("xb") as stream:
             stream.write(json.dumps(report_payload(final), ensure_ascii=False, indent=2).encode())
         candidates.append(report_file)
+        extras: list[tuple[str, Path, Path, Stamp | None]] = []
+        if review and review_destination is not None:
+            review_file = workspace / "book.review.txt"
+            check_workspace(workspace, identity)
+            with review_file.open("xb") as stream:
+                stream.write(review_text(result.title, review).encode("utf-8"))
+            extras.append(("review", review_file, review_destination, review_stamp))
         files = tuple(
             PublishedFile(kind, path.name, destination, sync_file(path), stamp)
             for kind, path, destination, stamp in zip(
-                (*formats, "report"), candidates, (*destinations, report), before, strict=True
+                (*formats, "report", *(kind for kind, _, _, _ in extras)),
+                (*candidates, *(path for _, path, _, _ in extras)),
+                (*destinations, report, *(destination for _, _, destination, _ in extras)),
+                (*before, *(stamp for _, _, _, stamp in extras)),
+                strict=True,
             )
         )
         receipt = replace(receipt, state="prepared", files=files)

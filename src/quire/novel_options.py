@@ -41,7 +41,11 @@ def available_novel_output(output: Path, formats: tuple[str, ...], *, overwrite:
     number = 0
     while any(
         path.exists() or path.is_symlink()
-        for path in (*paths, paths[0].with_suffix(".report.json"))
+        for path in (
+            *paths,
+            paths[0].with_suffix(".report.json"),
+            paths[0].with_suffix(".review.txt"),
+        )
     ):
         number += 1
         paths = novel_output_paths(

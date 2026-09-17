@@ -10,6 +10,7 @@ from .cli_console import (
     EXIT_FETCH,
     EXIT_OK,
     EXIT_PARTIAL,
+    data_home,
     fail,
     human_size,
     info,
@@ -51,6 +52,10 @@ def cmd_novel(args: argparse.Namespace) -> int:
         overwrite=args.overwrite,
         referer=args.referer,
         max_bytes=args.max_bytes,
+        ocr_mode=args.ocr,
+        ocr_engine=args.ocr_engine,
+        offline=args.offline,
+        model_dir=(Path(args.data_dir) / "models" if args.data_dir else data_home() / "models"),
     )
     info(f"→ {redact(args.url)}")
     progress = Progress(enabled=not args.quiet)
@@ -97,6 +102,10 @@ def _report_novel(result: NovelResult, args: argparse.Namespace) -> None:
         info("    修正后可用 --resume 只重取失败的章节。")
     if result.html_dir:
         info(f"  原始 HTML：{result.html_dir}")
+    if result.ocr_chapters:
+        info(f"  OCR：{result.ocr_chapters} 章正文来自图片识别")
+    if result.review:
+        info(f"  低置信复核：{result.review}")
     if result.report:
         info(f"  报告：{result.report}")
     if result.task_id:

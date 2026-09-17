@@ -14,6 +14,7 @@ prefixes = (
     "src/quire/assemble/",
     "src/quire/store/",
     "src/quire/text/",
+    "src/quire/ocr/",
     "src/quire/fetch/session.py",
     "src/quire/fetch/async_policy.py",
     "src/quire/fetch/decoding.py",

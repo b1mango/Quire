@@ -5,6 +5,10 @@
 
 一章只有在"分页链正常走到头"时才算完成：中途某页网络失败会把整章记为失败，
 下次 ``--resume`` 重取这一章，而不是把半章当完整章节交付。
+
+OCR（§6.7）：文本优先——``auto`` 模式只在正文校验失败且页面是图片正文时
+才识别；``always`` 跳过文本抽取直接识别。识别结果是正文的一种来源，
+缓存里记 ``source`` 与低置信行，导出期据此生成 review.txt 与跨页去重。
 """
 
 from __future__ import annotations
@@ -14,12 +18,15 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from urllib.parse import urlsplit
 
 from .errors import BlockedError, FetchError, LedgerError, ParseError
 from .fetch.simple import Response
 from .models import NovelOptions
+from .ocr.postprocess import collect_review
+from .ocr.tesseract import OcrEngineError
+from .ocr.trigger import should_ocr
 from .parse.article import (
     VALIDATION_MESSAGES,
     extract_article,
@@ -35,8 +42,11 @@ from .store.models import FailureCode, ResourceRecord, TaskSnapshot
 from .text.clean import chapter_number, clean_paragraphs, has_chapter_mark
 from .workspace import write_bytes
 
+if TYPE_CHECKING:
+    from .ocr.capture import OcrRunner
+
 #: 章节缓存格式版本。改结构必须同时改 ``NovelOptions.clean_version``。
-CACHE_SCHEMA = 1
+CACHE_SCHEMA = 2
 
 #: 分页超限时写入成品的说明：宁可读者看到"可能不完整"，也不能静默截断。
 TRUNCATION_NOTE = "［本章内容可能不完整：分页超过设定上限］"
@@ -70,12 +80,14 @@ class _Stats:
 
 @dataclass(frozen=True, slots=True)
 class CachedChapter:
-    """一章缓存的正文与元信息。"""
+    """一章缓存的正文与元信息。``review`` 是 OCR 低置信行 ``(文本, 置信度)``。"""
 
     title: str
     paragraphs: tuple[str, ...]
     pages: int = 1
     truncated: bool = False
+    source: str = "html"
+    review: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +107,7 @@ async def capture_chapters(
     *,
     options: NovelOptions,
     render: Renderer | None = None,
+    ocr: OcrRunner | None = None,
     preloaded: dict[str, Response] | None = None,
     html_dir: Path | None = None,
     on_progress: Callable[[int, int], None] | None = None,
@@ -130,6 +143,7 @@ async def capture_chapters(
                     link,
                     options,
                     render,
+                    ocr,
                     seed,
                     stats,
                     html_dir,
@@ -167,6 +181,7 @@ async def _capture_one(
     link: ChapterLink,
     opts: NovelOptions,
     render: Renderer | None,
+    ocr: OcrRunner | None,
     preloaded: dict[str, Response],
     stats: _Stats,
     html_dir: Path | None,
@@ -178,6 +193,8 @@ async def _capture_one(
     number = link.number or chapter_number(title)
     first_key = page_key(link.url)
     paragraphs: list[str] = []
+    review: list[tuple[str, float]] = []
+    ocr_used = False
     visited = {link.url}
     url = link.url
     pages = 0
@@ -230,26 +247,62 @@ async def _capture_one(
             break
         if pages == 0 and page_number is not None:
             number = page_number
-        try:
-            article = extract_article(
-                doc, page.url, selector=opts.content_selector, continuation=pages > 0
+        extracted: tuple[str, ...] | None = None
+        if ocr is not None and opts.ocr_mode == "always":
+            pass  # --ocr always：跳过文本抽取，强制 OCR（项目设计.md §6.7）
+        else:
+            try:
+                article = extract_article(
+                    doc, page.url, selector=opts.content_selector, continuation=pages > 0
+                )
+            except ParseError as exc:
+                # 选择器在某一章没命中：记这一章失败并继续，最终 0 章成功时再报错。
+                failure = "invalid_text"
+                stats.warnings.append(f"第{chapter}章：{exc.message}")
+                break
+            usable, code = validate_article(article, continuation=pages > 0)
+            if usable:
+                extracted = article.paragraphs
+                if pages == 0 and article.title and not has_chapter_mark(title):
+                    # 目录里的标题通常比正文页 <h1> 更有信息量（后者常只是"书名/第N回"），
+                    # 所以只在目录标题没有章节标记时才用页面标题兜底。
+                    title = article.title
+            else:
+                reason = VALIDATION_MESSAGES.get(code, code)
+                if ocr is None or not should_ocr(doc, opts.content_selector):
+                    failure = "invalid_text"
+                    stats.warnings.append(f"第{chapter}章第{pages + 1}页正文未通过校验：{reason}")
+                    break
+                stats.warnings.append(
+                    f"第{chapter}章第{pages + 1}页文本抽取失败（{reason}），改用 OCR"
+                )
+        if extracted is None:
+            # 文本优先，抽不到才 OCR；OCR 失败同样按整章失败处理，交给 --resume。
+            assert ocr is not None
+            try:
+                ocr_result = await ocr.recognize_page(doc, page.url, client, referer=opts.referer)
+            except BlockedError:
+                failure = "blocked"
+                break
+            except FetchError:
+                failure = "network"
+                break
+            except OcrEngineError as exc:
+                failure = "invalid_text"
+                stats.warnings.append(f"第{chapter}章 OCR 失败：{exc.message}")
+                break
+            stats.warnings.extend(ocr_result.warnings)
+            if not ocr_result.paragraphs:
+                failure = "invalid_text"
+                stats.warnings.append(f"第{chapter}章第{pages + 1}页 OCR 未取得正文")
+                break
+            extracted = ocr_result.paragraphs
+            ocr_used = True
+            review.extend(
+                (entry.text, entry.confidence)
+                for entry in collect_review(ocr_result.lines, chapter)
             )
-        except ParseError as exc:
-            # 选择器在某一章没命中：记这一章失败并继续，最终 0 章成功时再报错。
-            failure = "invalid_text"
-            stats.warnings.append(f"第{chapter}章：{exc.message}")
-            break
-        usable, code = validate_article(article, continuation=pages > 0)
-        if not usable:
-            failure = "invalid_text"
-            reason = VALIDATION_MESSAGES.get(code, code)
-            stats.warnings.append(f"第{chapter}章第{pages + 1}页正文未通过校验：{reason}")
-            break
-        paragraphs.extend(article.paragraphs)
-        if pages == 0 and article.title and not has_chapter_mark(title):
-            # 目录里的标题通常比正文页 <h1> 更有信息量（后者常只是"书名/第N回"），
-            # 所以只在目录标题没有章节标记时才用页面标题兜底。
-            title = article.title
+        paragraphs.extend(extracted)
         pages += 1
         following = find_next_page(doc, page.url, page.url, selector=opts.next_selector)
         if following and page_key(following) != first_key and page_key(following) in chapter_urls:
@@ -287,6 +340,8 @@ async def _capture_one(
             "pages": max(1, pages),
             "truncated": truncated,
             "paragraphs": list(cleaned),
+            "source": "ocr" if ocr_used else "html",
+            "review": [[text, confidence] for text, confidence in review],
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -308,6 +363,8 @@ def decode_chapter(data: bytes) -> CachedChapter:
     paragraphs = payload.get("paragraphs")
     pages = payload.get("pages", 1)
     truncated = payload.get("truncated", False)
+    source = payload.get("source", "html")
+    review = payload.get("review", [])
     if (
         not isinstance(title, str)
         or not isinstance(paragraphs, list)
@@ -315,6 +372,22 @@ def decode_chapter(data: bytes) -> CachedChapter:
         or not isinstance(pages, int)
         or pages < 1
         or not isinstance(truncated, bool)
+        or source not in {"html", "ocr"}
+        or not isinstance(review, list)
+        or not all(
+            isinstance(item, list)
+            and len(item) == 2
+            and isinstance(item[0], str)
+            and isinstance(item[1], int | float)
+            for item in review
+        )
     ):
         raise LedgerError("章节缓存字段不合法")
-    return CachedChapter(title, tuple(paragraphs), pages, truncated)
+    return CachedChapter(
+        title,
+        tuple(paragraphs),
+        pages,
+        truncated,
+        source,
+        tuple((item[0], float(item[1])) for item in review),
+    )

@@ -307,12 +307,14 @@ def test_decode_chapter_rejects_bad_payloads() -> None:
     with pytest.raises(LedgerError):
         decode_chapter(b'{"schema": 99}')
     with pytest.raises(LedgerError):
-        decode_chapter(b'{"schema": 1, "title": 1, "paragraphs": [], "pages": 1}')
-    cached = decode_chapter(b'{"schema": 1, "title": "t", "paragraphs": ["a"], "pages": 2}')
+        decode_chapter(b'{"schema": 2, "title": 1, "paragraphs": [], "pages": 1}')
+    cached = decode_chapter(b'{"schema": 2, "title": "t", "paragraphs": ["a"], "pages": 2}')
     assert (cached.title, cached.paragraphs, cached.pages) == ("t", ("a",), 2)
     assert cached.truncated is False
+    assert cached.source == "html"
+    assert cached.review == ()
     with pytest.raises(LedgerError):
-        decode_chapter(b'{"schema": 1, "title": "t", "paragraphs": [], "pages": 1, "truncated": 3}')
+        decode_chapter(b'{"schema": 2, "title": "t", "paragraphs": [], "pages": 1, "truncated": 3}')
 
 
 def test_max_pages_truncation_is_reported_and_marked(tmp_path: Path) -> None:
