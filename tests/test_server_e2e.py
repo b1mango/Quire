@@ -275,6 +275,49 @@ def test_cancel_exports_partial_book(ui):
         assert "第2章第1页第1段" not in txt  # 未抓章节不伪造正文
 
 
+def test_pause_and_resume(ui):
+    """暂停优雅收尾 → paused；按快照 spec 继续 → 已落定章节不重复下载。"""
+    server, _ = ui
+    with novel_site() as site:
+        for path in ("/book/3.html", "/book/5.html"):
+            site.delays[path] = 5
+        status, job = _request(
+            server,
+            "POST",
+            "/api/jobs",
+            {
+                "kind": "novel",
+                "url": f"{site.url}/book/",
+                "title": "测试之书",
+                "formats": ["txt"],
+                "ocr": "never",
+            },
+        )
+        assert status == 201
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            _, snap = _request(server, "GET", f"/api/jobs/{job['id']}")
+            if any(c["status"] == "done" for c in snap["chapters"]):
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError("没有章节落定")
+        status, _ = _request(server, "POST", f"/api/jobs/{job['id']}/pause")
+        assert status == 200
+        done = _wait_job(server, job["id"])
+        assert done["status"] == "paused"
+        assert "event: paused" in _sse_events(server, job["id"])
+
+        status, resumed = _request(server, "POST", "/api/jobs", done["spec"])
+        assert status == 201
+        final = _wait_job(server, resumed["id"])
+        assert final["status"] == "partial"  # 第 4 章 404 仍然缺
+        assert site.hits("/book/1.html") == 1  # 已落定章节不重复下载
+        assert site.hits("/book/2.html") == 1
+        txt = (server.data_root / "library" / "测试之书.txt").read_text("utf-8")
+        assert "第1章第1页第1段" in txt
+
+
 def test_probe_rejects_page_without_content(ui):
     server, _ = ui
     with novel_site() as site:

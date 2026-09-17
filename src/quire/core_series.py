@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .capture_plan import MangaPlan
 from .core_manga import run_core_manga
-from .errors import ConfigError, FetchError
+from .errors import ConfigError, FetchError, PausedError
 from .fetch.browser import RenderOptions, render_page
 from .fetch.session import AsyncFetcher
 from .image.options import CompressionOptions
@@ -73,6 +73,7 @@ async def run_series(
     progress: ProgressSink | None = None,
     on_volume: Callable[[MangaResult], None] | None = None,
     on_task: Callable[[str], None] | None = None,
+    stop: Callable[[], bool] | None = None,
 ) -> SeriesResult:
     mode, _ = split_spec(split_by)
     opts = options or MangaOptions()
@@ -116,6 +117,8 @@ async def run_series(
         for volume in volumes:
             if selected and volume.index not in selected:
                 continue
+            if stop is not None and stop():
+                raise PausedError("任务已暂停，已下载的部分保留在缓存里")
             plan = await _pages(client, volume, replace(opts, first=1, last=0), render)
             plan = replace(
                 plan,
@@ -141,6 +144,7 @@ async def run_series(
                     progress,
                     on_volume,
                     on_task,
+                    stop=stop,
                 )
                 results.extend(sized)
                 break
@@ -157,6 +161,7 @@ async def run_series(
                 plan=plan,
                 progress=progress,
                 on_task=on_task,
+                stop=stop,
             )
             results.append(result)
             if on_volume:

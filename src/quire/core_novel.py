@@ -20,7 +20,7 @@ from .core_chapters import (
     capture_chapters,
     decode_chapter,
 )
-from .errors import NoChaptersError, NoTextError, UnsupportedError
+from .errors import NoChaptersError, NoTextError, PausedError, UnsupportedError
 from .fetch.browser import RenderOptions, render_page
 from .fetch.browser_process import find_chrome
 from .fetch.session import AsyncFetcher
@@ -207,6 +207,7 @@ async def run_core_novel(
     pdf_chrome: str | None = None,
     progress: ChapterProgress | None = None,
     on_task: Callable[[str], None] | None = None,
+    stop: Callable[[], bool] | None = None,
 ) -> NovelResult:
     opts = options or NovelOptions()
     chosen = validate_novel_formats(formats)
@@ -288,7 +289,10 @@ async def run_core_novel(
                 preloaded=plan.preloaded,
                 html_dir=html_dir,
                 on_progress=on_progress,
+                stop=stop,
             )
+            if stop is not None and stop():
+                raise PausedError("任务已暂停，已抓取的章节保留在缓存里")
             chapters = load_chapters(ledger, task_id, plan.links)
             written = sum(1 for chapter in chapters if chapter.missing_reason is None)
             review_entries = tuple(

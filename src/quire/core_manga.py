@@ -14,7 +14,7 @@ from .assemble.models import clean_metadata_text
 from .capture_plan import MangaPlan
 from .core_export import export_books
 from .core_publish import begin, complete, preflight, prepare, recover_export
-from .errors import ConfigError, LedgerError
+from .errors import ConfigError, LedgerError, PausedError
 from .export_options import output_paths
 from .export_receipt import export_key, read_receipt
 from .fetch.browser import RenderOptions
@@ -54,6 +54,7 @@ async def run_core_manga(
     render: RenderOptions | None = None,
     plan: MangaPlan | None = None,
     shared_fetcher: bool = False,
+    stop: Callable[[], bool] | None = None,
 ) -> MangaResult:
     opts = options or MangaOptions()
     encoding = compression or CompressionOptions()
@@ -124,7 +125,10 @@ async def run_core_manga(
                 candidates,
                 concurrency=opts.concurrency,
                 max_bytes=opts.max_bytes,
+                stop=stop,
             )
+            if stop is not None and stop():
+                raise PausedError("任务已暂停，已下载的部分保留在缓存里")
             cache = ledger.root / "cache" / task_id
             result = replace(
                 result,

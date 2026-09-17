@@ -115,6 +115,7 @@ class Job:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task[Any] | None = None
         self._cancel_requested = False
+        self._pause_requested = False
 
     def emit(self, kind: str, data: dict[str, JsonValue]) -> None:
         with self.condition:
@@ -149,6 +150,17 @@ class Job:
         if loop is not None and task is not None:
             loop.call_soon_threadsafe(task.cancel)
 
+    def pause(self) -> None:
+        """优雅暂停：协作标记，核心在下一个派发边界停止（进行中的请求收尾）。"""
+        with self.condition:
+            if self.status in {"pending", "running"}:
+                self._pause_requested = True
+
+    @property
+    def pause_requested(self) -> bool:
+        with self.condition:
+            return self._pause_requested
+
     def events_after(self, seq: int, timeout: float) -> list[JobEvent]:
         """返回序号之后的事件；任务已结束时附带最后一条，便于客户端收尾。"""
         deadline = time.monotonic() + timeout
@@ -179,4 +191,25 @@ class Job:
                 "book_id": self.book_id,
                 "created_at": self.created_at,
                 "chapters": [dict(chapter) for chapter in self._chapters.values()],
+                "spec": _spec_payload(self.spec),
             }
+
+
+def _spec_payload(spec: JobSpec) -> dict[str, JsonValue]:
+    """可重新提交的任务参数（「重试」「继续」共用），与 submit_job 的字段对应。"""
+    return {
+        "kind": spec.kind,
+        "url": spec.url,
+        "title": spec.title,
+        "formats": list(spec.formats),
+        "compress": spec.compress,
+        "target_mb": None if spec.target_bytes is None else spec.target_bytes // 1_000_000,
+        "ocr": spec.ocr,
+        "series": spec.series,
+        "split_by": spec.split_by,
+        "volumes": list(spec.volumes),
+        "capture_mode": spec.capture_mode,
+        "render": spec.render,
+        "chapter_first": spec.chapter_first,
+        "chapter_last": spec.chapter_last,
+    }

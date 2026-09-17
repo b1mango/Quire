@@ -205,6 +205,8 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._job(job_id)
             if method == "POST" and len(parts) == 4 and parts[3] == "cancel":
                 return self._cancel(job_id)
+            if method == "POST" and len(parts) == 4 and parts[3] == "pause":
+                return self._pause(job_id)
             if method == "GET" and len(parts) == 4 and parts[3] == "events":
                 return self._events(job_id, query)
             if method == "GET" and len(parts) == 5 and parts[3] == "thumbs":
@@ -272,6 +274,12 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _cancel(self, job_id: str) -> None:
         job = self.server.manager.cancel(job_id)
+        if job is None:
+            return self._reply_json(404, {"error": "没有这个任务"})
+        self._reply_json(200, job.snapshot())
+
+    def _pause(self, job_id: str) -> None:
+        job = self.server.manager.pause(job_id)
         if job is None:
             return self._reply_json(404, {"error": "没有这个任务"})
         self._reply_json(200, job.snapshot())

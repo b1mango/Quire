@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -37,6 +38,7 @@ async def download_images(
     *,
     concurrency: int,
     max_bytes: int,
+    stop: Callable[[], bool] | None = None,
 ) -> DownloadResult:
     snapshot = ledger.snapshot(task_id)
     reused = sum(item.status == "done" for item in snapshot.resources)
@@ -51,6 +53,8 @@ async def download_images(
 
     async def worker() -> None:
         for record, candidate in pending:
+            if stop is not None and stop():
+                break  # 暂停：不再派发新下载，进行中的请求已收尾
             spec = record.spec
             ledger.claim(task_id, spec.chapter, spec.page)
             try:
@@ -69,7 +73,8 @@ async def download_images(
             if not task.done():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-    return DownloadResult(ledger.finish(task_id), reused)
+    settled = ledger.snapshot(task_id) if stop is not None and stop() else ledger.finish(task_id)
+    return DownloadResult(settled, reused)
 
 
 async def _download_one(

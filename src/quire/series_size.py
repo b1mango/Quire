@@ -10,7 +10,7 @@ from .capture_plan import MangaPlan
 from .core_export import export_books
 from .core_manga import _identity_options
 from .core_reassemble import export_cached
-from .errors import ConfigError
+from .errors import ConfigError, PausedError
 from .fetch.session import AsyncFetcher
 from .image.downloader import download_images
 from .image.options import CompressionOptions
@@ -33,6 +33,7 @@ async def export_by_size(
     progress: ProgressSink | None,
     on_volume: Callable[[MangaResult], None] | None,
     on_task: Callable[[str], None] | None = None,
+    stop: Callable[[], bool] | None = None,
 ) -> tuple[MangaResult, ...]:
     candidates = list(plan.candidates)
     identity = _identity_options(opts, candidates)
@@ -55,7 +56,10 @@ async def export_by_size(
             candidates,
             concurrency=opts.concurrency,
             max_bytes=opts.max_bytes,
+            stop=stop,
         )
+        if stop is not None and stop():
+            raise PausedError("任务已暂停，已下载的部分保留在缓存里")
         snapshot = downloaded.snapshot
         chapters = sorted({r.spec.chapter for r in snapshot.resources})
 

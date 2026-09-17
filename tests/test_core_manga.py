@@ -10,7 +10,7 @@ from pypdf import PdfReader
 
 from quire.cli import main
 from quire.core_manga import run_core_manga
-from quire.errors import ConfigError, LedgerError
+from quire.errors import ConfigError, LedgerError, PausedError
 from quire.fetch.session import AsyncFetcher
 from quire.models import MangaOptions
 from quire.store.ledger import Ledger
@@ -28,6 +28,30 @@ def options(**kwargs):
 def site():
     with serve() as server:
         yield server
+
+
+def test_pause_stops_dispatch_and_resume_reuses_committed(site, tmp_path):
+    """暂停：不再派发新下载，已提交资源在续传时不重复下载。"""
+    calls = 0
+
+    def stop() -> bool:
+        nonlocal calls
+        calls += 1
+        return calls > 1  # concurrency=1：第一张落定后停止派发
+
+    opts = options(concurrency=1, keep_images=True)
+    with pytest.raises(PausedError):
+        asyncio.run(
+            run_core_manga(site.url + "/comic", tmp_path / "book.pdf", options=opts, stop=stop)
+        )
+    assert site.counts["/images/1.jpg"] == 1
+    assert site.counts["/images/2.jpg"] == 0  # 没有继续派发
+    resumed = asyncio.run(
+        run_core_manga(site.url + "/comic", tmp_path / "book.pdf", options=opts, resume=True)
+    )
+    assert resumed.resources_reused == 1
+    assert site.counts["/images/1.jpg"] == 1  # 已提交资源不重复下载
+    assert widths(resumed.output) == [401, 402, 403]
 
 
 def test_parallel_order_report_cleanup_and_resume_after_cleanup(site, tmp_path):

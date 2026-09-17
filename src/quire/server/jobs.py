@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core_series import SeriesResult
-from ..errors import QuireError
+from ..errors import PausedError, QuireError
 from ..export_options import available_output
 from ..fetch.browser import RenderOptions
 from ..image.options import CompressionOptions
@@ -29,6 +29,7 @@ from ..sites.rules import resolve_rule
 from ..store import library
 from ..store.models import JsonValue
 from ..utils.naming import safe_filename
+from .books import register_book
 from .chapter_stream import ChapterTracker
 from .job_state import Job, JobSpec
 from .progress import ChapterSink, ExportSink, make_thumbs, task_counts
@@ -90,6 +91,12 @@ class JobManager:
             job.cancel()
         return job
 
+    def pause(self, job_id: str) -> Job | None:
+        job = self.get(job_id)
+        if job is not None:
+            job.pause()
+        return job
+
     # ---------------------------------------------------------- 执行线程
 
     def _thread_main(self, job: Job, settings: UiSettings) -> None:
@@ -98,6 +105,9 @@ class JobManager:
         job.emit("phase", {"phase": "fetching"})
         try:
             result = asyncio.run(self._capture(job, settings))
+        except PausedError:
+            self._settle(job, "paused", "已暂停，已抓取的部分保留在缓存里")
+            return
         except asyncio.CancelledError:
             self._settle_cancelled(job, settings)
             return
@@ -204,6 +214,8 @@ class JobManager:
             job.emit("done", done_payload)
         elif status == "cancelled":
             job.emit("cancelled", {"message": message})
+        elif status == "paused":
+            job.emit("paused", {"message": message})
         else:
             job.emit("failed", {"message": message, "hint": hint})
         with job.condition:
@@ -226,6 +238,10 @@ class JobManager:
     ) -> MangaResult | NovelResult | SeriesResult:
         spec = job.spec
         job.attach(asyncio.get_running_loop(), asyncio.current_task())  # type: ignore[arg-type]
+
+        def should_stop() -> bool:
+            return job.pause_requested
+
         out_dir = settings.output_path
         out_dir.mkdir(parents=True, exist_ok=True)
         workdir = out_dir / ".quire-core"
@@ -290,6 +306,7 @@ class JobManager:
                 on_volume=delivered,
                 render=render,
                 on_task=on_task,
+                stop=should_stop,
             )
         poll = asyncio.create_task(self._poll(job, workdir, thumbs))
         try:
@@ -308,6 +325,7 @@ class JobManager:
                     formats=spec.formats,
                     render=render,
                     on_task=on_task,
+                    stop=should_stop,
                 )
             out = available_novel_output(
                 base.with_suffix(f".{spec.formats[0]}"), spec.formats, overwrite=False
@@ -321,6 +339,7 @@ class JobManager:
                 progress=ChapterSink(job),
                 render=render,
                 on_task=on_task,
+                stop=should_stop,
             )
         finally:
             poll.cancel()
@@ -328,29 +347,7 @@ class JobManager:
             sweep_thumbs()  # 部分成功/保留原图时补最后一轮；缓存已清理则空转
 
     def _register(self, job: Job, result: MangaResult | NovelResult) -> library.Book:
-        spec = job.spec
-        files: list[tuple[str, Path]] = [(a.format, a.path) for a in result.artifacts]
-        if result.report is not None:
-            files.append(("report", result.report))
-        if isinstance(result, NovelResult) and result.review is not None:
-            files.append(("review", result.review))
-        book = library.add_book(
-            self.data_root,
-            secrets.token_hex(8),
-            title=result.title or spec.title,
-            kind=spec.kind,
-            source_url=spec.url,
-            files=files,
-            compress=spec.compress if spec.kind == "manga" else "",
-        )
-        thumbs = sorted((self.thumbs_root / job.id).glob("p*.jpg"))
-        if thumbs:
-            covers = self.data_root / "covers"
-            covers.mkdir(parents=True, exist_ok=True)
-            target = covers / f"{book.id}.jpg"
-            target.write_bytes(thumbs[0].read_bytes())
-            library.set_cover(self.data_root, book.id, f"covers/{book.id}.jpg")
-        return book
+        return register_book(self.data_root, self.thumbs_root, job.id, job.spec, result)
 
     # ---------------------------------------------------------- 进度轮询
 

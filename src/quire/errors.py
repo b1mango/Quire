@@ -109,3 +109,7 @@ class UnsupportedError(QuireError):
     """明确不支持的场景（JS 逆向解密等），见 项目设计.md §22.2。"""
 
     exit_code = 6
+
+
+class PausedError(Exception):
+    """用户暂停：协作停止信号。不是失败——不继承 QuireError，不进入失败语义。"""

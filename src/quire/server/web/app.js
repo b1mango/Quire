@@ -98,7 +98,7 @@ function attachJob(job) {
   if (job.status === "pending" || job.status === "running") {
     const source = new EventSource(`/api/jobs/${job.id}/events?token=${encodeURIComponent(TOKEN)}`);
     state.events = source;
-    ["phase", "progress", "thumb", "volume", "chapter", "done", "failed", "cancelled"].forEach((kind) =>
+    ["phase", "progress", "thumb", "volume", "chapter", "done", "failed", "cancelled", "paused"].forEach((kind) =>
       source.addEventListener(kind, (e) => {
         state.lastSeq = parseInt(e.lastEventId, 10) || state.lastSeq;
         onJobEvent(kind, JSON.parse(e.data));
@@ -119,7 +119,9 @@ function resetRunView(job) {
   $("failedNote").hidden = true;
   $("runDoneActions").hidden = true;
   $("retryBtn").hidden = true;
+  $("resumeBtn").hidden = true;
   $("cancelBtn").hidden = false;
+  $("pauseBtn").hidden = false;
   $("meterFill").style.width = "0";
   $("statDone").textContent = "0";
   $("statFailed").textContent = "0";
@@ -158,7 +160,7 @@ function onJobEvent(kind, data) {
     appendChapters([data]);
   } else if (kind === "done") {
     finishRunView(data.partial ? "partial" : "done", data);
-  } else if (kind === "failed" || kind === "cancelled") {
+  } else if (kind === "failed" || kind === "cancelled" || kind === "paused") {
     finishRunView(kind, data);
   }
 }
@@ -168,11 +170,13 @@ function finishRunView(status, data) {
   if (state.events) { state.events.close(); state.events = null; }
   if (state.timer) { clearInterval(state.timer); state.timer = null; }
   $("cancelBtn").hidden = true;
+  $("pauseBtn").hidden = true;
   $("runDoneActions").hidden = false;
   state.bookId = data.book_id || null;
   $("openBookBtn").hidden = !state.bookId;
   $("goLibBtn").hidden = !state.bookId;
-  $("retryBtn").hidden = !state.lastSpec;
+  $("resumeBtn").hidden = true;
+  $("retryBtn").hidden = !(state.lastSpec || (state.job && state.job.spec));
   if (status === "done") {
     $("runTitle").textContent = data.title || $("runTitle").textContent;
     $("runSub").textContent = `完成 · ${humanSize(data.bytes || 0)} · ${data.elapsed_s ?? "—"} 秒`;
@@ -187,6 +191,10 @@ function finishRunView(status, data) {
     $("meterFill").style.width = "100%";
   } else if (status === "cancelled") {
     $("runSub").textContent = "已取消，已下载的部分会保留";
+  } else if (status === "paused") {
+    $("runSub").textContent = "已暂停，已抓取的部分保留在缓存里，点「继续」接着抓";
+    $("resumeBtn").hidden = !(state.lastSpec || (state.job && state.job.spec));
+    $("retryBtn").hidden = true;
   } else {
     $("runSub").textContent = "没有完成";
     $("failedNote").hidden = false;
@@ -342,18 +350,28 @@ $("startBtn").addEventListener("click", startJob);
 $("cancelBtn").addEventListener("click", () => {
   if (state.job) api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" }).catch(() => {});
 });
+$("pauseBtn").addEventListener("click", () => {
+  if (!state.job) return;
+  $("pauseBtn").disabled = true;
+  api(`/api/jobs/${state.job.id}/pause`, { method: "POST" })
+    .catch(() => {})
+    .finally(() => { $("pauseBtn").disabled = false; });
+});
+function resubmitSpec() {
+  const spec = state.lastSpec || (state.job && state.job.spec);
+  if (!spec) return;
+  api("/api/jobs", { method: "POST", body: spec }).then((job) => attachJob(job)).catch((err) => {
+    $("failedNote").hidden = false;
+    $("failedNote").textContent = err.message;
+  });
+}
+$("resumeBtn").addEventListener("click", resubmitSpec);
 $("goLibBtn").addEventListener("click", () => showView("lib"));
 $("emptyNewBtn").addEventListener("click", () => showView("new"));
 $("openBookBtn").addEventListener("click", () => {
   if (state.bookId) api(`/api/books/${state.bookId}/open`, { method: "POST" }).catch(() => {});
 });
-$("retryBtn").addEventListener("click", () => {
-  if (!state.lastSpec) return;
-  api("/api/jobs", { method: "POST", body: state.lastSpec }).then((job) => attachJob(job)).catch((err) => {
-    $("failedNote").hidden = false;
-    $("failedNote").textContent = err.message;
-  });
-});
+$("retryBtn").addEventListener("click", resubmitSpec);
 $("bookOpenBtn").addEventListener("click", () => {
   if (state.selectedBook) api(`/api/books/${state.selectedBook.id}/open`, { method: "POST" }).catch(() => {});
 });
@@ -414,6 +432,8 @@ document.addEventListener("keydown", (e) => {
   loadSettingsView();
   api("/api/jobs").then((data) => {
     const active = data.jobs.find((j) => j.status === "running" || j.status === "pending");
-    if (active) { attachJob(active); showView("run"); }
+    if (active) { attachJob(active); showView("run"); return; }
+    const paused = data.jobs.find((j) => j.status === "paused");
+    if (paused) { attachJob(paused); showView("run"); }
   }).catch(() => {});
 })();

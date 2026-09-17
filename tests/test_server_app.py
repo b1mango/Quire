@@ -239,6 +239,8 @@ def test_job_conflict_and_unknown(server):
     assert status == 404
     status, error = _request(srv, "POST", "/api/jobs/ghost/cancel")
     assert status == 404
+    status, error = _request(srv, "POST", "/api/jobs/ghost/pause")
+    assert status == 404
     srv.shutdown()
 
 

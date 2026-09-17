@@ -111,6 +111,7 @@ async def capture_chapters(
     preloaded: dict[str, Response] | None = None,
     html_dir: Path | None = None,
     on_progress: Callable[[int, int], None] | None = None,
+    stop: Callable[[], bool] | None = None,
 ) -> CaptureResult:
     """并发抓取未完成的章节。已在账本里标记完成的章节不重新请求。"""
     snapshot = ledger.snapshot(task_id)
@@ -132,6 +133,8 @@ async def capture_chapters(
 
     async def worker() -> None:
         for record, link in pending:
+            if stop is not None and stop():
+                break  # 暂停：不再派发新章节，进行中的章节已完整落定
             spec = record.spec
             ledger.claim(task_id, spec.chapter, spec.page)
             try:
@@ -165,7 +168,7 @@ async def capture_chapters(
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
     return CaptureResult(
-        ledger.finish(task_id),
+        ledger.snapshot(task_id) if stop is not None and stop() else ledger.finish(task_id),
         reused,
         stats.pages,
         tuple(dict.fromkeys(stats.warnings)),
