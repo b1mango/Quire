@@ -52,12 +52,14 @@ class QuireServer(ThreadingHTTPServer):
         data_root: Path,
         manager: JobManager,
         opener: Callable[[Path], None],
+        revealer: Callable[[Path], None] | None = None,
     ) -> None:
         self.token = token
         self.data_root = data_root.absolute()
         self.settings_path = self.data_root / "settings.json"
         self.manager = manager
         self.opener = opener
+        self.revealer = revealer or _reveal_with_system
         super().__init__(address, _Handler)
 
     @property
@@ -74,12 +76,19 @@ def _open_with_system(path: Path) -> None:
     subprocess.Popen(["open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def _reveal_with_system(path: Path) -> None:
+    subprocess.Popen(
+        ["open", "-R", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+
+
 def make_server(
     host: str,
     port: int,
     *,
     data_root: Path,
     opener: Callable[[Path], None] | None = None,
+    revealer: Callable[[Path], None] | None = None,
     manager: JobManager | None = None,
 ) -> QuireServer:
     if host not in _LOOPBACK:
@@ -92,6 +101,7 @@ def make_server(
         data_root=data_root,
         manager=manager or JobManager(data_root),
         opener=opener or _open_with_system,
+        revealer=revealer,
     )
 
 
@@ -205,6 +215,8 @@ class _Handler(BaseHTTPRequestHandler):
         if method == "POST" and len(parts) == 4 and parts[:2] == ["api", "books"]:
             if parts[3] == "open":
                 return self._reply_json(200, endpoints.open_book(self.server, parts[2]))
+            if parts[3] == "reveal":
+                return self._reply_json(200, endpoints.reveal_book(self.server, parts[2]))
         if method == "GET" and len(parts) == 4 and parts[:2] == ["api", "books"]:
             if parts[3] == "cover":
                 return self._cover(parts[2])

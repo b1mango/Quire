@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .. import __version__
@@ -174,3 +176,24 @@ def open_book(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
         raise ConfigError("成品文件已不在原位置", hint="可以在书库里删除这条记录。")
     ctx.opener(target)
     return {"opened": str(target)}
+
+
+def reveal_book(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
+    """在 Finder 中显示成品：只允许定位当前输出目录内的真实文件。
+
+    路径经 realpath 归一后再判断包含关系，``..`` 与符号链接逃逸一律拒绝。
+    """
+    book = library.get_book(ctx.data_root, book_id)
+    target = book.files[0].path
+    if not target.is_file():
+        raise ConfigError("成品文件已不在原位置", hint="可以在书库里删除这条记录。")
+    output = settings_mod.load(ctx.settings_path, ctx.data_root).output_path
+    resolved_output = Path(os.path.realpath(output))
+    resolved_target = Path(os.path.realpath(target))
+    if resolved_target != resolved_output and resolved_output not in resolved_target.parents:
+        raise ConfigError(
+            "只能定位输出目录内的成品",
+            hint=f"这本书不在当前输出目录 {resolved_output} 下。",
+        )
+    ctx.revealer(target)
+    return {"revealed": str(target)}

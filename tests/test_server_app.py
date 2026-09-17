@@ -44,11 +44,13 @@ async def _failing_manga(url: str, out: Path, **kwargs: Any) -> MangaResult:
 
 def _make(tmp_path: Path, **kwargs: Any):
     opened: list[Path] = []
+    revealed: list[Path] = []
     server = make_server(
         "127.0.0.1",
         0,
         data_root=tmp_path,
         opener=opened.append,
+        revealer=revealed.append,
         manager=JobManager(
             tmp_path,
             run_manga=kwargs.get("run_manga", _fake_manga),
@@ -58,12 +60,12 @@ def _make(tmp_path: Path, **kwargs: Any):
     import threading
 
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server, opened
+    return server, opened, revealed
 
 
 @pytest.fixture()
 def server(tmp_path):
-    srv, opened = _make(tmp_path)
+    srv, opened, _ = _make(tmp_path)
     yield srv, opened
     srv.shutdown()
     srv.server_close()
@@ -225,7 +227,7 @@ def test_job_conflict_and_unknown(server):
     srv, _ = server
     srv.shutdown()
     srv.server_close()
-    srv, _ = _make(srv.data_root, run_manga=_slow_manga)
+    srv, _, _ = _make(srv.data_root, run_manga=_slow_manga)
     spec = {"kind": "manga", "url": "http://x.c/1", "title": "t", "formats": ["pdf"]}
     status, job = _request(srv, "POST", "/api/jobs", spec)
     assert status == 201
@@ -244,7 +246,7 @@ def test_job_failure_surfaces_message(server):
     srv, _ = server
     srv.shutdown()
     srv.server_close()
-    srv, _ = _make(srv.data_root, run_manga=_failing_manga)
+    srv, _, _ = _make(srv.data_root, run_manga=_failing_manga)
     status, job = _request(
         srv,
         "POST",
@@ -263,7 +265,7 @@ def test_cancel_running_job(server):
     srv, _ = server
     srv.shutdown()
     srv.server_close()
-    srv, _ = _make(srv.data_root, run_manga=_slow_manga)
+    srv, _, _ = _make(srv.data_root, run_manga=_slow_manga)
     _, job = _request(
         srv,
         "POST",
@@ -401,6 +403,53 @@ def test_open_missing_file(server):
     status, error = _request(srv, "POST", f"/api/books/{book.id}/open")
     assert status == 400
     assert error["hint"]
+
+
+def test_reveal_book_in_finder(tmp_path):
+    srv, _, revealed = _make(tmp_path)
+    try:
+        output = srv.data_root / "library"
+        output.mkdir()
+        out = output / "书.pdf"
+        out.write_bytes(b"%PDF")
+        book = library.add_book(
+            srv.data_root,
+            "reveal-ok",
+            title="书",
+            kind="manga",
+            source_url="http://e.c",
+            files=[("pdf", out)],
+        )
+        status, result = _request(srv, "POST", f"/api/books/{book.id}/reveal")
+        assert status == 200
+        assert revealed == [out]
+        assert result["revealed"] == str(out)
+
+        # 输出目录之外的成品拒绝定位（路径穿越/目录外一律 400）
+        outside = srv.data_root / "outside.pdf"
+        outside.write_bytes(b"%PDF")
+        other = library.add_book(
+            srv.data_root,
+            "reveal-out",
+            title="外部",
+            kind="manga",
+            source_url="http://e.c",
+            files=[("pdf", outside)],
+        )
+        status, error = _request(srv, "POST", f"/api/books/{other.id}/reveal")
+        assert status == 400
+        assert "输出目录" in error["error"]
+        assert revealed == [out]  # 未调用系统打开
+
+        status, error = _request(srv, "POST", "/api/books/ghost/reveal")
+        assert status == 400
+        out.unlink()
+        status, error = _request(srv, "POST", f"/api/books/{book.id}/reveal")
+        assert status == 400
+        assert error["hint"]
+    finally:
+        srv.shutdown()
+        srv.server_close()
 
 
 def test_body_limits(server):

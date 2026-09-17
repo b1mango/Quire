@@ -357,6 +357,12 @@ $("retryBtn").addEventListener("click", () => {
 $("bookOpenBtn").addEventListener("click", () => {
   if (state.selectedBook) api(`/api/books/${state.selectedBook.id}/open`, { method: "POST" }).catch(() => {});
 });
+$("bookRevealBtn").addEventListener("click", () => {
+  if (!state.selectedBook) return;
+  api(`/api/books/${state.selectedBook.id}/reveal`, { method: "POST" }).catch((err) => {
+    $("libSub").textContent = err.hint ? `${err.message} ${err.hint}` : err.message;
+  });
+});
 $("bookDeleteBtn").addEventListener("click", () => {
   const book = state.selectedBook;
   if (!book) return;
