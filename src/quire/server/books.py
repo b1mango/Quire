@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..models import MangaResult, NovelResult
 from ..store import library
+from .follows import register_follow
 from .job_state import JobSpec
 
 
@@ -38,4 +39,6 @@ def register_book(
         target = covers / f"{book.id}.jpg"
         target.write_bytes(thumbs[0].read_bytes())
         library.set_cover(data_root, book.id, f"covers/{book.id}.jpg")
+    if isinstance(result, NovelResult):
+        register_follow(data_root, book.id, spec, result)
     return book

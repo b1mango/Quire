@@ -135,6 +135,7 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
         render=payload.get("render", False),
         chapter_first=payload.get("chapter_first", 1),
         chapter_last=payload.get("chapter_last", 0),
+        follow_prefix=payload.get("follow_prefix", 0),
     )
     job = ctx.manager.submit(spec, settings_mod.load(ctx.settings_path, ctx.data_root))
     return dict(job.snapshot())
@@ -145,6 +146,7 @@ def list_jobs(ctx: QuireServer) -> dict[str, JsonValue]:
 
 
 def _book_json(ctx: QuireServer, book: library.Book) -> dict[str, JsonValue]:
+    follow = library.get_follow(ctx.data_root, book.id)
     return {
         "id": book.id,
         "title": book.title,
@@ -156,6 +158,13 @@ def _book_json(ctx: QuireServer, book: library.Book) -> dict[str, JsonValue]:
         "compress": book.compress,
         "created_at": book.created_at,
         "cover": f"/api/books/{book.id}/cover" if book.cover else None,
+        "follow": None
+        if follow is None
+        else {
+            "chapters": follow.chapters,
+            "update": follow.update,
+            "changed": bool(follow.checked_at) and not follow.remote_match,
+        },
     }
 
 

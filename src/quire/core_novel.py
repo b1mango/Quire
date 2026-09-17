@@ -208,6 +208,7 @@ async def run_core_novel(
     progress: ChapterProgress | None = None,
     on_task: Callable[[str], None] | None = None,
     stop: Callable[[], bool] | None = None,
+    prepend: Sequence[NovelChapter] | None = None,
 ) -> NovelResult:
     opts = options or NovelOptions()
     chosen = validate_novel_formats(formats)
@@ -294,6 +295,17 @@ async def run_core_novel(
             if stop is not None and stop():
                 raise PausedError("任务已暂停，已抓取的章节保留在缓存里")
             chapters = load_chapters(ledger, task_id, plan.links)
+            prefix = tuple(prepend or ())
+            if prefix:
+                # 追更：旧章节缓存在前（章号已是目录绝对序号），新章顺延。
+                offset = len(prefix)
+                chapters = (
+                    *prefix,
+                    *(replace(chapter, index=chapter.index + offset) for chapter in chapters),
+                )
+            reused_ids = frozenset(
+                {*range(1, len(prefix) + 1), *(i + len(prefix) for i in captured.reused_chapters)}
+            )
             written = sum(1 for chapter in chapters if chapter.missing_reason is None)
             review_entries = tuple(
                 ReviewEntry(chapter.index, text, confidence)
@@ -315,11 +327,9 @@ async def run_core_novel(
                     for chapter in chapters
                     if chapter.missing_reason is not None
                 ),
-                chapters=tuple(
-                    _chapter_result(chapter, captured.reused_chapters) for chapter in chapters
-                ),
+                chapters=tuple(_chapter_result(chapter, reused_ids) for chapter in chapters),
                 task_id=task_id,
-                resources_reused=captured.reused,
+                resources_reused=captured.reused + len(prefix),
                 source_resources=len(plan.links),
                 pages_fetched=captured.pages_fetched,
                 html_dir=html_dir,

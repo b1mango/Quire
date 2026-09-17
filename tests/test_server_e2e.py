@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from quire.server.app import make_server
-from tests.mock_site.novel_server import novel_site
+from tests.mock_site.novel_server import CHAPTER_PAGES, CHAPTER_TITLES, novel_site
 from tests.mock_site.server import serve
 
 
@@ -316,6 +316,99 @@ def test_pause_and_resume(ui):
         assert site.hits("/book/2.html") == 1
         txt = (server.data_root / "library" / "测试之书.txt").read_text("utf-8")
         assert "第1章第1页第1段" in txt
+
+
+def test_follow_update_flow(ui):
+    """追更全链路：3 章成书 → 目录 +2 → 检查更新 → 追更 → 整本 5 章，旧章不重抓。"""
+    server, _ = ui
+    with novel_site() as site:
+        site.titles = {number: CHAPTER_TITLES[number] for number in (1, 2, 3)}
+        site.pages = {number: CHAPTER_PAGES[number] for number in (1, 2, 3)}
+        site.missing = set()
+        status, probe = _request(server, "POST", "/api/probe", {"url": f"{site.url}/book/"})
+        assert status == 200 and probe["count"] == 3
+        status, job = _request(
+            server,
+            "POST",
+            "/api/jobs",
+            {
+                "kind": "novel",
+                "url": probe["url"],
+                "title": probe["title"],
+                "formats": ["txt"],
+                "ocr": "never",
+            },
+        )
+        assert status == 201
+        done = _wait_job(server, job["id"])
+        assert done["status"] == "done"
+        _, data = _request(server, "GET", "/api/books")
+        book = data["books"][0]
+        assert book["follow"] == {"chapters": 3, "update": 0, "changed": False}
+
+        site.titles.update({4: "第四章 新生", 5: "第五章 新尾声"})
+        site.pages.update({4: 1, 5: 1})
+        status, check = _request(server, "POST", f"/api/books/{book['id']}/check-update")
+        assert status == 200
+        assert check["update"] == 2 and not check["changed"]
+        _, data = _request(server, "GET", "/api/books")
+        assert data["books"][0]["follow"]["update"] == 2  # 书库角标
+
+        status, follow_job = _request(server, "POST", f"/api/books/{book['id']}/follow")
+        assert status == 201
+        done = _wait_job(server, follow_job["id"])
+        assert done["status"] == "done"
+        assert site.hits("/book/1.html") == 1  # 旧章节只抓过一次
+        assert site.hits("/book/2_3.html") == 1
+        assert site.hits("/book/4.html") == 1 and site.hits("/book/5.html") == 1
+
+        _, data = _request(server, "GET", "/api/books")
+        assert len(data["books"]) == 2
+        newest = data["books"][0]  # created_at 倒序，追更产物在前
+        assert newest["follow"]["chapters"] == 5
+        txts = sorted((server.data_root / "library").glob("*.txt"))
+        merged = [p for p in txts if "第5章第1页第1段" in p.read_text("utf-8")]
+        assert len(merged) == 1
+        assert "第1章第1页第1段" in merged[0].read_text("utf-8")
+
+        status, check = _request(server, "POST", f"/api/books/{newest['id']}/check-update")
+        assert status == 200 and check["update"] == 0
+        status, error = _request(server, "POST", f"/api/books/{newest['id']}/follow")
+        assert status == 400 and "没有新章节" in error["error"]
+
+
+def test_follow_rejected_when_catalogue_changed(ui):
+    """末章标题指纹对不上：只报目录变动，不按序号续抓。"""
+    server, _ = ui
+    with novel_site() as site:
+        site.titles = {number: CHAPTER_TITLES[number] for number in (1, 2, 3)}
+        site.pages = {number: CHAPTER_PAGES[number] for number in (1, 2, 3)}
+        site.missing = set()
+        status, job = _request(
+            server,
+            "POST",
+            "/api/jobs",
+            {
+                "kind": "novel",
+                "url": f"{site.url}/book/",
+                "title": "测试之书",
+                "formats": ["txt"],
+                "ocr": "never",
+            },
+        )
+        assert status == 201
+        assert _wait_job(server, job["id"])["status"] == "done"
+        _, data = _request(server, "GET", "/api/books")
+        book = data["books"][0]
+
+        site.titles[3] = "第三章 改名换姓"
+        site.titles[4] = "第四章 新生"
+        site.pages[4] = 1
+        status, check = _request(server, "POST", f"/api/books/{book['id']}/check-update")
+        assert status == 200
+        assert check["changed"] is True and check["update"] == 0
+        status, error = _request(server, "POST", f"/api/books/{book['id']}/follow")
+        assert status == 400 and "续抓" in error["error"]
 
 
 def test_probe_rejects_page_without_content(ui):

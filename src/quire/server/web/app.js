@@ -224,6 +224,7 @@ function loadBooks() {
     state.books = data.books;
     state.selectedBook = null;
     $("bookActions").hidden = true;
+    $("checkAllBtn").hidden = !data.books.some((b) => b.follow);
     const grid = $("grid");
     grid.textContent = "";
     $("libEmpty").hidden = data.books.length > 0;
@@ -246,6 +247,10 @@ function bookCard(book) {
   img.src = book.cover ? `${book.cover}?token=${encodeURIComponent(TOKEN)}`
                        : coverPlaceholder(book.title, book.id);
   cover.appendChild(img);
+  if (typeof followBadge === "function") {
+    const badge = followBadge(book);
+    if (badge) cover.appendChild(badge);
+  }
   const title = document.createElement("div");
   title.className = "ct";
   title.textContent = book.title;
@@ -262,6 +267,7 @@ function selectBook(book, card) {
   document.querySelectorAll(".card").forEach((c) => c.setAttribute("aria-current", String(c === card)));
   $("bookActions").hidden = false;
   $("bookActionsTitle").textContent = book.title;
+  if (typeof updateFollowButtons === "function") updateFollowButtons(book);
 }
 
 /* ------------------------------------------------------------ 设置 */
@@ -274,6 +280,7 @@ function loadSettingsView() {
     setSeg($("setOcrSeg"), "ocr", settings.ocr);
     $("setConcurrency").value = settings.concurrency;
     $("setRate").value = settings.rate;
+    $("setAutoCheck").checked = !!settings.auto_check_updates;
   }).catch((err) => { $("settingsMeta").textContent = err.message; });
   api("/api/capabilities").then((caps) => {
     state.caps = caps;
@@ -313,6 +320,7 @@ function saveSettings() {
     ocr: segValue($("setOcrSeg"), "ocr"),
     concurrency: parseInt($("setConcurrency").value, 10),
     rate: parseFloat($("setRate").value),
+    auto_check_updates: $("setAutoCheck").checked,
   };
   api("/api/settings", { method: "PUT", body: payload }).then((settings) => {
     state.settings = settings;
@@ -425,6 +433,7 @@ document.addEventListener("keydown", (e) => {
   if (anchor) applyPreset(anchor, false);
   api("/api/settings").then((settings) => {
     if (!anchor) applyPreset(settings.theme || localStorage.getItem("quire-theme") || "paper:light", false);
+    if (settings.auto_check_updates && typeof checkAllUpdates === "function") checkAllUpdates(true);
   }).catch(() => {
     if (!anchor) applyPreset(localStorage.getItem("quire-theme") || "paper:light", false);
   });

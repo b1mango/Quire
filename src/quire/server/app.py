@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from ..errors import ConfigError, LedgerError, ParseError, QuireError
 from ..store.models import JsonValue
-from . import endpoints
+from . import endpoints, follows
 from .jobs import JobConflictError, JobManager
 
 _LOG = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ _STATIC = {
     "app.js": "text/javascript; charset=utf-8",
     "capture.js": "text/javascript; charset=utf-8",
     "chapters.js": "text/javascript; charset=utf-8",
+    "follows.js": "text/javascript; charset=utf-8",
 }
 
 
@@ -211,6 +212,9 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._events(job_id, query)
             if method == "GET" and len(parts) == 5 and parts[3] == "thumbs":
                 return self._thumb(job_id, parts[4])
+        if method == "POST" and len(parts) == 3 and parts[:2] == ["api", "books"]:
+            if parts[2] == "check-all-updates":
+                return self._reply_json(200, follows.check_all(self.server))
         if len(parts) == 3 and parts[0] == "api" and parts[1] == "books":
             if method == "DELETE":
                 return self._reply_json(200, endpoints.delete_book(self.server, parts[2]))
@@ -219,6 +223,10 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._reply_json(200, endpoints.open_book(self.server, parts[2]))
             if parts[3] == "reveal":
                 return self._reply_json(200, endpoints.reveal_book(self.server, parts[2]))
+            if parts[3] == "check-update":
+                return self._reply_json(200, follows.check_update(self.server, parts[2]))
+            if parts[3] == "follow":
+                return self._reply_json(201, follows.follow_submit(self.server, parts[2]))
         if method == "GET" and len(parts) == 4 and parts[:2] == ["api", "books"]:
             if parts[3] == "cover":
                 return self._cover(parts[2])

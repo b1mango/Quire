@@ -134,6 +134,23 @@ class Ledger:
         except sqlite3.Error as exc:
             raise LedgerError("Cannot look up ledger task") from exc
 
+    def done_chapters(self, url: str) -> list[tuple[str, ResourceRecord]]:
+        """同一来源地址下所有任务已完成的整章资源（page=1）。
+
+        按任务创建时间排序：追更续抓合并旧章节时，同一章号以较新的任务为准。
+        """
+        try:
+            rows = self._db.execute(
+                "SELECT r.*, r.task_id AS owner FROM resources r "
+                "JOIN tasks t ON t.id = r.task_id "
+                "WHERE t.source_url = ? AND r.page = 1 AND r.status = 'done' "
+                "ORDER BY t.created_at, r.chapter",
+                (url,),
+            ).fetchall()
+        except sqlite3.Error as exc:
+            raise LedgerError("Cannot read ledger tasks") from exc
+        return [(str(row["owner"]), _record(row)) for row in rows]
+
     def start(self, task_id: str) -> None:
         with self._transaction() as db:
             changed = db.execute(

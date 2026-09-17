@@ -47,26 +47,31 @@ def _paragraphs(number: int, page: int) -> str:
     return body + noise
 
 
-def _chapter_page(number: int, page: int) -> str:
-    total = CHAPTER_PAGES[number]
+def _chapter_page(
+    number: int,
+    page: int,
+    *,
+    titles: dict[int, str] = CHAPTER_TITLES,
+    pages: dict[int, int] = CHAPTER_PAGES,
+) -> str:
+    total = pages[number]
     navigation = ['<a href="/book/">目录</a>']
     if page < total:
         navigation.append(f'<a href="{chapter_path(number, page + 1)}">下一页</a>')
-    if number < max(CHAPTER_TITLES) and page == total:
+    if number < max(titles) and page == total:
         navigation.append(f'<a href="{chapter_path(number + 1)}">下一章</a>')
     return (
-        f"<html><head><title>{CHAPTER_TITLES[number]}_测试书城</title></head><body>"
-        f"<h1>{CHAPTER_TITLES[number]}</h1>"
+        f"<html><head><title>{titles[number]}_测试书城</title></head><body>"
+        f"<h1>{titles[number]}</h1>"
         f'<div id="content">{_paragraphs(number, page)}</div>'
         f'<div class="nav">{"".join(navigation)}</div>'
         "</body></html>"
     )
 
 
-def _catalogue() -> str:
+def _catalogue(titles: dict[int, str] = CHAPTER_TITLES) -> str:
     items = "".join(
-        f'<li><a href="{chapter_path(number)}">{title}</a></li>'
-        for number, title in CHAPTER_TITLES.items()
+        f'<li><a href="{chapter_path(number)}">{title}</a></li>' for number, title in titles.items()
     )
     return (
         "<html><head><title>测试之书_测试书城</title></head><body>"
@@ -85,6 +90,10 @@ class NovelSite(ThreadingHTTPServer):
         self.counts: Counter[str] = Counter()
         self.delays: dict[str, float] = {}
         self.lock = threading.Lock()
+        # 实例态书目：测试可中途加章/改题，模拟站点追更与改号。
+        self.titles: dict[int, str] = dict(CHAPTER_TITLES)
+        self.pages: dict[int, int] = dict(CHAPTER_PAGES)
+        self.missing: set[int] = {4}
 
     @property
     def url(self) -> str:
@@ -115,17 +124,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/robots.txt":
             return self.send(404, b"", "text/plain")
         if path in {"/", "/book/"}:
-            return self.send(200, _catalogue().encode(), "text/html; charset=utf-8")
+            return self.send(
+                200, _catalogue(self.server.titles).encode(), "text/html; charset=utf-8"
+            )
         if path == "/rank":
             return self.send(200, b"<html><h1>rank</h1></html>", "text/html; charset=utf-8")
         number, page = _parse_chapter(path)
-        if number is None:
+        if number is None or number not in self.server.titles:
             return self.send(404, b"missing", "text/plain")
-        if number == 4:
+        if number in self.server.missing:
             return self.send(404, b"<html>gone</html>", "text/html; charset=utf-8")
-        if page > CHAPTER_PAGES[number]:
+        if page > self.server.pages[number]:
             return self.send(404, b"<html>end</html>", "text/html; charset=utf-8")
-        return self.send(200, _chapter_page(number, page).encode(), "text/html; charset=utf-8")
+        return self.send(
+            200,
+            _chapter_page(
+                number, page, titles=self.server.titles, pages=self.server.pages
+            ).encode(),
+            "text/html; charset=utf-8",
+        )
 
     def send(self, status: int, body: bytes, content_type: str) -> None:
         self.send_response(status)

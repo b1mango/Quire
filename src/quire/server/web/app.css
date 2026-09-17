@@ -269,6 +269,12 @@ h1{font-family:var(--fd);font-size:28px;line-height:1.2;margin:0;letter-spacing:
 .card:hover .ct{color:var(--accent)}
 .card[aria-current="true"] .cover{outline:2px solid var(--accent);outline-offset:2px}
 .cover img{width:100%;height:100%;object-fit:cover;display:block}
+.badge{
+  position:absolute;top:8px;right:8px;padding:3px 8px;border-radius:99px;
+  background:var(--accent);color:var(--bg);font-size:11px;font-weight:600;line-height:1;
+  box-shadow:var(--shadow-sm);
+}
+.badge.changed{background:var(--warn)}
 .ct{
   margin-top:9px;font-size:13px;font-weight:600;line-height:1.35;
   transition:color .16s var(--ease);

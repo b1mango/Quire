@@ -31,6 +31,7 @@ from ..store.models import JsonValue
 from ..utils.naming import safe_filename
 from .books import register_book
 from .chapter_stream import ChapterTracker
+from .follows import resolve_prefix
 from .job_state import Job, JobSpec
 from .progress import ChapterSink, ExportSink, make_thumbs, task_counts
 from .settings import UiSettings
@@ -340,6 +341,7 @@ class JobManager:
                 render=render,
                 on_task=on_task,
                 stop=should_stop,
+                prepend=resolve_prefix(spec, workdir) if spec.follow_prefix else None,
             )
         finally:
             poll.cancel()

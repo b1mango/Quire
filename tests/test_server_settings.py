@@ -34,6 +34,7 @@ def test_load_missing_returns_defaults(tmp_path):
         {"output_dir": "/tmp/x", "rate": -1},
         {"output_dir": "/tmp/x", "ocr": "maybe"},
         {"output_dir": "/tmp/x", "theme": "paper:dark"},
+        {"output_dir": "/tmp/x", "auto_check_updates": "yes"},
     ],
 )
 def test_invalid_settings_rejected(payload):
@@ -55,10 +56,14 @@ def test_parse_rejects_non_dict_and_empty_output(tmp_path):
 def test_save_and_load_roundtrip(tmp_path):
     path = tmp_path / "settings.json"
     out = tmp_path / "books"
-    settings_mod.save(path, settings_mod.UiSettings(str(out), compress="small", rate=2.0))
+    settings_mod.save(
+        path,
+        settings_mod.UiSettings(str(out), compress="small", rate=2.0, auto_check_updates=True),
+    )
     loaded = settings_mod.load(path, tmp_path)
     assert loaded.compress == "small"
     assert loaded.rate == 2.0
+    assert loaded.auto_check_updates is True
     assert out.is_dir()
 
 

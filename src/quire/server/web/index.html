@@ -182,12 +182,17 @@
               <h1>书库</h1>
               <p class="sub" id="libSub"></p>
             </div>
-            <input class="input nofx" id="searchInput" placeholder="搜索书名或作者">
+            <div>
+              <button class="btn ghost" id="checkAllBtn" hidden>全部检查</button>
+              <input class="input nofx" id="searchInput" placeholder="搜索书名或作者">
+            </div>
           </div>
           <div class="book-actions" id="bookActions" hidden>
             <b id="bookActionsTitle"></b>
             <button class="btn primary" id="bookOpenBtn">打开</button>
             <button class="btn ghost" id="bookRevealBtn">在 Finder 中显示</button>
+            <button class="btn ghost" id="bookCheckBtn" hidden>检查更新</button>
+            <button class="btn primary" id="bookFollowBtn" hidden>追更</button>
             <button class="btn danger" id="bookDeleteBtn">删除</button>
             <button class="btn ghost" id="bookActionsClose">收起</button>
           </div>
@@ -240,6 +245,12 @@ quire manga URL --core --site example.com</pre>
               <button data-ocr="never" aria-pressed="false">关闭</button>
             </div>
           </div>
+          <div class="field">
+            <label>追更</label>
+            <div class="hint">
+              <input type="checkbox" id="setAutoCheck"> 启动时自动检查可追更的书籍
+            </div>
+          </div>
           <div class="actions">
             <button class="btn primary" id="saveSettingsBtn">保存设置</button>
             <span class="meta" id="settingsMeta"></span>
@@ -264,5 +275,6 @@ quire manga URL --core --site example.com</pre>
 <script src="/static/capture.js"></script>
 <script src="/static/app.js"></script>
 <script src="/static/chapters.js"></script>
+<script src="/static/follows.js"></script>
 </body>
 </html>

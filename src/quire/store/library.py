@@ -36,6 +36,19 @@ CREATE TABLE books (
 )
 """
 
+#: 追更记录独立成表：旧书库打开时补建，不改 books 结构与 user_version。
+_FOLLOW_SCHEMA = """
+CREATE TABLE IF NOT EXISTS follows (
+    book_id TEXT PRIMARY KEY,
+    capture_mode TEXT NOT NULL,
+    chapters INTEGER NOT NULL,
+    last_title TEXT NOT NULL,
+    remote_count INTEGER NOT NULL DEFAULT 0,
+    remote_match INTEGER NOT NULL DEFAULT 1,
+    checked_at TEXT NOT NULL DEFAULT ''
+)
+"""
+
 BOOK_FORMATS = ("pdf", "cbz", "zip", "epub", "txt")
 
 
@@ -116,9 +129,14 @@ def _create(db_path: Path) -> sqlite3.Connection:
 
 def _open(data_root: Path) -> sqlite3.Connection:
     db_path = data_root.absolute() / "library.db"
-    if db_path.exists():
-        return _connect(db_path)
-    return _create(db_path)
+    connection = _connect(db_path) if db_path.exists() else _create(db_path)
+    try:
+        connection.execute(_FOLLOW_SCHEMA)
+        connection.commit()
+    except sqlite3.Error as exc:
+        connection.close()
+        raise LedgerError("无法初始化追更记录表") from exc
+    return connection
 
 
 def _artifact(payload: object) -> BookArtifact:
@@ -264,5 +282,90 @@ def delete_book(data_root: Path, book_id: str) -> int:
         if cover.is_file() and not cover.is_symlink() and cover.parent.parent == root:
             cover.unlink()
     with _open(root) as connection:
+        connection.execute("DELETE FROM follows WHERE book_id = ?", (book_id,))
         connection.execute("DELETE FROM books WHERE id = ?", (book_id,))
     return freed
+
+
+# ---------------------------------------------------------------- 追更记录
+
+
+@dataclass(frozen=True, slots=True)
+class Follow:
+    """一本书的追更锚点：已抓到的连续章节数与末章标题指纹。
+
+    ``remote_*`` 是最近一次「检查更新」的结果；``remote_match`` 为 0 表示
+    目录在已抓末章位置上的标题对不上（站点可能改号/插章），不能按序号续抓。
+    """
+
+    book_id: str
+    capture_mode: str
+    chapters: int
+    last_title: str
+    remote_count: int = 0
+    remote_match: bool = True
+    checked_at: str = ""
+
+    @property
+    def update(self) -> int:
+        """已确认可续抓的新章节数；边界对不上或未检查过时为 0。"""
+        if not self.checked_at or not self.remote_match:
+            return 0
+        return max(0, self.remote_count - self.chapters)
+
+
+def _follow(row: sqlite3.Row) -> Follow:
+    return Follow(
+        book_id=row["book_id"],
+        capture_mode=row["capture_mode"],
+        chapters=row["chapters"],
+        last_title=row["last_title"],
+        remote_count=row["remote_count"],
+        remote_match=bool(row["remote_match"]),
+        checked_at=row["checked_at"],
+    )
+
+
+def upsert_follow(
+    data_root: Path,
+    book_id: str,
+    *,
+    capture_mode: str,
+    chapters: int,
+    last_title: str,
+) -> None:
+    if type(chapters) is not int or chapters < 1:
+        raise LedgerError("追更记录的章节数无效")
+    with _open(data_root) as connection:
+        connection.execute(
+            "INSERT INTO follows (book_id, capture_mode, chapters, last_title) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(book_id) DO UPDATE SET "
+            "capture_mode = excluded.capture_mode, chapters = excluded.chapters, "
+            "last_title = excluded.last_title, "
+            "remote_count = 0, remote_match = 1, checked_at = ''",
+            (book_id, capture_mode, chapters, last_title),
+        )
+
+
+def get_follow(data_root: Path, book_id: str) -> Follow | None:
+    with _open(data_root) as connection:
+        row = connection.execute("SELECT * FROM follows WHERE book_id = ?", (book_id,)).fetchone()
+    return _follow(row) if row is not None else None
+
+
+def list_follows(data_root: Path) -> dict[str, Follow]:
+    with _open(data_root) as connection:
+        rows = connection.execute("SELECT * FROM follows").fetchall()
+    return {row["book_id"]: _follow(row) for row in rows}
+
+
+def record_check(data_root: Path, book_id: str, *, remote_count: int, match: bool) -> None:
+    with _open(data_root) as connection:
+        changed = connection.execute(
+            "UPDATE follows SET remote_count = ?, remote_match = ?, checked_at = ? "
+            "WHERE book_id = ?",
+            (remote_count, 1 if match else 0, datetime.now(UTC).isoformat(), book_id),
+        ).rowcount
+    if not changed:
+        raise LedgerError("这本书没有追更记录")

@@ -29,6 +29,7 @@ class UiSettings:
     rate: float = 4.0
     ocr: str = "auto"
     theme: str = "paper:light"
+    auto_check_updates: bool = False
 
     def __post_init__(self) -> None:
         output = Path(self.output_dir).expanduser()
@@ -48,6 +49,8 @@ class UiSettings:
             raise ConfigError("OCR 模式须为 auto、always 或 never")
         if self.theme not in THEMES:
             raise ConfigError("未知主题")
+        if type(self.auto_check_updates) is not bool:
+            raise ConfigError("自动检查追更开关须为布尔值")
 
     @property
     def output_path(self) -> Path:
@@ -65,7 +68,16 @@ def defaults(data_root: Path) -> UiSettings:
 def parse(payload: Any) -> UiSettings:
     if not isinstance(payload, dict):
         raise ConfigError("设置格式不正确")
-    known = {"output_dir", "compress", "target_mb", "concurrency", "rate", "ocr", "theme"}
+    known = {
+        "output_dir",
+        "compress",
+        "target_mb",
+        "concurrency",
+        "rate",
+        "ocr",
+        "theme",
+        "auto_check_updates",
+    }
     unknown = set(payload) - known
     if unknown:
         raise ConfigError(f"未知设置项：{sorted(unknown)[0]}")

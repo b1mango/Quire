@@ -37,6 +37,7 @@ class JobSpec:
     render: bool = False
     chapter_first: int = 1
     chapter_last: int = 0
+    follow_prefix: int = 0  # 追更：导出时从旧任务缓存拼回的连续章节数
 
     def __post_init__(self) -> None:
         from .probe import validate_capture_mode, validate_task_url
@@ -44,6 +45,12 @@ class JobSpec:
         validate_task_url(self.url)
         validate_capture_mode(self.kind, self.capture_mode)
         validate_range(self.chapter_first, self.chapter_last)
+        if type(self.follow_prefix) is not int or not 0 <= self.follow_prefix <= 20000:
+            raise ConfigError("追更拼接的章节数无效")
+        if self.follow_prefix and (
+            self.kind != "novel" or self.chapter_first != self.follow_prefix + 1
+        ):
+            raise ConfigError("追更拼接仅用于小说，且须从已抓末章的下一章起抓")
         if self.capture_mode == "single" and (
             self.chapter_first != 1 or self.chapter_last not in (0, 1)
         ):
@@ -212,4 +219,5 @@ def _spec_payload(spec: JobSpec) -> dict[str, JsonValue]:
         "render": spec.render,
         "chapter_first": spec.chapter_first,
         "chapter_last": spec.chapter_last,
+        "follow_prefix": spec.follow_prefix,
     }
