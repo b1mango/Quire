@@ -35,3 +35,9 @@ compression-smoke:
 
 formats-smoke:
     {{python}} scripts/smoke_formats.py
+
+app:
+    scripts/build_app.sh
+
+dmg: app
+    scripts/make_dmg.sh

@@ -1,5 +1,9 @@
 name: Quire checks
-on: [push, pull_request]
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
 permissions:
   contents: read
 jobs:
@@ -32,3 +36,31 @@ jobs:
         with:
           name: quire-micro
           path: dist/quire.pyz
+  dmg:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.7"
+      - run: uv sync --locked --extra dev --extra core --python 3.12
+      - run: scripts/build_app.sh
+      - run: scripts/make_dmg.sh
+      - name: 体积门禁（§23 用户硬指标）
+        run: |
+          DMG_BYTES=$(stat -f%z dist/quire-*.dmg)
+          echo ".app $(($(du -sk dist/quire.app | cut -f1) * 1024)) bytes，.dmg $DMG_BYTES bytes"
+          [ "$DMG_BYTES" -le 52428800 ]
+      - name: 干净环境安装 .dmg 冒烟（§19.3，仅 tag）
+        run: |
+          hdiutil attach -nobrowse -readonly dist/quire-*.dmg -mountpoint /tmp/quire-mnt
+          mkdir -p /tmp/quire-install
+          cp -R /tmp/quire-mnt/quire.app /tmp/quire-install/
+          hdiutil detach /tmp/quire-mnt
+          xattr -dr com.apple.quarantine /tmp/quire-install/quire.app 2>/dev/null || true
+          scripts/smoke_app.sh /tmp/quire-install/quire.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quire-dmg
+          path: dist/quire-*.dmg

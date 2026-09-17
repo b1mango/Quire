@@ -51,3 +51,37 @@ def test_cmd_ui_requires_core(monkeypatch):
     monkeypatch.setattr(cli_ui, "module_available", lambda name: False)
     with pytest.raises(UnsupportedError):
         cli_ui.cmd_ui(type("Args", (), {"port": 0, "no_browser": True})())
+
+
+def test_cmd_ui_stops_when_shell_dies(monkeypatch, tmp_path):
+    import time
+
+    import quire.server.app as app
+
+    class Fake:
+        url = "http://127.0.0.1:1/?token=fake"
+
+        def __init__(self) -> None:
+            self.shut_down = False
+
+        def serve_forever(self) -> None:
+            while not self.shut_down:
+                time.sleep(0.05)
+
+        def shutdown(self) -> None:
+            self.shut_down = True
+
+        def server_close(self) -> None:
+            pass
+
+    fake = Fake()
+    monkeypatch.setattr(cli_ui, "module_available", lambda name: True)
+    monkeypatch.setattr(cli_ui, "data_home", lambda: tmp_path)
+    monkeypatch.setattr(app, "make_server", lambda host, port, *, data_root: fake)
+    monkeypatch.setattr(cli_ui.webbrowser, "open", lambda url: None)
+    # macOS 最大 pid 为 99998，该进程号必然不存在
+    monkeypatch.setenv("QUIRE_SHELL_PID", "999999")
+
+    args = type("Args", (), {"port": 0, "no_browser": True})()
+    assert cli_ui.cmd_ui(args) == 0
+    assert fake.shut_down

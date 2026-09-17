@@ -8,7 +8,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-macOS-252525?style=flat-square" alt="Platform: macOS">
-  <img src="https://img.shields.io/badge/status-in_development-e3aa43?style=flat-square" alt="Status: in development">
+  <img src="https://img.shields.io/badge/status-v1.0_unreleased-e3aa43?style=flat-square" alt="Status: v1.0 unreleased">
   <img src="https://img.shields.io/badge/storage-local-397565?style=flat-square" alt="Local data storage">
   <a href="#license"><img src="https://img.shields.io/badge/license-pending-777777?style=flat-square" alt="License: pending"></a>
 </p>
@@ -24,11 +24,17 @@ Quire is a macOS desktop tool in development for collecting comics and novels in
 - **Comic collection**: Public web pages, dynamically loaded images, and local image folders.
 - **Export formats**: PDF, CBZ, and image ZIP for comics; TXT, EPUB, and PDF for novels.
 - **Reading preparation**: Image compression, long-image splitting, missing-page placeholders, and interrupted download recovery.
-- **Planned**: Local OCR, a library, and four interface themes.
+- **Local OCR**: Optional on-device recognition for scanned novel pages.
+- **Library and themes**: A local library with four interface themes.
 
 ## Get the App
 
-The comic and novel collection core is implemented. The desktop interface and `.dmg` installer are not yet released. Once available, download the app from [Releases](https://github.com/b1mango/Quire/releases), add links or images in the app, and export your books.
+Desktop 1.0 is complete; the installer `quire-1.0.0.dmg` will be available on [Releases](https://github.com/b1mango/Quire/releases) (the first release has not been published yet). Open the `.dmg` and drag `quire.app` into Applications.
+
+The app is not notarized by Apple: on first launch of a browser-downloaded copy, macOS will say the developer cannot be verified. Either:
+
+- Right-click `quire.app` → **Open** → **Open** again;
+- or run `xattr -dr com.apple.quarantine /Applications/quire.app` in Terminal.
 
 <a id="license"></a>
 
