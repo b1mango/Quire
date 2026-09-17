@@ -31,10 +31,12 @@
 
 桌面版 1.0 已完成，安装包 `quire-1.0.0.dmg` 将通过 [Releases](https://github.com/b1mango/Quire/releases) 提供（首个 Release 尚未发布）。打开 `.dmg`，把 `quire.app` 拖入「应用程序」即可。
 
-应用未经 Apple 公证：从浏览器下载后首次打开，macOS 会提示「无法验证开发者」。请任选一种方式打开：
+应用未经 Apple 公证：从浏览器下载后首次打开，新版 macOS 会弹出「未打开 quire.app —— Apple 无法验证其是否包含恶意软件」，对话框只有「完成」和「移到废纸篓」（右键「打开」也一样）。任选一种方式放行（只需一次，均已实测）：
 
-- 右键点击 `quire.app` →「打开」→ 再点「打开」；
-- 或在终端执行 `xattr -dr com.apple.quarantine /Applications/quire.app`。
+- 点「完成」关掉对话框，然后打开「系统设置 → 隐私与安全性」，下拉到「安全性」区域，点 quire 旁边的「仍要打开」，验证后重新打开应用；
+- 或在终端执行 `xattr -dr com.apple.quarantine /Applications/quire.app`（装在别的位置就换成对应路径），之后双击即可正常打开。
+
+放行后应用首次启动会自动清除自身的下载隔离标记，内嵌核心随后正常运行。
 
 <a id="license"></a>
 

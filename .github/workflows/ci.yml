@@ -60,6 +60,7 @@ jobs:
           hdiutil detach /tmp/quire-mnt
           xattr -dr com.apple.quarantine /tmp/quire-install/quire.app 2>/dev/null || true
           scripts/smoke_app.sh /tmp/quire-install/quire.app
+          scripts/smoke_app.sh --quarantine /tmp/quire-install/quire.app
       - uses: actions/upload-artifact@v4
         with:
           name: quire-dmg

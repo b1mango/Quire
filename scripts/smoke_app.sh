@@ -1,11 +1,22 @@
 #!/bin/bash
 # .app 冒烟（项目设计.md §35 M7）：以无 python3 的干净 PATH 启动应用，
 # 驱动一条 mock 站任务流程（probe → 提交 → 完成 → 书库），断言数据落在
-# 本地数据根、退出后无残留进程。用法：scripts/smoke_app.sh [quire.app 路径]
+# 本地数据根、退出后无残留进程。用法：scripts/smoke_app.sh [--quarantine] [quire.app 路径]
+# --quarantine：复制应用并对内嵌文件打下载隔离标记，验证壳进程内自清除
+# quarantine 后核心正常拉起（根级标记会触发 Gatekeeper 挂起壳，无法在
+# 无辅助功能权限的自动化中复现用户批准态，故只打文件级标记）。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="${1:-$ROOT/dist/quire.app}"
+QUARANTINE=0
+APP=""
+for arg in "$@"; do
+    case "$arg" in
+        --quarantine) QUARANTINE=1 ;;
+        *) APP="$arg" ;;
+    esac
+done
+APP="${APP:-$ROOT/dist/quire.app}"
 WORK="$ROOT/output/app-smoke"
 APP_LOG="$WORK/app.log"
 MOCK_LOG="$WORK/mock.log"
@@ -22,6 +33,19 @@ fail() { echo "冒烟失败：$1" >&2; echo "--- app.log ---"; cat "$APP_LOG" 2>
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
+
+QUAR_FILES=()
+if [ "$QUARANTINE" = 1 ]; then
+    cp -R "$APP" "$WORK/quire-quar.app"
+    APP="$WORK/quire-quar.app"
+    QUAR_FILES+=("$APP/Contents/Info.plist" "$APP/Contents/MacOS/quire" \
+        "$APP/Contents/Resources/python/bin/python3.12")
+    while IFS= read -r f; do QUAR_FILES+=("$f"); done < <(
+        find "$APP/Contents/Resources/python" \( -name '*.so' -o -name '*.dylib' \) | head -3)
+    for f in "${QUAR_FILES[@]}"; do
+        xattr -w com.apple.quarantine "0083;65f00000;smoke;" "$f"
+    done
+fi
 
 # mock 站（测试夹具，用开发 venv 起；被测对象只有 .app）
 DEV_PYTHON="${QUIRE_DEV_PYTHON:-$ROOT/.venv/bin/python}"
@@ -44,6 +68,14 @@ for _ in $(seq 1 100); do
     sleep 0.3
 done
 [ -n "$URL" ] || fail "30 秒内未等到服务 URL"
+
+if [ "$QUARANTINE" = 1 ]; then
+    for f in "${QUAR_FILES[@]}"; do
+        if xattr -p com.apple.quarantine "$f" >/dev/null 2>&1; then
+            fail "壳未清除隔离标记：$f"
+        fi
+    done
+fi
 BASE="${URL%%/?token=*}"
 TOKEN="${URL##*token=}"
 AUTH="token=$TOKEN"

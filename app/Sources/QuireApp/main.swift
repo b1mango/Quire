@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func coreFailed(_ detail: String) {
         let alert = NSAlert()
         alert.messageText = "卷帙无法启动"
-        alert.informativeText = "内嵌核心进程异常退出：\(detail)"
+        alert.informativeText = detail
         alert.runModal()
         NSApp.terminate(nil)
     }

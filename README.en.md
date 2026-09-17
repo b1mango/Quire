@@ -31,10 +31,12 @@ Quire is a macOS desktop tool in development for collecting comics and novels in
 
 Desktop 1.0 is complete; the installer `quire-1.0.0.dmg` will be available on [Releases](https://github.com/b1mango/Quire/releases) (the first release has not been published yet). Open the `.dmg` and drag `quire.app` into Applications.
 
-The app is not notarized by Apple: on first launch of a browser-downloaded copy, macOS will say the developer cannot be verified. Either:
+The app is not notarized by Apple: on first launch of a browser-downloaded copy, recent macOS shows "quire.app was not opened — Apple could not verify quire.app is free of malware", with only **Done** and **Move to Trash** (right-click → **Open** leads to the same dialog). Either (both verified; only needed once):
 
-- Right-click `quire.app` → **Open** → **Open** again;
-- or run `xattr -dr com.apple.quarantine /Applications/quire.app` in Terminal.
+- Click **Done**, then open **System Settings → Privacy & Security**, scroll to the Security section, click **Open Anyway** next to quire, confirm, and open the app again;
+- or run `xattr -dr com.apple.quarantine /Applications/quire.app` in Terminal (adjust the path if installed elsewhere), then open the app normally.
+
+Once allowed, the app clears its own quarantine flag on first launch and the embedded core runs normally.
 
 <a id="license"></a>
 
