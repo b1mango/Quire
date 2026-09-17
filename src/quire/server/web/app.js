@@ -62,8 +62,6 @@ function showView(name) {
   document.querySelectorAll("[data-view-btn]").forEach((x) =>
     x.setAttribute("aria-current", String(x.dataset.viewBtn === name)));
   document.querySelectorAll(".view").forEach((x) => { x.hidden = x.dataset.view !== name; });
-  const labels = { new: "新建任务", run: "进行中", lib: "书库", set: "设置" };
-  $("tbTitle").textContent = "卷帙 — " + labels[name];
   if (name === "lib") loadBooks();
 }
 
