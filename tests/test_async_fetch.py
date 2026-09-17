@@ -34,6 +34,39 @@ def answer(request, status=200, data=b"ok", headers=None):
     return httpx.Response(status, stream=Stream([data]), headers=headers, request=request)
 
 
+def test_blocked_hints_and_browser_like_default_headers():
+    async def run():
+        seen = {}
+
+        def handler(request):
+            if request.url.path == "/robots.txt":
+                return answer(request, 404)
+            seen[request.url.path] = request.headers
+            if request.url.path == "/cf":
+                return answer(
+                    request,
+                    403,
+                    data=b"<title>Attention Required! | Cloudflare</title>",
+                    headers={"server": "cloudflare", "cf-ray": "abc-SJC"},
+                )
+            return answer(request, 403, data=b"blocked")
+
+        async with AsyncFetcher(
+            transport=httpx.MockTransport(handler), retries=0, rate=1e9
+        ) as client:
+            with pytest.raises(BlockedError) as plain:
+                await client.get("https://example.test/plain")
+            assert plain.value.hint and "Cloudflare" not in plain.value.hint
+            with pytest.raises(BlockedError) as cloudflare:
+                await client.get("https://example.test/cf")
+            assert cloudflare.value.hint and "Cloudflare" in cloudflare.value.hint
+            sent = seen["/plain"]
+            assert "Chrome/" in sent["user-agent"]
+            assert sent["accept-language"].startswith("zh-CN")
+
+    asyncio.run(run())
+
+
 def test_async_response_charset_and_robots_single_lookup():
     async def run():
         counts = Counter()

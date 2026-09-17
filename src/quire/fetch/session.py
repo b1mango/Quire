@@ -15,7 +15,15 @@ from ..errors import BlockedError, ConfigError, FetchError, HttpStatusError, Net
 from ..utils.urls import is_usable_url, redact, route_fragment
 from .async_policy import AsyncRateLimiter, AsyncRobotsPolicy
 from .decoding import decode_body
-from .simple import DEFAULT_UA, RETRYABLE_STATUS, Response, retry_after
+from .simple import (
+    DEFAULT_ACCEPT,
+    DEFAULT_LANGUAGE,
+    DEFAULT_UA,
+    RETRYABLE_STATUS,
+    Response,
+    blocked_error,
+    retry_after,
+)
 
 _REDIRECTS = {301, 302, 303, 307, 308}
 _PUBLIC_HEADERS = {"accept", "accept-language", "referer"}
@@ -34,7 +42,12 @@ def _url(value: str) -> httpx.URL:
 
 
 def _headers(referer: str | None, custom: Mapping[str, str] | None) -> dict[str, str]:
-    result = {"user-agent": DEFAULT_UA, "accept": "*/*", "accept-encoding": "gzip, deflate"}
+    result = {
+        "user-agent": DEFAULT_UA,
+        "accept": DEFAULT_ACCEPT,
+        "accept-language": DEFAULT_LANGUAGE,
+        "accept-encoding": "gzip, deflate",
+    }
     for name, value in (custom or {}).items():
         key = name.lower()
         if key not in _PUBLIC_HEADERS or any(ord(c) < 32 or ord(c) > 126 for c in value):
@@ -184,7 +197,7 @@ class AsyncFetcher:
                 if 200 <= response.status < 300:
                     return response
                 if response.status == 403:
-                    raise BlockedError(f"HTTP 403: {redact(str(url))}")
+                    raise blocked_error(str(url), response.headers, response.content)
                 if response.status not in RETRYABLE_STATUS:
                     raise HttpStatusError(str(url), response.status)
                 self.limiter.defer(str(url), delay)
@@ -207,6 +220,8 @@ class AsyncFetcher:
             body = b""
             if 200 <= response.status_code < 300:
                 body = await self._read(response)
+            elif response.status_code == 403:
+                body = await self._sniff(response)
             elif response.status_code in _REDIRECTS:
                 _redirect(url, location)
             result = Response(
@@ -221,6 +236,20 @@ class AsyncFetcher:
         finally:
             await response.aclose()
             self._client.cookies.clear()
+
+    async def _sniff(self, response: httpx.Response) -> bytes:
+        # 403 页面只取前 64 KiB 识别防护来源，不占用正常的大小预算。
+        raw = bytearray()
+        async for block in response.aiter_raw():
+            raw.extend(block[: 65536 - len(raw)])
+            if len(raw) >= 65536:
+                break
+        try:
+            return decode_body(
+                bytes(raw), response.headers.get("content-encoding", "").lower(), 65536
+            )
+        except FetchError:
+            return bytes(raw)
 
     async def _read(self, response: httpx.Response) -> bytes:
         declared = response.headers.get("content-length", "")

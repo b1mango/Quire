@@ -40,6 +40,20 @@ def test_retry_and_nonretry_statuses(site):
     assert site.counts["/blocked"] == 1
 
 
+def test_blocked_hints_and_browser_like_default_headers(site):
+    client = Fetcher(rate=1000)
+    client.get(site.url + "/comic")
+    sent = site.headers_log["/comic"]
+    assert "Chrome/" in sent["User-Agent"]
+    assert sent["Accept-Language"].startswith("zh-CN")
+    with pytest.raises(BlockedError) as plain:
+        client.get(site.url + "/blocked")
+    assert plain.value.hint and "Cloudflare" not in plain.value.hint
+    with pytest.raises(BlockedError) as cloudflare:
+        client.get(site.url + "/cf-blocked")
+    assert cloudflare.value.hint and "Cloudflare" in cloudflare.value.hint
+
+
 def test_response_and_decode_budgets(site):
     with pytest.raises(FetchError, match="size limit"):
         Fetcher(max_bytes=80).get(site.url + "/comic")

@@ -23,8 +23,35 @@ from .ratelimit import HostRateLimiter
 from .robots import RobotsPolicy
 from .text import decode_html
 
-DEFAULT_UA = "Quire/0.0.1 (local public-page collector)"
+DEFAULT_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+)
+DEFAULT_ACCEPT = (
+    "text/html,application/xhtml+xml,application/xml;q=0.9,"
+    "image/avif,image/webp,image/png,image/svg+xml,*/*;q=0.8"
+)
+DEFAULT_LANGUAGE = "zh-CN,zh;q=0.9,en;q=0.8"
 RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+BLOCKED_HINT = "站点拒绝了访问；该站可能限制当前网络环境，可在设置请求头后重试。"
+CLOUDFLARE_HINT = (
+    "站点启用了 Cloudflare 等安全防护，当前网络环境被拦截（真实浏览器访问同样被拒）；"
+    "可更换网络环境后重试。"
+)
+
+
+def cloudflare_block(headers: Mapping[str, str], body: bytes) -> bool:
+    """403 响应是否来自 Cloudflare 等防护拦截（区别于普通防盗链）。"""
+    lowered = {key.lower(): value for key, value in headers.items()}
+    if "cf-ray" in lowered or "cloudflare" in lowered.get("server", "").lower():
+        return True
+    return b"cloudflare" in body[:8192].lower()
+
+
+def blocked_error(url: str, headers: Mapping[str, str], body: bytes) -> BlockedError:
+    hint = CLOUDFLARE_HINT if cloudflare_block(headers, body) else BLOCKED_HINT
+    return BlockedError(f"HTTP 403: {redact(url)}", hint=hint)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +189,8 @@ class Fetcher:
             raise ConfigError("URL must be an absolute HTTP(S) address without credentials")
         request_headers = {
             "User-Agent": self.user_agent,
-            "Accept": "*/*",
+            "Accept": DEFAULT_ACCEPT,
+            "Accept-Language": DEFAULT_LANGUAGE,
             "Accept-Encoding": "gzip, deflate",
         }
         if referer:
@@ -177,9 +205,15 @@ class Fetcher:
             except urllib.error.HTTPError as exc:
                 status = exc.code
                 delay = retry_after(exc.headers.get("Retry-After", ""), time.time())
+                body = b""
+                if status == 403:
+                    try:
+                        body = exc.read(65536)
+                    except (OSError, http.client.HTTPException):
+                        body = b""  # sniffing is best-effort; the block stands either way
                 exc.close()
                 if status == 403:
-                    raise BlockedError(f"HTTP 403: {redact(url)}") from None
+                    raise blocked_error(url, dict(exc.headers), body) from None
                 last = HttpStatusError(url, status)
                 if status not in RETRYABLE_STATUS or delay > 120:
                     raise last from None

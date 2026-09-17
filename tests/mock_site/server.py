@@ -32,6 +32,7 @@ class MockSite(ThreadingHTTPServer):
     def __init__(self) -> None:
         super().__init__(("127.0.0.1", 0), Handler)
         self.counts: Counter[str] = Counter()
+        self.headers_log: dict[str, dict[str, str]] = {}
         self.lock = threading.Lock()
         self.active = 0
         self.peak = 0
@@ -54,6 +55,7 @@ class Handler(BaseHTTPRequestHandler):
         with self.server.lock:
             self.server.counts[path] += 1
             count = self.server.counts[path]
+            self.server.headers_log[path] = dict(self.headers)
         if path == "/robots.txt":
             if self.server.redirect_robots:
                 return self.respond(302, b"", extra={"Location": "/policy"})
@@ -79,6 +81,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(200, b"ok")
         if path == "/blocked":
             return self.respond(403, b"blocked")
+        if path == "/cf-blocked":
+            return self.respond(
+                403,
+                b"<title>Attention Required! | Cloudflare</title><h1>Sorry, you have been blocked</h1>",
+                "text/html",
+                extra={"CF-RAY": "8f8f8f8f8f8f8f8f-SJC"},
+            )
         if path == "/redirect":
             return self.respond(302, b"", extra={"Location": "/comic"})
         if path == "/gbk":
