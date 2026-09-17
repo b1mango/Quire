@@ -99,7 +99,7 @@ class JobManager:
         try:
             result = asyncio.run(self._capture(job, settings))
         except asyncio.CancelledError:
-            self._settle(job, "cancelled", "已取消")
+            self._settle_cancelled(job, settings)
             return
         except QuireError as exc:
             self._settle(job, "failed", exc.message, exc.hint)
@@ -146,6 +146,41 @@ class JobManager:
                 "book_id": book.id,
                 "title": result.title,
                 "partial": result.partial,
+                "failures": len(result.failures),
+                "warnings": list(result.warnings),
+                "bytes": result.total_bytes,
+                "elapsed_s": round(result.elapsed_s, 2),
+            },
+        )
+
+    def _settle_cancelled(self, job: Job, settings: UiSettings) -> None:
+        """取消后尽量按所选格式导出半成品；没有已落定内容时维持 cancelled。"""
+        result: MangaResult | NovelResult | None = None
+        if job.task_id is not None and not job.spec.series:
+            from .salvage import salvage_job
+
+            try:
+                result = asyncio.run(salvage_job(job.spec, job.task_id, settings, self.data_root))
+            except Exception:
+                _LOG.exception("job %s salvage failed", job.id)
+        if result is None:
+            self._settle(job, "cancelled", "已取消")
+            return
+        try:
+            book = self._register(job, result)
+        except QuireError as exc:
+            self._settle(job, "failed", exc.message, exc.hint)
+            return
+        with job.condition:
+            job.book_id = book.id
+        self._settle(
+            job,
+            "partial",
+            "",
+            done_payload={
+                "book_id": book.id,
+                "title": result.title,
+                "partial": True,
                 "failures": len(result.failures),
                 "warnings": list(result.warnings),
                 "bytes": result.total_bytes,
@@ -208,6 +243,12 @@ class JobManager:
                 job.emit("thumb", {"page": page, "url": f"/api/jobs/{job.id}/thumbs/{page}"})
 
         rule = resolve_rule(self.data_root, spec.url)
+
+        def on_task(task_id: str) -> None:
+            with job.condition:
+                job.task_id = task_id
+            chapters.register(task_id)
+
         manga_options = MangaOptions(
             concurrency=settings.concurrency, rate=settings.rate, follow_pages=True
         )
@@ -248,7 +289,7 @@ class JobManager:
                 formats=spec.formats,
                 on_volume=delivered,
                 render=render,
-                on_task=chapters.register,
+                on_task=on_task,
             )
         poll = asyncio.create_task(self._poll(job, workdir, thumbs))
         try:
@@ -266,7 +307,7 @@ class JobManager:
                     compression=CompressionOptions(spec.compress, spec.target_bytes),
                     formats=spec.formats,
                     render=render,
-                    on_task=chapters.register,
+                    on_task=on_task,
                 )
             out = available_novel_output(
                 base.with_suffix(f".{spec.formats[0]}"), spec.formats, overwrite=False
@@ -279,7 +320,7 @@ class JobManager:
                 formats=spec.formats,
                 progress=ChapterSink(job),
                 render=render,
-                on_task=chapters.register,
+                on_task=on_task,
             )
         finally:
             poll.cancel()

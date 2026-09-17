@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections import Counter
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -82,6 +83,7 @@ class NovelSite(ThreadingHTTPServer):
     def __init__(self) -> None:
         super().__init__(("127.0.0.1", 0), Handler)
         self.counts: Counter[str] = Counter()
+        self.delays: dict[str, float] = {}
         self.lock = threading.Lock()
 
     @property
@@ -107,6 +109,9 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         with self.server.lock:
             self.server.counts[path] += 1
+        delay = self.server.delays.get(path)
+        if delay:
+            time.sleep(delay)
         if path == "/robots.txt":
             return self.send(404, b"", "text/plain")
         if path in {"/", "/book/"}:

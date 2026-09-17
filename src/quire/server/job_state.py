@@ -107,6 +107,7 @@ class Job:
         self.error = ""
         self.hint: str | None = None
         self.book_id: str | None = None
+        self.task_id: str | None = None
         self.condition = threading.Condition()
         self._events: list[JobEvent] = []
         self._chapters: dict[str, dict[str, JsonValue]] = {}

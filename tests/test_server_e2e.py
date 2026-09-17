@@ -228,6 +228,53 @@ def test_novel_chapter_range_flow(ui):
         assert "第1章第1页第1段" not in txt
 
 
+def test_cancel_exports_partial_book(ui):
+    """取消抓取后：已落定章节按所选格式导出半成品，书库可见，状态 partial。"""
+    server, _ = ui
+    with novel_site() as site:
+        for path in (
+            "/book/2.html",
+            "/book/2_2.html",
+            "/book/2_3.html",
+            "/book/3.html",
+            "/book/5.html",
+        ):
+            site.delays[path] = 5
+        status, job = _request(
+            server,
+            "POST",
+            "/api/jobs",
+            {
+                "kind": "novel",
+                "url": f"{site.url}/book/",
+                "title": "测试之书",
+                "formats": ["txt"],
+                "ocr": "never",
+            },
+        )
+        assert status == 201
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            _, snap = _request(server, "GET", f"/api/jobs/{job['id']}")
+            if any(c["status"] == "done" for c in snap["chapters"]):
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError("没有章节落定")
+        status, _ = _request(server, "POST", f"/api/jobs/{job['id']}/cancel")
+        assert status == 200
+        done = _wait_job(server, job["id"])
+        assert done["status"] == "partial"
+        assert done["book_id"]
+
+        _, data = _request(server, "GET", "/api/books")
+        assert len(data["books"]) == 1
+        assert "（未完成）" in data["books"][0]["title"]
+        txt = (server.data_root / "library" / "测试之书（未完成）.txt").read_text("utf-8")
+        assert "第1章第1页第1段" in txt  # 已抓章节在成品里
+        assert "第2章第1页第1段" not in txt  # 未抓章节不伪造正文
+
+
 def test_probe_rejects_page_without_content(ui):
     server, _ = ui
     with novel_site() as site:
