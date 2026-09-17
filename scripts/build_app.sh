@@ -127,6 +127,8 @@ for size in 16 32 128 256 512; do
     sips -z "$double" "$double" "$ICON_SOURCE" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$RES/AppIcon.icns"
+# Keep the unflattened source for the runtime Dock image and Finder custom icon.
+cp "$ICON_SOURCE" "$RES/AppIcon.png"
 
 # ad-hoc 签名（§3.4）：先内后外，否则 Apple Silicon 内核拒绝执行。
 find "$RES/python" "$RES/core" \( -name "*.so" -o -name "*.dylib" \) -print0 \
@@ -135,6 +137,10 @@ codesign --force --sign - "$RES/python/bin/python3.12"
 codesign --force --sign - "$APP/Contents/MacOS/quire"
 codesign --force --sign - "$APP"
 codesign --verify --deep --strict "$APP"
+# Custom icon metadata must be applied after the bundle has been sealed.
+xcrun swift "$ROOT/scripts/set-macos-icon.swift" "$RES/AppIcon.png" "$APP"
+# --strict rejects intentional Finder resource forks; verify the sealed contents normally.
+codesign --verify --deep "$APP"
 
 BYTES=$(du -sk "$APP" | cut -f1)
 echo "构建完成：$APP"

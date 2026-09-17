@@ -8,7 +8,7 @@ const FORMATS = { manga: [["pdf", "PDF"], ["cbz", "CBZ"], ["zip", "原图 ZIP"]]
                   novel: [["epub", "EPUB"], ["txt", "TXT"], ["pdf", "PDF"]] };
 
 const state = {
-  caps: null, settings: null, probe: null, kind: "manga",
+  caps: null, settings: null, probe: null, kind: "novel", captureMode: "catalogue",
   job: null, events: null, lastSeq: 0, startedAt: 0, timer: null,
   bookId: null, books: [], selectedBook: null, lastSpec: null,
 };
@@ -84,112 +84,6 @@ document.querySelectorAll("[data-preset]").forEach((b) =>
   b.addEventListener("click", () => applyPreset(b.dataset.preset, true)));
 
 /* ------------------------------------------------------------ 新建任务 */
-
-function renderFormatChips() {
-  const wrap = $("formatChips");
-  wrap.textContent = "";
-  const previous = new Set(state.formats || []);
-  FORMATS[state.kind].forEach(([value, label], index) => {
-    const chip = document.createElement("button");
-    chip.className = "chip";
-    chip.type = "button";
-    chip.textContent = label;
-    chip.dataset.format = value;
-    const on = previous.size ? previous.has(value) : index === 0;
-    chip.setAttribute("aria-pressed", String(on));
-    chip.addEventListener("click", () =>
-      chip.setAttribute("aria-pressed", chip.getAttribute("aria-pressed") === "true" ? "false" : "true"));
-    wrap.appendChild(chip);
-  });
-  updateChromeHint();
-}
-
-function chosenFormats() {
-  return [...$("formatChips").querySelectorAll('.chip[aria-pressed="true"]')]
-    .map((c) => c.dataset.format);
-}
-
-function updateChromeHint() {
-  const needChrome = state.kind === "novel" && chosenFormats().includes("pdf");
-  $("chromeHint").hidden = !(needChrome && state.caps && !state.caps.chrome);
-}
-
-function probeUrl(url, kind) {
-  const request = Symbol(); state.probeRequest = request;
-  $("startBtn").disabled = true;
-  state.probe = null;
-  $("probeHint").hidden = false;
-  $("probeHint").textContent = "正在识别这个链接……";
-  api("/api/probe", { method: "POST", body: { url, kind, split_by: $("splitMode").value } }).then((result) => {
-    if (state.probeRequest !== request) return;
-    state.probe = result;
-    renderVolumes(result);
-    state.kind = result.kind;
-    setSeg($("kindSeg"), "kind", result.kind);
-    renderFormatChips();
-    $("probeHint").textContent =
-      `${result.kind === "manga" ? "漫画" : "小说"} · ${result.title} · 约 ${result.count} ` +
-      (result.kind === "manga" && !result.series ? "页" : "章");
-    $("kindField").hidden = false;
-    $("formatField").hidden = false;
-    updateKindFields();
-    $("startBtn").disabled = false;
-    $("startMeta").textContent = "";
-  }).catch((err) => {
-    if (state.probeRequest !== request) return;
-    $("probeHint").textContent = err.hint ? `${err.message} ${err.hint}` : err.message;
-    $("startBtn").disabled = true;
-  });
-}
-
-function updateKindFields() {
-  $("compressField").hidden = state.kind !== "manga";
-  $("ocrField").hidden = state.kind !== "novel";
-  updateChromeHint();
-}
-
-function renderVolumes(result) {
-  $("seriesField").hidden = !result.series;
-  $("volumeList").textContent = "";
-  if (!result.series || $("splitMode").value.startsWith("size")) return;
-  for (const volume of result.volumes) {
-    const label = document.createElement("label");
-    const input = document.createElement("input");
-    input.type = "checkbox"; input.value = volume.index; input.checked = true;
-    label.append(input, document.createTextNode(`${volume.title} · ${volume.chapters} 章`));
-    $("volumeList").append(label);
-  }
-}
-
-function startJob() {
-  const formats = chosenFormats();
-  if (!formats.length) { $("startMeta").textContent = "至少选一种格式"; return; }
-  const compress = segValue($("compressSeg"), "compress") || "balanced";
-  const spec = {
-    kind: state.kind,
-    url: state.probe ? state.probe.url : $("urlInput").value.trim(),
-    title: state.probe ? state.probe.title : "book",
-    formats,
-    compress,
-    target_mb: parseInt($("targetInput").value, 10) || 50,
-    ocr: segValue($("ocrSeg"), "ocr") || "auto",
-    series: Boolean(state.probe && state.probe.series && state.kind === "manga"),
-    split_by: $("splitMode").value,
-    volumes: [...$("volumeList").querySelectorAll("input:checked")].map(x => Number(x.value)),
-  };
-  if (spec.series && !spec.split_by.startsWith("size") && !spec.volumes.length) {
-    $("startMeta").textContent = "至少选择一卷"; return;
-  }
-  state.lastSpec = spec;
-  $("startBtn").disabled = true;
-  api("/api/jobs", { method: "POST", body: spec }).then((job) => {
-    attachJob(job);
-    showView("run");
-  }).catch((err) => {
-    $("startMeta").textContent = err.message;
-    $("startBtn").disabled = false;
-  });
-}
 
 /* ------------------------------------------------------------ 进行中 */
 
@@ -419,10 +313,12 @@ function saveSettings() {
 document.querySelectorAll("[data-view-btn]").forEach((b) =>
   b.addEventListener("click", () => showView(b.dataset.viewBtn)));
 bindSeg($("kindSeg"), "kind", (kind) => {
-  state.kind = kind; renderFormatChips(); updateKindFields();
-  if ($("urlInput").value.trim()) probeUrl($("urlInput").value.trim(), kind);
+  state.kind = kind; renderFormatChips(); updateKindFields(); recheckUrl();
 });
-$("splitMode").addEventListener("change", () => probeUrl($("urlInput").value.trim(), "manga"));
+bindSeg($("captureSeg"), "capture", (mode) => {
+  state.captureMode = mode; updateKindFields(); recheckUrl();
+});
+$("splitMode").addEventListener("change", recheckUrl);
 document.querySelectorAll("[data-command]").forEach(button => button.addEventListener("click", () => {
   $("commandMenu").close(); showView(button.dataset.command);
 }));
@@ -431,19 +327,12 @@ bindSeg($("ocrSeg"), "ocr");
 bindSeg($("setCompressSeg"), "compress");
 bindSeg($("setOcrSeg"), "ocr");
 
-$("pasteBtn").addEventListener("click", () => {
-  navigator.clipboard.readText().then((text) => {
-    if (text) { $("urlInput").value = text.trim(); probeUrl($("urlInput").value); }
-  }).catch(() => $("urlInput").focus());
-});
+$("pasteBtn").addEventListener("click", pasteUrl);
 let probeTimer = null;
 $("urlInput").addEventListener("input", () => {
-  state.probeRequest = Symbol(); state.probe = null;
-  $("seriesField").hidden = true;
-  $("startBtn").disabled = true;
-  clearTimeout(probeTimer);
+  resetProbe(); clearTimeout(probeTimer);
   const url = $("urlInput").value.trim();
-  if (/^https?:\/\/.+\..+/.test(url)) probeTimer = setTimeout(() => probeUrl(url), 500);
+  if (/^https?:\/\/.+/.test(url)) probeTimer = setTimeout(() => probeUrl(url), 500);
 });
 $("startBtn").addEventListener("click", startJob);
 $("cancelBtn").addEventListener("click", () => {
@@ -511,6 +400,7 @@ document.addEventListener("keydown", (e) => {
   }).catch(() => {
     if (!anchor) applyPreset(localStorage.getItem("quire-theme") || "paper:light", false);
   });
+  renderFormatChips(); updateKindFields();
   loadSettingsView();
   api("/api/jobs").then((data) => {
     const active = data.jobs.find((j) => j.status === "running" || j.status === "pending");

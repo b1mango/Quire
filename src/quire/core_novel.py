@@ -63,10 +63,14 @@ def plan_chapters(page: Response, opts: NovelOptions, warnings: Sequence[str] = 
         doc, page.url, selector=opts.chapter_selector, limit=opts.max_chapters + 1
     )
     notes = list(warnings)
-    if opts.chapter_selector and not links:
+    if opts.capture_mode == "single":
+        return _Plan(title, (ChapterLink(title, page.url),), {page.url: page}, tuple(notes))
+    if (opts.chapter_selector or opts.capture_mode == "catalogue") and not links:
         raise NoChaptersError(page.url)
-    single_entry = not opts.chapter_selector and (
-        not looks_like_catalogue(links) or _chapter_entry(doc, title, links, opts)
+    single_entry = (
+        opts.capture_mode == "auto"
+        and not opts.chapter_selector
+        and (not looks_like_catalogue(links) or _chapter_entry(doc, title, links, opts))
     )
     if single_entry:
         single = ChapterLink(title=title, url=page.url, number=None)
@@ -99,6 +103,7 @@ def novel_identity(opts: NovelOptions, links: tuple[ChapterLink, ...]) -> dict[s
         "next_selector": opts.next_selector,
         "max_chapters": opts.max_chapters,
         "max_pages": opts.max_pages,
+        "capture_mode": opts.capture_mode,
         "clean_version": opts.clean_version,
         "ocr_mode": opts.ocr_mode,
         "ocr_engine": opts.ocr_engine,

@@ -31,7 +31,7 @@ def _identity_options(opts: MangaOptions, candidates: list[Candidate]) -> dict[s
     identity = cast(dict[str, JsonValue], json.loads(json.dumps(asdict(opts))))
     for key in ("concurrency", "rate", "timeout", "retries", "overwrite", "keep_images"):
         identity.pop(key)
-    for key in ("remove", "next_selector"):
+    for key in ("remove", "next_selector", "follow_pages"):
         if not identity[key]:
             identity.pop(key)
     identity["alternatives"] = [list(c.alternatives) for c in candidates]

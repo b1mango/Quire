@@ -21,6 +21,7 @@ from typing import Any
 from ..core_series import SeriesResult
 from ..errors import QuireError
 from ..export_options import available_output
+from ..fetch.browser import RenderOptions
 from ..image.options import CompressionOptions
 from ..models import MangaOptions, MangaResult, NovelOptions, NovelResult
 from ..novel_options import available_novel_output
@@ -194,16 +195,21 @@ class JobManager:
                 job.emit("thumb", {"page": page, "url": f"/api/jobs/{job.id}/thumbs/{page}"})
 
         rule = resolve_rule(self.data_root, spec.url)
-        manga_options = MangaOptions(concurrency=settings.concurrency, rate=settings.rate)
+        manga_options = MangaOptions(
+            concurrency=settings.concurrency, rate=settings.rate, follow_pages=True
+        )
         novel_options = NovelOptions(
             concurrency=settings.concurrency,
             rate=settings.rate,
             ocr_mode=spec.ocr,
             model_dir=self.data_root / "models",
+            capture_mode=spec.capture_mode,
+            max_chapters=20000,
         )
+        render = RenderOptions(timeout=60, max_scrolls=1000) if spec.render else None
         if rule:
             manga_options, novel_options = rule.manga(manga_options), rule.novel(novel_options)
-        if spec.series:
+        if spec.series or (spec.kind == "manga" and spec.capture_mode == "catalogue"):
             from ..core_series import run_series
 
             def delivered(result: MangaResult) -> None:
@@ -224,6 +230,7 @@ class JobManager:
                 compression=CompressionOptions(spec.compress, spec.target_bytes),
                 formats=spec.formats,
                 on_volume=delivered,
+                render=render,
             )
         poll = asyncio.create_task(self._poll(job, workdir, thumbs))
         try:
@@ -240,6 +247,7 @@ class JobManager:
                     progress=ExportSink(job, on_page=sweep_thumbs),
                     compression=CompressionOptions(spec.compress, spec.target_bytes),
                     formats=spec.formats,
+                    render=render,
                 )
             out = available_novel_output(
                 base.with_suffix(f".{spec.formats[0]}"), spec.formats, overwrite=False
@@ -251,6 +259,7 @@ class JobManager:
                 workdir=workdir,
                 formats=spec.formats,
                 progress=ChapterSink(job),
+                render=render,
             )
         finally:
             poll.cancel()

@@ -21,9 +21,19 @@ final class QuireWindow: NSObject, NSWindowDelegate {
         window.minSize = NSSize(width: 880, height: 600)
         window.center()
         window.delegate = self
-        let webView = WKWebView(frame: window.contentView!.bounds)
+        let bridge = NativeBridge(url: url)
+        let configuration = WKWebViewConfiguration()
+        bridge.install(on: configuration.userContentController)
+        let webView = WKWebView(frame: window.contentView!.bounds, configuration: configuration)
+        bridge.webView = webView
+        webView.navigationDelegate = bridge
         webView.autoresizingMask = [.width, .height]
         window.contentView?.addSubview(webView)
+        let dragView = WindowDragView(frame: webView.frame)
+        dragView.autoresizingMask = [.width, .height]
+        bridge.dragView = dragView
+        window.contentView?.addSubview(dragView)
+        // The content controller retains the bridge; its view references are weak.
         webView.load(URLRequest(url: url))
     }
 

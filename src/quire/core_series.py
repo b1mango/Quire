@@ -93,7 +93,7 @@ async def run_series(
     async with client:
         page = await client.get(url)
         if render:
-            page, _ = await render_page(page, client, render)
+            page, _ = await render_page(page, client, render, content="text")
         doc = parse(page.text, base_url=page.url)
         volumes, warnings = plan_volumes(
             doc,

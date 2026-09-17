@@ -43,7 +43,23 @@
         <div class="view" data-view="new">
           <div class="vhead">
             <h1>新建任务</h1>
-            <p class="sub">粘贴漫画或小说的目录页链接</p>
+            <p class="sub">选择内容与采集方式，然后粘贴链接</p>
+          </div>
+
+          <div class="field" id="kindField">
+            <label>内容类型</label>
+            <div class="segmented" id="kindSeg" role="group" aria-label="内容类型">
+              <button data-kind="novel" aria-pressed="true">小说</button>
+              <button data-kind="manga" aria-pressed="false">漫画</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>采集方式</label>
+            <div class="segmented" id="captureSeg" role="group" aria-label="采集方式">
+              <button data-capture="catalogue" aria-pressed="true">识别目录 · 批量抓取</button>
+              <button data-capture="single" aria-pressed="false">单章抓取</button>
+            </div>
+            <p class="hint" id="captureHint">识别小说目录，按阅读顺序合为一本书。</p>
           </div>
 
           <div class="field">
@@ -52,15 +68,7 @@
               <input class="input" id="urlInput" placeholder="https://" spellcheck="false" autocomplete="off">
               <button class="btn ghost" id="pasteBtn" type="button">粘贴</button>
             </div>
-            <div class="hint" id="probeHint" hidden></div>
-          </div>
-
-          <div class="field" id="kindField" hidden>
-            <label>类型</label>
-            <div class="segmented" id="kindSeg">
-              <button data-kind="manga" aria-pressed="true">漫画</button>
-              <button data-kind="novel" aria-pressed="false">小说</button>
-            </div>
+            <div class="hint" id="probeHint" role="status" aria-live="polite" hidden></div>
           </div>
 
           <div class="field" id="formatField" hidden>
@@ -232,6 +240,7 @@ quire manga URL --core --site example.com</pre>
   <button class="btn" data-command="lib">书库</button>
   <button class="btn" data-command="set">设置</button>
 </dialog>
+<script src="/static/capture.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

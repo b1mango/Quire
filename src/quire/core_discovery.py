@@ -32,7 +32,9 @@ async def discover_manga(
         if render:
             page, notes = await render_page(page, client, render)
         found, part = discover_page(
-            current, replace(opts, first=1, last=0) if opts.next_selector else opts, page
+            current,
+            replace(opts, first=1, last=0) if opts.next_selector or opts.follow_pages else opts,
+            page,
         )
         if result is None:
             result = part
@@ -51,11 +53,11 @@ async def discover_manga(
             find_next_page(
                 parse(page.text, base_url=page.url), page.url, page.url, selector=opts.next_selector
             )
-            if opts.next_selector
+            if opts.next_selector or opts.follow_pages
             else None
         )
     assert result is not None
-    if opts.next_selector:
+    if opts.next_selector or opts.follow_pages:
         candidates = candidates[opts.first - 1 : opts.last or None]
         if not candidates:
             raise ConfigError("页范围超出章节图片数")

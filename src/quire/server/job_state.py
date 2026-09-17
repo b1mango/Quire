@@ -32,11 +32,18 @@ class JobSpec:
     series: bool = False
     split_by: str = "none"
     volumes: tuple[int, ...] = ()
+    capture_mode: str = "auto"
+    render: bool = False
 
     def __post_init__(self) -> None:
-        from .probe import validate_task_url
+        from .probe import validate_capture_mode, validate_task_url
 
         validate_task_url(self.url)
+        validate_capture_mode(self.kind, self.capture_mode)
+        if type(self.render) is not bool:
+            raise ConfigError("动态页面设置须为布尔值")
+        if self.series and self.capture_mode == "single":
+            raise ConfigError("单章抓取不能同时启用系列分卷")
         if type(self.series) is not bool or not isinstance(self.split_by, str):
             raise ConfigError("系列设置格式无效")
         mode, _ = split_spec(self.split_by)

@@ -1,0 +1,144 @@
+"use strict";
+
+function renderFormatChips() {
+  const wrap = $("formatChips");
+  wrap.textContent = "";
+  const previous = new Set(state.formats || []);
+  FORMATS[state.kind].forEach(([value, label], index) => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.type = "button";
+    chip.textContent = label;
+    chip.dataset.format = value;
+    const on = previous.size ? previous.has(value) : index === 0;
+    chip.setAttribute("aria-pressed", String(on));
+    chip.addEventListener("click", () =>
+      chip.setAttribute("aria-pressed", chip.getAttribute("aria-pressed") === "true" ? "false" : "true"));
+    wrap.appendChild(chip);
+  });
+  updateChromeHint();
+}
+
+function chosenFormats() {
+  return [...$("formatChips").querySelectorAll('.chip[aria-pressed="true"]')]
+    .map((c) => c.dataset.format);
+}
+
+function updateChromeHint() {
+  const needChrome = state.kind === "novel" && chosenFormats().includes("pdf");
+  $("chromeHint").hidden = !(needChrome && state.caps && !state.caps.chrome);
+}
+
+function probeUrl(url) {
+  clearTimeout(probeTimer);
+  const request = Symbol(); state.probeRequest = request;
+  $("startBtn").disabled = true;
+  state.probe = null;
+  $("probeHint").hidden = false;
+  $("seriesField").hidden = true;
+  $("probeHint").classList.add("is-loading");
+  $("probeHint").textContent = "正在识别链接，动态页面可能需要稍等……";
+  api("/api/probe", { method: "POST", body: { url, kind: state.kind, capture_mode: state.captureMode, split_by: $("splitMode").value } }).then((result) => {
+    if (state.probeRequest !== request) return;
+    $("probeHint").classList.remove("is-loading");
+    state.probe = result;
+    renderVolumes(result);
+    state.kind = result.kind;
+    setSeg($("kindSeg"), "kind", result.kind);
+    renderFormatChips();
+    $("probeHint").textContent =
+      `${result.kind === "manga" ? "漫画" : "小说"} · ${result.title} · 约 ${result.count} ` +
+      (result.kind === "manga" && !result.series ? "页" : "章") + (result.render ? " · 动态页面已就绪" : "");
+    $("kindField").hidden = false;
+    $("formatField").hidden = false;
+    updateKindFields();
+    $("startBtn").disabled = false;
+    $("startMeta").textContent = "";
+  }).catch((err) => {
+    if (state.probeRequest !== request) return;
+    $("probeHint").classList.remove("is-loading");
+    $("probeHint").textContent = err.hint ? `${err.message} ${err.hint}` : err.message;
+    $("startBtn").disabled = true;
+  });
+}
+
+function updateKindFields() {
+  $("captureHint").textContent = state.captureMode === "single"
+    ? "仅抓取当前章节，保留本章分页，不跟随其他章节。"
+    : state.kind === "novel" ? "识别小说目录，按阅读顺序合为一本书。" : "识别漫画目录，批量抓取章节，可选择分卷。";
+  $("compressField").hidden = state.kind !== "manga";
+  $("ocrField").hidden = state.kind !== "novel";
+  updateChromeHint();
+}
+
+function renderVolumes(result) {
+  $("seriesField").hidden = !result.series;
+  $("volumeList").textContent = "";
+  if (!result.series || $("splitMode").value.startsWith("size")) return;
+  for (const volume of result.volumes) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox"; input.value = volume.index; input.checked = true;
+    label.append(input, document.createTextNode(`${volume.title} · ${volume.chapters} 章`));
+    $("volumeList").append(label);
+  }
+}
+
+function startJob() {
+  if (!state.probe) return;
+  const formats = chosenFormats();
+  if (!formats.length) { $("startMeta").textContent = "至少选一种格式"; return; }
+  const compress = segValue($("compressSeg"), "compress") || "balanced";
+  const spec = {
+    kind: state.kind,
+    capture_mode: state.captureMode,
+    render: Boolean(state.probe.render),
+    url: state.probe ? state.probe.url : $("urlInput").value.trim(),
+    title: state.probe ? state.probe.title : "book",
+    formats,
+    compress,
+    target_mb: parseInt($("targetInput").value, 10) || 50,
+    ocr: segValue($("ocrSeg"), "ocr") || "auto",
+    series: Boolean(state.probe && state.probe.series && state.kind === "manga"),
+    split_by: $("splitMode").value,
+    volumes: [...$("volumeList").querySelectorAll("input:checked")].map(x => Number(x.value)),
+  };
+  if (spec.series && !spec.split_by.startsWith("size") && !spec.volumes.length) {
+    $("startMeta").textContent = "至少选择一卷"; return;
+  }
+  state.lastSpec = spec;
+  $("startBtn").disabled = true;
+  api("/api/jobs", { method: "POST", body: spec }).then((job) => {
+    attachJob(job);
+    showView("run");
+  }).catch((err) => {
+    $("startMeta").textContent = err.message;
+    $("startBtn").disabled = false;
+  });
+}
+
+function resetProbe() {
+  state.probeRequest = Symbol(); state.probe = null;
+  $("seriesField").hidden = true;
+  $("startBtn").disabled = true;
+  $("probeHint").hidden = true;
+  $("probeHint").classList.remove("is-loading");
+}
+function recheckUrl() {
+  resetProbe(); clearTimeout(probeTimer);
+  const url = $("urlInput").value.trim();
+  if (url) probeUrl(url);
+}
+async function pasteUrl() {
+  try {
+    const bridge = window.webkit?.messageHandlers?.clipboard;
+    const text = bridge ? await bridge.postMessage({action: "readText"}) : await navigator.clipboard.readText();
+    if (!text || !text.trim()) throw new Error("剪贴板里没有文字链接");
+    $("urlInput").value = text.trim();
+    recheckUrl();
+  } catch (err) {
+    $("urlInput").focus();
+    $("probeHint").hidden = false;
+    $("probeHint").textContent = err.message || "无法读取剪贴板，请使用 ⌘V 粘贴";
+  }
+}

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from ..errors import ConfigError, NoChaptersError
 from ..image.options import parse_size
-from ..utils.urls import join_url
+from ..utils.urls import join_document_url as join_url
 from .chapters import ChapterLink, discover_chapters
 from .minidom import Document
 

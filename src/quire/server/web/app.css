@@ -300,3 +300,8 @@ html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--faint) 45%,tra
 .command-menu > button { display:block; width:100%; margin-top:8px; text-align:left; }
 .help-panel { margin-bottom:24px; color:var(--muted); font-size:13px; line-height:1.8; }
 .help-panel pre { overflow:auto; }
+
+.hint.is-loading{display:flex;align-items:center;gap:8px}
+.hint.is-loading::before{content:"";width:10px;height:10px;flex:none;border:1.5px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:probe-spin .8s linear infinite}
+@keyframes probe-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.hint.is-loading::before{animation:none}}

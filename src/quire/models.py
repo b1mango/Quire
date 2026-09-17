@@ -18,6 +18,7 @@ class MangaOptions:
     order: str = "auto"
     remove: tuple[str, ...] = ()
     next_selector: str | None = None
+    follow_pages: bool = False
     concurrency: int = 4
     rate: float = 4.0
     retries: int = 3
@@ -130,8 +131,11 @@ class NovelOptions:
     ocr_engine: str = "auto"  # auto|tesseract|onnx
     offline: bool = False  # 离线：缺 OCR 模型直接报错（退出码 6），不下载
     model_dir: Path | None = None  # OCR 模型目录；None 用数据根下的 models/
+    capture_mode: str = "auto"  # auto | catalogue | single
 
     def __post_init__(self) -> None:
+        if self.capture_mode not in {"auto", "catalogue", "single"}:
+            raise ConfigError("采集模式须为 auto、catalogue 或 single")
         if not 1 <= self.concurrency <= 16 or not 0 <= self.retries <= 10:
             raise ConfigError("并发须为 1-16，重试须为 0-10")
         if not 1 <= self.max_chapters <= 20000 or not 1 <= self.max_pages <= 200:

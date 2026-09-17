@@ -86,7 +86,12 @@ async def _scroll(
         if not bottom and state["ready"] != "loading":
             if scrolls >= opts.max_scrolls:
                 raise FetchError("动态页面达到滚动上限，未确认内容完整；请增大--max-scrolls")
-            await _evaluate(cdp, session, "window.scrollBy(0, Math.max(1, innerHeight * 0.8))")
+            scroll = (
+                "window.scrollTo(0, document.scrollingElement.scrollHeight)"
+                if content == "text"
+                else "window.scrollBy(0, Math.max(1, innerHeight * 0.8))"
+            )
+            await _evaluate(cdp, session, scroll)
             scrolls += 1
             stable = now
         elif bottom and visible and now - max(stable, network.last_activity) >= opts.settle:

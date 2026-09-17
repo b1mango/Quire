@@ -29,7 +29,11 @@ _LOG = logging.getLogger(__name__)
 
 _LOOPBACK = {"127.0.0.1", "::1"}
 _MAX_BODY = 65_536
-_STATIC = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8"}
+_STATIC = {
+    "app.css": "text/css; charset=utf-8",
+    "app.js": "text/javascript; charset=utf-8",
+    "capture.js": "text/javascript; charset=utf-8",
+}
 
 
 class QuireServer(ThreadingHTTPServer):

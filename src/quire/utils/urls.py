@@ -85,6 +85,22 @@ def join_url(base: str, rel: str) -> str:
     return normalize_url(joined)
 
 
+def route_fragment(url: str) -> str:
+    """Hash 路由是文档身份；普通 #heading 仍只是页内锚点。"""
+    fragment = urlsplit(url).fragment
+    return fragment if fragment.startswith(("/", "!/")) else ""
+
+
+def join_document_url(base: str, rel: str) -> str:
+    """章节导航保留 SPA 路由；图片资源继续使用 join_url。"""
+    rel = rel.strip()
+    if rel.startswith(("#/", "#!/")):
+        rel = urljoin(base, rel)
+    joined = join_url(base, rel)
+    fragment = route_fragment(rel) if joined else ""
+    return joined + ("#" + fragment if fragment else "")
+
+
 def host_of(url: str) -> str:
     """取主机名（小写，去端口）。"""
     try:

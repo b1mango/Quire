@@ -7,6 +7,7 @@ import base64
 from typing import Any
 
 from ..errors import FetchError, QuireError
+from ..utils.urls import normalize_url
 from .browser_cdp import Cdp
 from .session import AsyncFetcher
 from .simple import Response
@@ -15,7 +16,10 @@ from .simple import Response
 class BrowserNetwork:
     def __init__(self, cdp: Cdp, session: str, frame: str, client: AsyncFetcher, page: Response):
         self.cdp, self.session, self.frame, self.client = cdp, session, frame, client
-        self.seed = {page.url: page}
+        from dataclasses import replace
+
+        # HTTP 请求没有 fragment；浏览器导航仍保留原 page.url 的 hash 路由。
+        self.seed = {normalize_url(page.url): replace(page, url=normalize_url(page.url))}
         self.pending: set[asyncio.Task[None]] = set()
         self.error: BaseException | None = None
         self.warnings: set[str] = set()

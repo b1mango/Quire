@@ -18,7 +18,8 @@ from dataclasses import dataclass
 from urllib.parse import parse_qs, urlsplit
 
 from ..text.clean import chapter_number, has_chapter_mark
-from ..utils.urls import is_usable_url, join_url
+from ..utils.urls import is_usable_url, route_fragment
+from ..utils.urls import join_document_url as join_url
 from .minidom import Document, Node
 
 #: 明确不是章节的导航链接文本。
@@ -71,7 +72,9 @@ NEXT_CHAPTER_WORDS = (
 )
 
 #: 目录链接可能出现的容器类名/标签（提高召回，不单独作为判据）。
-_LIST_HINTS = re.compile(r"(chapter|chapters|list|catalog|mulu|zhangjie|volume|dir)\b", re.I)
+_LIST_HINTS = re.compile(
+    r"(?:^|[\s_-])(chapter|chapters|list|listmain|catalog|mulu|zhangjie|volume|dir)\b", re.I
+)
 
 _DIGITS = re.compile(r"\d+")
 _WS = re.compile(r"\s+")
@@ -122,20 +125,18 @@ def discover_chapters(
     found: list[ChapterLink] = []
     strong: list[ChapterLink] = []
     weak: list[ChapterLink] = []
-    seen: set[str] = set()
     for anchor in anchors:
         url = join_url(base, anchor.get("href") or "")
-        if not url or not is_usable_url(url) or not _same_origin(base_url, url) or url in seen:
+        if not url or not is_usable_url(url) or not _same_origin(base_url, url):
             continue
         if _namespace_link(url):
             continue
         title = _WS.sub(" ", anchor.text).strip()
         if not title or len(title) > 60 or title in NAV_WORDS:
             continue
-        if classify_next(title) != "none":
-            continue
-        seen.add(url)
         number = chapter_number(title)
+        if number is None and classify_next(title) != "none":
+            continue
         link = ChapterLink(title=title, url=url, number=number)
         found.append(link)
         if number is not None or has_chapter_mark(title):
@@ -146,8 +147,10 @@ def discover_chapters(
     # 截断放在排序之后：扫描阶段的"预算"会被侧栏链接吃掉，
     # 实测中它会让真正的章节列表还没扫到就停止。
     if selector is not None:
-        return tuple(found[:limit])
+        return tuple({link.url: link for link in found}.values())[:limit]
     chosen = strong if len(strong) >= 2 else weak
+    # 最新章节通常在完整目录前重复出现；以后面的阅读清单位置为准。
+    chosen = list({link.url: link for link in reversed(chosen)}.values())[::-1]
     return tuple(_sort_chapters(_modal_group(chosen))[:limit])
 
 
@@ -197,6 +200,18 @@ def _looks_like_continuation(current_url: str, candidate: str) -> bool:
     一个明确分页参数递增，其余参数（包括重复值和空值）必须保持。
     """
     current, target = urlsplit(current_url), urlsplit(candidate)
+    first_route, next_route = route_fragment(current_url), route_fragment(candidate)
+    if first_route != next_route:
+        if (
+            not first_route
+            or not next_route
+            or (current.path, current.query) != (target.path, target.query)
+        ):
+            return False
+        current, target = (
+            urlsplit(first_route.removeprefix("!")),
+            urlsplit(next_route.removeprefix("!")),
+        )
     before = parse_qs(current.query, keep_blank_values=True)
     after = parse_qs(target.query, keep_blank_values=True)
     if current.path == target.path:
@@ -240,11 +255,11 @@ def _same_origin(left: str, right: str) -> bool:
         return False
 
 
-PageKey = tuple[str, str | None, int, str, str]
+PageKey = tuple[str, str | None, int, str, str, str]
 
 
 def page_key(url: str) -> PageKey:
-    """已校验 HTTP 地址的页面身份：忽略 fragment，统一默认端口。"""
+    """文档身份保留 hash 路由、忽略普通锚点，统一默认端口。"""
     parts = urlsplit(url)
     return (
         parts.scheme,
@@ -252,6 +267,7 @@ def page_key(url: str) -> PageKey:
         parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80),
         parts.path or "/",
         parts.query,
+        route_fragment(url),
     )
 
 
@@ -272,6 +288,8 @@ def _next_url(anchor: Node, base: str, current_url: str) -> str | None:
         or url == current_url
         or not is_usable_url(url)
         or not _same_origin(current_url, url)
+        or route_fragment(current_url) != route_fragment(url)
+        and not _looks_like_continuation(current_url, url)
     ):
         return None
     before = parse_qs(urlsplit(current_url).query, keep_blank_values=True)

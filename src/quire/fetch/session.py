@@ -12,7 +12,7 @@ from types import MappingProxyType
 import httpx
 
 from ..errors import BlockedError, ConfigError, FetchError, HttpStatusError, NetworkError
-from ..utils.urls import is_usable_url, redact
+from ..utils.urls import is_usable_url, redact, route_fragment
 from .async_policy import AsyncRateLimiter, AsyncRobotsPolicy
 from .decoding import decode_body
 from .simple import DEFAULT_UA, RETRYABLE_STATUS, Response, retry_after
@@ -132,8 +132,9 @@ class AsyncFetcher:
         started = time.monotonic()
         try:
             response = await self._fetch(request_url, request_headers, policy=False)
+            fragment = route_fragment(url)
             return Response(
-                response.url,
+                response.url + ("#" + fragment if fragment else ""),
                 response.status,
                 response.headers,
                 response.content,

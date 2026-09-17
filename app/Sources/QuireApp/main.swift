@@ -7,6 +7,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: QuireWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Runtime Dock imagery uses the original alpha, independently of Finder's custom icon.
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
+            let icon = NSImage(contentsOf: iconURL)
+        {
+            NSApp.applicationIconImage = icon
+        }
         let core = CoreProcess(
             onReady: { [weak self] url in
                 DispatchQueue.main.async { self?.showWindow(url: url) }
@@ -41,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
+app.mainMenu = makeApplicationMenu()
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
