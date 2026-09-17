@@ -6,7 +6,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from quire.server.job_state import JobSpec
+from quire.server.job_state import JobSpec, job_workdir
 from quire.server.salvage import salvage_job
 from quire.server.settings import UiSettings
 from quire.store.cache import publish_bytes
@@ -50,11 +50,10 @@ def _novel_ledger(workdir: Path, done: int, total: int) -> str:
 
 
 def test_salvage_novel_exports_partial_in_chosen_formats(tmp_path):
-    workdir = tmp_path / "out" / ".quire-core"
-    task_id = _novel_ledger(workdir, done=2, total=4)
     spec = JobSpec(
         kind="novel", url="http://e.c/book/", title="测试书", formats=("txt", "epub"), ocr="never"
     )
+    task_id = _novel_ledger(job_workdir(tmp_path / "out", spec), done=2, total=4)
     result = asyncio.run(salvage_job(spec, task_id, _settings(tmp_path), tmp_path))
     assert result is not None and result.partial
     assert result.title.endswith("（未完成）")
@@ -67,7 +66,8 @@ def test_salvage_novel_exports_partial_in_chosen_formats(tmp_path):
 
 
 def test_salvage_manga_exports_partial_pdf(tmp_path):
-    workdir = tmp_path / "out" / ".quire-core"
+    spec = JobSpec(kind="manga", url="http://e.c/comic", title="测试漫", formats=("pdf",))
+    workdir = job_workdir(tmp_path / "out", spec)
     specs = [
         ResourceSpec(1, i + 1, f"http://e.c/comic/{i + 1}.jpg", "http://e.c/comic")
         for i in range(3)
@@ -81,7 +81,6 @@ def test_salvage_manga_exports_partial_pdf(tmp_path):
                 ledger.root, task_id, f"00001-{i + 1:06d}.jpg", page_image(i + 1)
             )
             ledger.complete(task_id, 1, i + 1, relative)
-    spec = JobSpec(kind="manga", url="http://e.c/comic", title="测试漫", formats=("pdf",))
     result = asyncio.run(salvage_job(spec, task_id, _settings(tmp_path), tmp_path))
     assert result is not None and result.partial
     assert result.pages_written == 2 and result.pages_failed == 1
@@ -90,8 +89,7 @@ def test_salvage_manga_exports_partial_pdf(tmp_path):
 
 
 def test_salvage_without_settled_content_returns_none(tmp_path):
-    workdir = tmp_path / "out" / ".quire-core"
-    task_id = _novel_ledger(workdir, done=0, total=2)
     spec = JobSpec(kind="novel", url="http://e.c/book/", title="空书", formats=("txt",))
+    task_id = _novel_ledger(job_workdir(tmp_path / "out", spec), done=0, total=2)
     assert asyncio.run(salvage_job(spec, task_id, _settings(tmp_path), tmp_path)) is None
     assert not list((tmp_path / "out").glob("*.txt"))  # 没有产出任何成品

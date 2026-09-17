@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -14,6 +17,7 @@ from ..assemble.models import NovelChapter
 from ..core_chapters import FAILURE_TEXT, decode_chapter
 from ..core_novel import export_chapters
 from ..core_reassemble import export_cached
+from ..errors import QuireError
 from ..export_options import available_output, validate_formats
 from ..image.options import CompressionOptions
 from ..models import ChapterResult, MangaOptions, MangaResult, NovelResult
@@ -22,16 +26,59 @@ from ..novel_options import available_novel_output, novel_output_paths, validate
 from ..ocr.base import ReviewEntry
 from ..parse.images import Candidate
 from ..sites.rules import resolve_rule
+from ..store import library
 from ..store.cache import read_cached
 from ..store.ledger import Ledger
 from ..store.models import TaskSnapshot
 from ..utils.naming import safe_filename
 from ..utils.urls import redact
-from .job_state import JobSpec
+from .job_state import Job, JobSpec, job_workdir
 from .settings import UiSettings
 
 #: 半成品提示：书名、元数据与任务警告统一使用。
 PARTIAL_NOTE = "（未完成）"
+
+_LOG = logging.getLogger(__name__)
+
+
+def settle_cancelled(
+    job: Job,
+    settings: UiSettings,
+    data_root: Path,
+    register: Callable[[Job, MangaResult | NovelResult], library.Book],
+    settle: Callable[..., None],
+) -> None:
+    """取消后尽量按所选格式导出半成品；没有已落定内容时维持 cancelled。"""
+    result: MangaResult | NovelResult | None = None
+    if job.task_id is not None and not job.spec.series:
+        try:
+            result = asyncio.run(salvage_job(job.spec, job.task_id, settings, data_root))
+        except Exception:
+            _LOG.exception("job %s salvage failed", job.id)
+    if result is None:
+        settle(job, "cancelled", "已取消")
+        return
+    try:
+        book = register(job, result)
+    except QuireError as exc:
+        settle(job, "failed", exc.message, exc.hint)
+        return
+    with job.condition:
+        job.book_id = book.id
+    settle(
+        job,
+        "partial",
+        "",
+        done_payload={
+            "book_id": book.id,
+            "title": result.title,
+            "partial": True,
+            "failures": len(result.failures),
+            "warnings": list(result.warnings),
+            "bytes": result.total_bytes,
+            "elapsed_s": round(result.elapsed_s, 2),
+        },
+    )
 
 
 def _snapshot(workdir: Path, task_id: str) -> TaskSnapshot:
@@ -43,7 +90,7 @@ async def salvage_job(
     spec: JobSpec, task_id: str, settings: UiSettings, data_root: Path
 ) -> MangaResult | NovelResult | None:
     """取消后导出半成品；账本里一个完整章节/图片都没有时返回 None。"""
-    workdir = settings.output_path / ".quire-core"
+    workdir = job_workdir(settings.output_path, spec)
     snapshot = _snapshot(workdir, task_id)
     if not any(record.status == "done" for record in snapshot.resources):
         return None

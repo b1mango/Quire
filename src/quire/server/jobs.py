@@ -1,9 +1,10 @@
-"""Web UI 任务执行：单任务队列、取消、进度轮询与 SSE 事件。
+"""Web UI 任务执行：双槽并行、排队、取消、进度轮询与 SSE 事件。
 
-任务在独立线程里跑 ``asyncio`` 事件循环，取消经 ``loop.call_soon_threadsafe``
-转成 core 管线原生的 task cancellation。进度来自两处：导出阶段的
-ProgressSink 回调，以及对账本（只读连接）与任务缓存目录的轮询——
-漫画每完成一页就生成缩略图并经 SSE 推给前端（项目设计.md §3.3）。
+最多两个任务并行（各占一个线程跑 ``asyncio`` 事件循环），其余排队；
+渲染任务串行互斥；同站请求经共享 HostPace 合计限速（项目设计.md §3.3）。
+取消经 ``loop.call_soon_threadsafe`` 转成 core 管线原生的 task cancellation。
+进度来自两处：导出阶段的 ProgressSink 回调，以及对账本（只读连接）与
+任务缓存目录的轮询——漫画每完成一页就生成缩略图并经 SSE 推给前端。
 """
 
 from __future__ import annotations
@@ -11,16 +12,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
-import sqlite3
 import threading
+from collections import deque
 from collections.abc import Callable, Coroutine
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from ..core_series import SeriesResult
 from ..errors import PausedError, QuireError
 from ..export_options import available_output
+from ..fetch.async_policy import HostPace
 from ..fetch.browser import RenderOptions
 from ..image.options import CompressionOptions
 from ..models import MangaOptions, MangaResult, NovelOptions, NovelResult
@@ -32,18 +33,17 @@ from ..utils.naming import safe_filename
 from .books import register_book
 from .chapter_stream import ChapterTracker
 from .follows import resolve_prefix
-from .job_state import Job, JobSpec
-from .progress import ChapterSink, ExportSink, make_thumbs, task_counts
+from .job_state import Job, JobSpec, job_workdir
+from .progress import ChapterSink, ExportSink, make_thumbs, poll_job
+from .salvage import settle_cancelled
 from .settings import UiSettings
 
 _LOG = logging.getLogger(__name__)
 
+MAX_PARALLEL = 2
+
 type MangaRunner = Callable[..., Coroutine[Any, Any, MangaResult]]
 type NovelRunner = Callable[..., Coroutine[Any, Any, NovelResult]]
-
-
-class JobConflictError(Exception):
-    """已有任务进行中：UI 一次只跑一个任务（账本单写者边界）。"""
 
 
 class JobManager:
@@ -58,6 +58,10 @@ class JobManager:
         self.thumbs_root = self.data_root / "thumbs"
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
+        self._queue: deque[tuple[Job, UiSettings]] = deque()
+        self._active: dict[str, str] = {}  # job_id → 账本工作目录键（单写者互斥）
+        self._render_lock = threading.Lock()
+        self._pace = HostPace()  # 服务级共享：并行任务打同一站点合计限速
         if run_manga is None or run_novel is None:
             from ..core_manga import run_core_manga
             from ..core_novel import run_core_novel
@@ -68,14 +72,11 @@ class JobManager:
         self._run_novel = run_novel
 
     def submit(self, spec: JobSpec, settings: UiSettings) -> Job:
+        job = Job(secrets.token_hex(8), spec)
         with self._lock:
-            if any(j.status in {"pending", "running"} for j in self._jobs.values()):
-                raise JobConflictError("已有任务进行中")
-            job = Job(secrets.token_hex(8), spec)
             self._jobs[job.id] = job
-        threading.Thread(
-            target=self._thread_main, args=(job, settings), daemon=True, name=f"quire-{job.id}"
-        ).start()
+            self._queue.append((job, settings))
+        self._pump()
         return job
 
     def get(self, job_id: str) -> Job | None:
@@ -88,7 +89,17 @@ class JobManager:
 
     def cancel(self, job_id: str) -> Job | None:
         job = self.get(job_id)
-        if job is not None:
+        if job is None:
+            return None
+        with self._lock:
+            queued = job.status == "pending" and any(entry[0] is job for entry in self._queue)
+            if queued:
+                self._queue = deque(entry for entry in self._queue if entry[0] is not job)
+        if queued:
+            # 还在排队：直接落定，不占执行槽
+            job.cancel()
+            self._settle(job, "cancelled", "已取消", pump=False)
+        else:
             job.cancel()
         return job
 
@@ -98,9 +109,45 @@ class JobManager:
             job.pause()
         return job
 
+    def _pump(self) -> None:
+        """空出执行槽时按提交顺序启动排队任务；已被取消的直接落定。
+
+        账本单写者：同一来源 URL 的任务共用一本账本，须等前一个完成。
+        """
+        start: list[tuple[Job, UiSettings]] = []
+        settle: list[Job] = []
+        with self._lock:
+            busy = set(self._active.values())
+            kept: deque[tuple[Job, UiSettings]] = deque()
+            for job, settings in self._queue:
+                key = str(job_workdir(settings.output_path, job.spec))
+                if job.cancel_requested:
+                    settle.append(job)
+                elif len(self._active) >= MAX_PARALLEL or key in busy:
+                    kept.append((job, settings))
+                else:
+                    busy.add(key)
+                    self._active[job.id] = key
+                    start.append((job, settings))
+            self._queue = kept
+        for job in settle:
+            self._settle(job, "cancelled", "已取消", pump=False)
+        for job, settings in start:
+            threading.Thread(
+                target=self._thread_main, args=(job, settings), daemon=True, name=f"quire-{job.id}"
+            ).start()
+
     # ---------------------------------------------------------- 执行线程
 
     def _thread_main(self, job: Job, settings: UiSettings) -> None:
+        # 渲染任务串行：等待期间任务仍是 pending，不占浏览器
+        if job.spec.render:
+            with self._render_lock:
+                self._execute(job, settings)
+        else:
+            self._execute(job, settings)
+
+    def _execute(self, job: Job, settings: UiSettings) -> None:
         with job.condition:
             job.status = "running"
         job.emit("phase", {"phase": "fetching"})
@@ -110,7 +157,7 @@ class JobManager:
             self._settle(job, "paused", "已暂停，已抓取的部分保留在缓存里")
             return
         except asyncio.CancelledError:
-            self._settle_cancelled(job, settings)
+            settle_cancelled(job, settings, self.data_root, self._register, self._settle)
             return
         except QuireError as exc:
             self._settle(job, "failed", exc.message, exc.hint)
@@ -164,41 +211,6 @@ class JobManager:
             },
         )
 
-    def _settle_cancelled(self, job: Job, settings: UiSettings) -> None:
-        """取消后尽量按所选格式导出半成品；没有已落定内容时维持 cancelled。"""
-        result: MangaResult | NovelResult | None = None
-        if job.task_id is not None and not job.spec.series:
-            from .salvage import salvage_job
-
-            try:
-                result = asyncio.run(salvage_job(job.spec, job.task_id, settings, self.data_root))
-            except Exception:
-                _LOG.exception("job %s salvage failed", job.id)
-        if result is None:
-            self._settle(job, "cancelled", "已取消")
-            return
-        try:
-            book = self._register(job, result)
-        except QuireError as exc:
-            self._settle(job, "failed", exc.message, exc.hint)
-            return
-        with job.condition:
-            job.book_id = book.id
-        self._settle(
-            job,
-            "partial",
-            "",
-            done_payload={
-                "book_id": book.id,
-                "title": result.title,
-                "partial": True,
-                "failures": len(result.failures),
-                "warnings": list(result.warnings),
-                "bytes": result.total_bytes,
-                "elapsed_s": round(result.elapsed_s, 2),
-            },
-        )
-
     def _settle(
         self,
         job: Job,
@@ -206,6 +218,8 @@ class JobManager:
         message: str,
         hint: str | None = None,
         done_payload: dict[str, JsonValue] | None = None,
+        *,
+        pump: bool = True,
     ) -> None:
         with job.condition:
             job.status = status
@@ -221,11 +235,15 @@ class JobManager:
             job.emit("failed", {"message": message, "hint": hint})
         with job.condition:
             job.condition.notify_all()
+        with self._lock:
+            self._active.pop(job.id, None)
+        if pump:
+            self._pump()
 
     async def _capture(
         self, job: Job, settings: UiSettings
     ) -> MangaResult | NovelResult | SeriesResult:
-        chapters = ChapterTracker(job, settings.output_path / ".quire-core")
+        chapters = ChapterTracker(job, job_workdir(settings.output_path, job.spec))
         watcher = asyncio.create_task(chapters.watch())
         try:
             return await self._run_capture(job, settings, chapters)
@@ -245,7 +263,7 @@ class JobManager:
 
         out_dir = settings.output_path
         out_dir.mkdir(parents=True, exist_ok=True)
-        workdir = out_dir / ".quire-core"
+        workdir = job_workdir(out_dir, spec)
         base = out_dir / safe_filename(spec.title, default="book")
         thumbs: dict[str, Any] = {"task_id": "", "done": set()}
 
@@ -308,8 +326,9 @@ class JobManager:
                 render=render,
                 on_task=on_task,
                 stop=should_stop,
+                pace=self._pace,
             )
-        poll = asyncio.create_task(self._poll(job, workdir, thumbs))
+        poll = asyncio.create_task(poll_job(job, workdir, thumbs, self.thumbs_root))
         try:
             if spec.kind == "manga":
                 out = available_output(
@@ -327,6 +346,7 @@ class JobManager:
                     render=render,
                     on_task=on_task,
                     stop=should_stop,
+                    pace=self._pace,
                 )
             out = available_novel_output(
                 base.with_suffix(f".{spec.formats[0]}"), spec.formats, overwrite=False
@@ -342,6 +362,7 @@ class JobManager:
                 on_task=on_task,
                 stop=should_stop,
                 prepend=resolve_prefix(spec, workdir) if spec.follow_prefix else None,
+                pace=self._pace,
             )
         finally:
             poll.cancel()
@@ -350,42 +371,3 @@ class JobManager:
 
     def _register(self, job: Job, result: MangaResult | NovelResult) -> library.Book:
         return register_book(self.data_root, self.thumbs_root, job.id, job.spec, result)
-
-    # ---------------------------------------------------------- 进度轮询
-
-    async def _poll(self, job: Job, workdir: Path, thumbs: dict[str, Any]) -> None:
-        started = datetime.now(UTC).isoformat()
-        db_path = workdir / "ledger.db"
-        connection: sqlite3.Connection | None = None
-        try:
-            while True:
-                await asyncio.sleep(0.4)
-                if connection is None:
-                    if not db_path.exists():
-                        continue
-                    connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
-                try:
-                    counts, thumbs["task_id"] = task_counts(connection, started, thumbs["task_id"])
-                except sqlite3.Error:
-                    continue
-                if counts is not None:
-                    done, failed, total = counts
-                    if (done, failed, total) != (job.done, job.failed_pages, job.total):
-                        with job.condition:
-                            job.done, job.failed_pages, job.total = done, failed, total
-                        job.emit("progress", {"done": done, "failed": failed, "total": total})
-                task_id = thumbs["task_id"]
-                if job.spec.kind == "manga" and task_id:
-                    pages = await asyncio.to_thread(
-                        make_thumbs,
-                        workdir / "cache" / task_id,
-                        self.thumbs_root / job.id,
-                        thumbs["done"],
-                    )
-                    for page in pages:
-                        job.emit(
-                            "thumb", {"page": page, "url": f"/api/jobs/{job.id}/thumbs/{page}"}
-                        )
-        finally:
-            if connection is not None:
-                connection.close()

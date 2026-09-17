@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import itertools
 import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from ..errors import ConfigError
 from ..export_options import validate_formats
@@ -92,6 +95,17 @@ class JobSpec:
             raise ConfigError("OCR 模式须为 auto、always 或 never")
 
 
+def job_workdir(output: Path, spec: JobSpec) -> Path:
+    """任务账本工作目录：按来源 URL 分组（站点名 + URL 摘要）。
+
+    账本是单写者（flock），并行任务须各占一本账本；同一 URL 的任务
+    共用一本，续传/追更/半成品导出才能复用缓存。
+    """
+    host = safe_filename(urlsplit(spec.url).hostname or "site", default="site")
+    digest = hashlib.sha256(spec.url.encode("utf-8")).hexdigest()[:10]
+    return output / ".quire-core" / f"{host}-{digest}"
+
+
 @dataclass(frozen=True, slots=True)
 class JobEvent:
     seq: int
@@ -156,6 +170,11 @@ class Job:
             loop, task = self._loop, self._task
         if loop is not None and task is not None:
             loop.call_soon_threadsafe(task.cancel)
+
+    @property
+    def cancel_requested(self) -> bool:
+        with self.condition:
+            return self._cancel_requested
 
     def pause(self) -> None:
         """优雅暂停：协作标记，核心在下一个派发边界停止（进行中的请求收尾）。"""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -18,10 +19,42 @@ def _failure_copy(error: FetchError) -> FetchError:
     return type(error)(error.message, hint=error.hint)
 
 
-class AsyncRateLimiter:
-    def __init__(self, rate: float) -> None:
-        self.interval = 1 / rate
+class HostPace:
+    """按 host 的节流窗口状态，可在线程间共享（每个任务线程各有事件循环）。
+
+    Web UI 并行任务共用一个实例：两个任务打同一站点时合计速率不超过设定值。
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
         self._next: dict[str, float] = {}
+
+    def delay(self, host: str) -> float:
+        with self._lock:
+            return self._next.get(host, 0) - time.monotonic()
+
+    def try_reserve(self, host: str, interval: float) -> bool:
+        """原子占用当前窗口：成功则把该 host 的下次可用时间后推一个间隔。"""
+        with self._lock:
+            now = time.monotonic()
+            if self._next.get(host, 0) > now:
+                return False
+            self._next[host] = now + interval
+            return True
+
+    def defer(self, host: str, seconds: float) -> None:
+        with self._lock:
+            self._next[host] = max(self._next.get(host, 0), time.monotonic() + seconds)
+
+
+class AsyncRateLimiter:
+    def __init__(self, rate: float, pace: HostPace | None = None) -> None:
+        self.interval = 1 / rate
+        self._pace = pace or HostPace()
+
+    @property
+    def _next(self) -> dict[str, float]:
+        return self._pace._next
 
     @asynccontextmanager
     async def admit(
@@ -30,8 +63,7 @@ class AsyncRateLimiter:
         host = urlsplit(url).hostname or ""
         remaining = timeout
         while True:
-            now = time.monotonic()
-            delay = self._next.get(host, 0) - now
+            delay = self._pace.delay(host)
             if delay > 0:
                 await asyncio.sleep(delay)
                 continue
@@ -40,8 +72,7 @@ class AsyncRateLimiter:
                 await slots.acquire()
             now = time.monotonic()
             remaining -= now - queued
-            if self._next.get(host, 0) <= now:
-                self._next[host] = now + self.interval
+            if self._pace.try_reserve(host, self.interval):
                 break
             slots.release()
         try:
@@ -50,8 +81,7 @@ class AsyncRateLimiter:
             slots.release()
 
     def defer(self, url: str, seconds: float) -> None:
-        host = urlsplit(url).hostname or ""
-        self._next[host] = max(self._next.get(host, 0), time.monotonic() + seconds)
+        self._pace.defer(urlsplit(url).hostname or "", seconds)
 
 
 class AsyncRobotsPolicy:

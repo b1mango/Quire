@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -50,6 +51,8 @@ CREATE TABLE IF NOT EXISTS follows (
 """
 
 BOOK_FORMATS = ("pdf", "cbz", "zip", "epub", "txt")
+
+_CREATE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +132,9 @@ def _create(db_path: Path) -> sqlite3.Connection:
 
 def _open(data_root: Path) -> sqlite3.Connection:
     db_path = data_root.absolute() / "library.db"
-    connection = _connect(db_path) if db_path.exists() else _create(db_path)
+    # 并行任务同时登记时只允许一个线程创建库文件
+    with _CREATE_LOCK:
+        connection = _connect(db_path) if db_path.exists() else _create(db_path)
     try:
         connection.execute(_FOLLOW_SCHEMA)
         connection.commit()

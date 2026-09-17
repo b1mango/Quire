@@ -13,7 +13,7 @@ import httpx
 
 from ..errors import BlockedError, ConfigError, FetchError, HttpStatusError, NetworkError
 from ..utils.urls import is_usable_url, redact, route_fragment
-from .async_policy import AsyncRateLimiter, AsyncRobotsPolicy
+from .async_policy import AsyncRateLimiter, AsyncRobotsPolicy, HostPace
 from .decoding import decode_body
 from .simple import (
     DEFAULT_ACCEPT,
@@ -78,6 +78,7 @@ class AsyncFetcher:
         max_bytes: int = 32 * 1024 * 1024,
         transport: httpx.AsyncBaseTransport | None = None,
         rng: random.Random | None = None,
+        pace: HostPace | None = None,
     ) -> None:
         if (
             not math.isfinite(timeout)
@@ -93,7 +94,7 @@ class AsyncFetcher:
         ):
             raise ConfigError("Invalid core HTTP timeout, rate, concurrency, retry or size limit")
         self.timeout, self.retries, self.max_bytes = timeout, retries, max_bytes
-        self.limiter = AsyncRateLimiter(rate)
+        self.limiter = AsyncRateLimiter(rate, pace)
         self._slots = asyncio.Semaphore(concurrency)
         self._transport, self._concurrency = transport, concurrency
         self._rng = rng or random.Random()

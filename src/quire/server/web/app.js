@@ -96,6 +96,7 @@ function attachJob(job) {
   resetRunView(job);
   appendChapters(job.chapters || []);
   if (job.status === "pending" || job.status === "running") {
+    if (job.status === "pending") $("runSub").textContent = "排队中，等前面的任务完成……";
     const source = new EventSource(`/api/jobs/${job.id}/events?token=${encodeURIComponent(TOKEN)}`);
     state.events = source;
     ["phase", "progress", "thumb", "volume", "chapter", "done", "failed", "cancelled", "paused"].forEach((kind) =>

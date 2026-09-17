@@ -9,6 +9,7 @@ from pathlib import Path
 from .capture_plan import MangaPlan
 from .core_manga import run_core_manga
 from .errors import ConfigError, FetchError, PausedError
+from .fetch.async_policy import HostPace
 from .fetch.browser import RenderOptions, render_page
 from .fetch.session import AsyncFetcher
 from .image.options import CompressionOptions
@@ -74,6 +75,7 @@ async def run_series(
     on_volume: Callable[[MangaResult], None] | None = None,
     on_task: Callable[[str], None] | None = None,
     stop: Callable[[], bool] | None = None,
+    pace: HostPace | None = None,
 ) -> SeriesResult:
     mode, _ = split_spec(split_by)
     opts = options or MangaOptions()
@@ -90,6 +92,7 @@ async def run_series(
         concurrency=opts.concurrency,
         rate=opts.rate,
         max_bytes=opts.max_bytes,
+        pace=pace,
     )
     results: list[MangaResult] = []
     async with client:

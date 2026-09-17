@@ -21,6 +21,7 @@ from .core_chapters import (
     decode_chapter,
 )
 from .errors import NoChaptersError, NoTextError, PausedError, UnsupportedError
+from .fetch.async_policy import HostPace
 from .fetch.browser import RenderOptions, render_page
 from .fetch.browser_process import find_chrome
 from .fetch.session import AsyncFetcher
@@ -209,6 +210,7 @@ async def run_core_novel(
     on_task: Callable[[str], None] | None = None,
     stop: Callable[[], bool] | None = None,
     prepend: Sequence[NovelChapter] | None = None,
+    pace: HostPace | None = None,
 ) -> NovelResult:
     opts = options or NovelOptions()
     chosen = validate_novel_formats(formats)
@@ -253,6 +255,7 @@ async def run_core_novel(
         concurrency=opts.concurrency,
         rate=opts.rate,
         max_bytes=opts.max_bytes,
+        pace=pace,
     )
     async with client:
         page = await client.get(url, referer=opts.referer)

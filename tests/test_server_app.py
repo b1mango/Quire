@@ -223,18 +223,26 @@ def test_job_validation(server):
         assert status == expect, (body, error)
 
 
-def test_job_conflict_and_unknown(server):
+def test_job_queue_and_unknown(server):
     srv, _ = server
     srv.shutdown()
     srv.server_close()
     srv, _, _ = _make(srv.data_root, run_manga=_slow_manga)
     spec = {"kind": "manga", "url": "http://x.c/1", "title": "t", "formats": ["pdf"]}
-    status, job = _request(srv, "POST", "/api/jobs", spec)
+    status, first = _request(srv, "POST", "/api/jobs", spec)
     assert status == 201
-    status, error = _request(srv, "POST", "/api/jobs", spec)
-    assert status == 409
-    srv.manager.cancel(job["id"])
-    _wait_job(srv, job["id"])
+    status, second = _request(srv, "POST", "/api/jobs", spec)
+    assert status == 201  # 两个执行槽占满
+    status, third = _request(srv, "POST", "/api/jobs", spec)
+    assert status == 201 and third["status"] == "pending"  # 第三个排队，不再 409
+    # 排队中的任务直接取消：不启动即为 cancelled
+    status, _ = _request(srv, "POST", f"/api/jobs/{third['id']}/cancel")
+    assert status == 200
+    assert _wait_job(srv, third["id"])["status"] == "cancelled"
+    srv.manager.cancel(first["id"])
+    srv.manager.cancel(second["id"])
+    _wait_job(srv, first["id"])
+    _wait_job(srv, second["id"])
     status, error = _request(srv, "GET", "/api/jobs/ghost")
     assert status == 404
     status, error = _request(srv, "POST", "/api/jobs/ghost/cancel")

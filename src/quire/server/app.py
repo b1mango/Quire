@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 from ..errors import ConfigError, LedgerError, ParseError, QuireError
 from ..store.models import JsonValue
 from . import endpoints, follows
-from .jobs import JobConflictError, JobManager
+from .jobs import JobManager
 
 _LOG = logging.getLogger(__name__)
 
@@ -134,8 +134,6 @@ class _Handler(BaseHTTPRequestHandler):
     def _dispatch(self, method: str) -> None:
         try:
             self._route(method)
-        except JobConflictError as exc:
-            self._reply_json(409, {"error": str(exc)})
         except ParseError as exc:
             self._reply_json(422, {"error": exc.message, "hint": exc.hint})
         except (ConfigError, LedgerError) as exc:

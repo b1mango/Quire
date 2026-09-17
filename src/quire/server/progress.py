@@ -6,12 +6,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import sqlite3
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..models import MangaResult, NovelResult
 
@@ -102,3 +104,40 @@ class ChapterSink:
         with self.job.condition:
             self.job.done, self.job.total = done, total
         self.job.emit("progress", {"done": done, "failed": 0, "total": total})
+
+
+async def poll_job(job: Job, workdir: Path, thumbs: dict[str, Any], thumbs_root: Path) -> None:
+    """轮询任务账本（只读）推送进度，漫画每完成一页补一张缩略图。"""
+    started = datetime.now(UTC).isoformat()
+    db_path = workdir / "ledger.db"
+    connection: sqlite3.Connection | None = None
+    try:
+        while True:
+            await asyncio.sleep(0.4)
+            if connection is None:
+                if not db_path.exists():
+                    continue
+                connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+            try:
+                counts, thumbs["task_id"] = task_counts(connection, started, thumbs["task_id"])
+            except sqlite3.Error:
+                continue
+            if counts is not None:
+                done, failed, total = counts
+                if (done, failed, total) != (job.done, job.failed_pages, job.total):
+                    with job.condition:
+                        job.done, job.failed_pages, job.total = done, failed, total
+                    job.emit("progress", {"done": done, "failed": failed, "total": total})
+            task_id = thumbs["task_id"]
+            if job.spec.kind == "manga" and task_id:
+                pages = await asyncio.to_thread(
+                    make_thumbs,
+                    workdir / "cache" / task_id,
+                    thumbs_root / job.id,
+                    thumbs["done"],
+                )
+                for page in pages:
+                    job.emit("thumb", {"page": page, "url": f"/api/jobs/{job.id}/thumbs/{page}"})
+    finally:
+        if connection is not None:
+            connection.close()

@@ -17,6 +17,7 @@ from .core_publish import begin, complete, preflight, prepare, recover_export
 from .errors import ConfigError, LedgerError, PausedError
 from .export_options import output_paths
 from .export_receipt import export_key, read_receipt
+from .fetch.async_policy import HostPace
 from .fetch.browser import RenderOptions
 from .fetch.session import AsyncFetcher
 from .image.downloader import download_images
@@ -55,6 +56,7 @@ async def run_core_manga(
     plan: MangaPlan | None = None,
     shared_fetcher: bool = False,
     stop: Callable[[], bool] | None = None,
+    pace: HostPace | None = None,
 ) -> MangaResult:
     opts = options or MangaOptions()
     encoding = compression or CompressionOptions()
@@ -77,6 +79,7 @@ async def run_core_manga(
         concurrency=opts.concurrency,
         rate=opts.rate,
         max_bytes=opts.max_bytes,
+        pace=pace,
     )
     async with nullcontext(client) if shared_fetcher else client:
         if plan is None:
