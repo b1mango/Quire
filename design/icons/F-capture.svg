@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Quire F · 采集成书</title>
+  <defs>
+    <radialGradient id="shF" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3A3226" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#3A3226" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#F4EEE1"/>
+  <ellipse cx="512" cy="780" rx="250" ry="30" fill="url(#shF)"/>
+  <path d="M512 580C456 554 396 550 332 574L332 708C396 684 456 688 512 714C568 688 628 684 692 708L692 574C628 550 568 554 512 580Z" fill="#F8F3E6"/>
+  <path d="M512 596C456 570 396 566 332 590L332 724C396 700 456 704 512 730C568 704 628 700 692 724L692 590C628 566 568 570 512 596Z" fill="#1E3A33"/>
+  <rect x="494" y="288" width="36" height="172" rx="18" fill="#E8705A"/>
+  <polygon points="512,556 436,452 588,452" fill="#E8705A"/>
+</svg>

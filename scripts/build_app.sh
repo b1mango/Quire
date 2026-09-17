@@ -118,11 +118,13 @@ plutil -replace CFBundleVersion -string "$VERSION" "$APP/Contents/Info.plist"
 
 ICONSET="$WORK/AppIcon.iconset"
 mkdir -p "$ICONSET"
-qlmanage -t -s 1024 -o "$WORK" "$ROOT/docs/assets/quire.svg" >/dev/null 2>&1
+# Rasterize the selected vector separately; resizing preserves real alpha.
+ICON_SOURCE="$ROOT/docs/assets/quire-icon.png"
+[ -f "$ICON_SOURCE" ] || { echo "缺少透明图标：$ICON_SOURCE" >&2; exit 1; }
 for size in 16 32 128 256 512; do
     double=$((size * 2))
-    sips -z "$size" "$size" "$WORK/quire.svg.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    sips -z "$double" "$double" "$WORK/quire.svg.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+    sips -z "$size" "$size" "$ICON_SOURCE" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+    sips -z "$double" "$double" "$ICON_SOURCE" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$RES/AppIcon.icns"
 

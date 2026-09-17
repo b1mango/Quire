@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 def add_manga_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("url")
+    parser.add_argument("--site", help="指定本地 TOML 站点规则")
+    parser.add_argument("--data-dir", help="站点规则数据根")
     parser.add_argument("--core", action="store_true", help="使用 core 连接池、压缩和本地账本")
     parser.add_argument("--resume", action="store_true", help="校验并复用 core 任务已完成图片")
     parser.add_argument(
@@ -107,6 +109,7 @@ def render_options(
 def add_novel_options(parser: argparse.ArgumentParser) -> None:
     """小说参数。小说依赖 core，没有单独的 --core 开关。"""
     parser.add_argument("url", help="目录页或单章地址")
+    parser.add_argument("--site", help="指定本地 TOML 站点规则")
     parser.add_argument("-o", "--output", help="输出路径，默认当前目录的 book.epub")
     parser.add_argument("--format", help="epub,txt,pdf；默认 epub")
     parser.add_argument("--chapter-selector", help="目录页里的章节链接选择器")

@@ -139,6 +139,10 @@ class CorePdfWriter:
             self._root = None
             writer.close()
 
+    chapter: str = ""
+    _chapter_name: str = ""
+    _chapter_root: object = None
+
     def add_page(self, page: ExportPage) -> None:
         writer = self._writer
         if writer is None:
@@ -216,6 +220,11 @@ class CorePdfWriter:
         pdf_page.replace_contents(content)
         if self._root is None:
             self._root = writer.add_outline_item(self.title or "Untitled", pdf_page)
+        if self.chapter and self.chapter != self._chapter_name:
+            self._chapter_root = writer.add_outline_item(self.chapter, pdf_page, parent=self._root)
+            self._chapter_name = self.chapter
         writer.add_outline_item(
-            f"Page {page.source_index} / part {page.part}", pdf_page, parent=self._root
+            f"Page {page.source_index} / part {page.part}",
+            pdf_page,
+            parent=self._chapter_root or self._root,  # type: ignore[arg-type]
         )

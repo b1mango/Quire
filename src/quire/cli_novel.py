@@ -58,6 +58,11 @@ def cmd_novel(args: argparse.Namespace) -> int:
         model_dir=(Path(args.data_dir) / "models" if args.data_dir else data_home() / "models"),
     )
     info(f"→ {redact(args.url)}")
+    from .sites.rules import resolve_rule
+
+    rule = resolve_rule(Path(args.data_dir) if args.data_dir else data_home(), args.url, args.site)
+    if rule:
+        options = rule.novel(options)
     progress = Progress(enabled=not args.quiet)
     try:
         from .core_novel import run_core_novel

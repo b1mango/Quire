@@ -16,6 +16,8 @@ class MangaOptions:
     selector: str | None = None
     attrs: tuple[str, ...] | None = None
     order: str = "auto"
+    remove: tuple[str, ...] = ()
+    next_selector: str | None = None
     concurrency: int = 4
     rate: float = 4.0
     retries: int = 3

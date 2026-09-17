@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Quire C · 书库抽本</title>
+  <defs>
+    <radialGradient id="shC" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2A2620" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#2A2620" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#EFEEEB"/>
+  <path d="M374.7 140V884M649.3 140V884M140 374.7H884M140 649.3H884" stroke="#E1DFD7" stroke-width="2"/>
+  <ellipse cx="512" cy="726" rx="290" ry="30" fill="url(#shC)"/>
+  <rect x="282" y="390" width="76" height="300" rx="10" fill="#1E3A33"/>
+  <rect x="374" y="350" width="76" height="340" rx="10" fill="#9CC0AE"/>
+  <rect x="466" y="309" width="76" height="372" rx="10" fill="#E8705A" transform="rotate(14 504 690)"/>
+  <rect x="584" y="380" width="76" height="310" rx="10" fill="#6E8B7F"/>
+  <rect x="676" y="410" width="76" height="280" rx="10" fill="#C9C4B8"/>
+</svg>

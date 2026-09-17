@@ -9,6 +9,11 @@ from pathlib import Path
 report = json.loads(Path(sys.argv[1]).read_text())
 prefixes = (
     "src/quire/parse/",
+    "src/quire/sites/",
+    "src/quire/core_series.py",
+    "src/quire/core_discovery.py",
+    "src/quire/core_reassemble.py",
+    "src/quire/series_size.py",
     "src/quire/image/",
     "src/quire/utils/",
     "src/quire/assemble/",

@@ -289,3 +289,14 @@ html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--faint) 45%,tra
 ::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--faint) 45%,transparent);border-radius:4px}
 ::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--faint) 75%,transparent)}
 [data-theme="swiss"] ::-webkit-scrollbar-thumb{border-radius:0}
+
+.volume-list { display:grid; gap:8px; margin-top:16px; max-height:240px; overflow:auto; }
+.volume-list label { display:flex; align-items:center; gap:12px; padding:12px 16px;
+  border:1px solid var(--border); border-radius:8px; font-weight:400; cursor:pointer; }
+.volume-list input { accent-color:var(--accent); width:16px; height:16px; }
+.command-menu { background:var(--bg); color:var(--text); border:1px solid var(--border);
+  border-radius:16px; padding:24px; min-width:300px; box-shadow:0 20px 80px #0003; }
+.command-menu::backdrop { background:#0004; backdrop-filter:blur(6px); }
+.command-menu > button { display:block; width:100%; margin-top:8px; text-align:left; }
+.help-panel { margin-bottom:24px; color:var(--muted); font-size:13px; line-height:1.8; }
+.help-panel pre { overflow:auto; }

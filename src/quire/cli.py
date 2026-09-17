@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import platform
-import shutil
-import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,7 +17,6 @@ from .cli_console import (
     ArgumentParser,
     data_home,
     fail,
-    find_chrome,
     human_size,
     info,
     warn,
@@ -28,6 +24,7 @@ from .cli_console import (
 from .cli_console import (
     module_available as _module_available,
 )
+from .cli_doctor import cmd_doctor
 from .cli_options import add_manga_options, add_novel_options, compression_options, render_options
 from .cli_progress import Progress
 from .errors import ConfigError, QuireError, UnsupportedError
@@ -96,6 +93,17 @@ def cmd_manga(args: argparse.Namespace) -> int:
             min_bytes=int(args.min_size * 1024),
         ),
     )
+
+    if args.site and not args.core:
+        raise ConfigError("--site 需要 --core")
+    if args.core:
+        from .sites.rules import resolve_rule
+
+        rule = resolve_rule(
+            Path(args.data_dir) if args.data_dir else data_home(), args.url, args.site
+        )
+        if rule:
+            options = rule.manga(options)
 
     info(f"→ {redact(args.url)}")
     progress = Progress(enabled=not args.quiet)
@@ -186,6 +194,10 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     from .parse.images import collect, prefilter
     from .parse.minidom import parse as parse_html
 
+    if _module_available("quire.cli_m8"):
+        from .cli_m8 import inspect_rules
+
+        return inspect_rules(args)
     client = Fetcher(timeout=args.timeout, retries=1, rate=args.rate)
     page = client.get(args.url, referer=args.referer)
     doc = parse_html(page.text, base_url=page.url)
@@ -234,71 +246,6 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def cmd_doctor(args: argparse.Namespace) -> int:
-    """能力自检：为什么能用、为什么不能用，一眼可见。"""
-    info(f"quire {__version__}")
-    info(f"Python  {platform.python_version()} ({sys.executable})")
-    info(f"系统    {platform.system()} {platform.release()} / {platform.machine()}")
-    info("")
-
-    info("可选依赖")
-    optional = [("PIL", "core 图片解码与压缩"), ("httpx", "core 连接池"), ("pypdf", "PDF 测试校验")]
-    for module, purpose in optional:
-        mark = "✓" if _module_available(module) else "·"
-        info(f"  {mark} {module:<14} {purpose}")
-
-    info("")
-    info("渲染后端")
-    chrome = find_chrome()
-    if chrome:
-        info(f"  ✓ {chrome}")
-    else:
-        warn("没找到 Chrome / Edge / Brave / Chromium")
-        warn("  JS 渲染与「小说转 PDF」都需要它（项目设计.md 决策 N）")
-    info("")
-    info("OCR 引擎")
-    if shutil.which("tesseract"):
-        info("  ✓ 系统 tesseract（优先引擎，增量 0）")
-    else:
-        info("  · 无系统 tesseract")
-    if _module_available("onnxruntime"):
-        info("  ✓ onnxruntime（内置引擎，quire-local[ocr]）")
-        from .ocr.models import check_models
-
-        status = check_models(data_home() / "models")
-        if status.ready:
-            info(f"  ✓ PP-OCRv4 模型已就绪：{status.model_dir}")
-        else:
-            missing = "、".join((*status.missing, *status.corrupt))
-            info(f"  · 模型未就绪（{missing}），首次 OCR 时按需下载到 {status.model_dir}")
-    else:
-        info("  · 无 onnxruntime（内置引擎需 quire-local[ocr]）")
-
-    info("")
-    info("能力档位")
-    info("  micro：静态网页 / 本地 JPEG、PNG → 无损 PDF，零第三方运行时依赖")
-    if all(
-        _module_available(name)
-        for name in ("httpx", "PIL", "pypdf", "websockets", "quire.core_manga")
-    ):
-        info("  core：漫画下载恢复、转码切页、PDF/CBZ/ZIP；--render使用系统Chrome加载动态页面")
-    if all(_module_available(name) for name in ("httpx", "websockets", "quire.core_novel")):
-        info("  core：小说目录、正文抽取、EPUB/TXT/PDF，章级断点恢复（quire novel）")
-        info("        图片正文本地 OCR：tesseract 或内置 PP-OCRv4（--ocr，模型按需下载）")
-    if _cmd_ui is not None and all(
-        _module_available(name)
-        for name in ("httpx", "PIL", "pypdf", "websockets", "quire.core_manga")
-    ):
-        info("  Web 界面：quire ui（回环地址 + 随机令牌）")
-
-    info("")
-    info("数据目录")
-    info(f"  后续默认数据根：{data_home()}")
-    info("  当前 micro 的输出和临时缓存位于所选输出路径旁")
-
-    return EXIT_OK
-
-
 # ============================================================ 参数
 
 
@@ -327,6 +274,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     i = sub.add_parser("inspect", help="侦察页面结构（写站点规则用）")
     i.add_argument("url")
+    i.add_argument("--site")
+    i.add_argument("--data-dir")
     i.add_argument("--selector", help="测试某个选择器")
     i.add_argument("--referer")
     i.add_argument("--rate", type=float, default=4.0)
@@ -335,6 +284,11 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--explain-limit", type=int, default=30)
     i.add_argument("--dump-html", nargs="?", const="debug", help="把 HTML 存下来")
     i.set_defaults(func=cmd_inspect)
+
+    if _module_available("quire.cli_m8"):
+        from .cli_m8 import add_commands
+
+        add_commands(sub)
 
     d = sub.add_parser("doctor", help="能力与依赖自检")
     d.set_defaults(func=cmd_doctor)

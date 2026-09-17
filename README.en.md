@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/quire.svg" width="88" height="88" alt="Quire icon">
+  <img src="docs/assets/quire-icon.png" width="88" height="88" alt="Quire icon">
 </p>
 
 <h1 align="center">Quire / 卷帙</h1>
@@ -29,7 +29,7 @@ Quire is a macOS desktop tool in development for collecting comics and novels in
 
 ## Get the App
 
-Desktop 1.0 is complete; the installer `quire-1.0.0.dmg` will be available on [Releases](https://github.com/b1mango/Quire/releases) (the first release has not been published yet). Open the `.dmg` and drag `quire.app` into Applications.
+Desktop 1.1 is built locally; the installer `quire-1.1.0.dmg` will be available on [Releases](https://github.com/b1mango/Quire/releases) (the first release has not been published yet). Open the `.dmg` and drag `quire.app` into Applications.
 
 The app is not notarized by Apple: on first launch of a browser-downloaded copy, recent macOS shows "quire.app was not opened — Apple could not verify quire.app is free of malware", with only **Done** and **Move to Trash** (right-click → **Open** leads to the same dialog). Either (both verified; only needed once):
 
@@ -43,3 +43,13 @@ Once allowed, the app clears its own quarantine flag on first launch and the emb
 ## License
 
 A license has not yet been selected. It will be published in this repository once decided.
+
+### Site rules, series and offline rebuilds (1.1)
+
+Use `quire sites new example.com` to generate a TOML rule, edit `catalogue.chapter_links` and `chapter.image_selector`, then run `quire sites test example.com URL`. `quire inspect URL --explain --dump-html debug.html` reports matches and selector suggestions.
+
+`quire series URL --split-by volume -o ./books` delivers each volume as it completes. `--split-by chapters 20` groups chapters; `--split-by size 50MB` measures actual artifacts and splits at chapter boundaries. A chapter that exceeds the size limit fails clearly with cached sources preserved. The desktop UI supports volume selection and Command-K / Control-K navigation.
+
+`quire reassemble TASK_ID --workdir ./cache --compress small --format pdf,cbz -o rebuilt.pdf` rebuilds from retained, hash-verified manga sources without network access. Capture with `--keep-images` first. `quire profile export profile.json` and `quire profile import profile.json` transfer settings while preserving the destination machine's output directory.
+
+The existing 200-page repeated workload now peaks at about 300MB of disk usage, down from 654MB; the 250MB optimization target is still unmet. Measuring formats separately trades additional encoding time for lower disk use. No new runtime dependencies were added.

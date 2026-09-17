@@ -19,6 +19,7 @@ def build(destination: Path) -> int:
         for p in sorted((source / "quire").rglob("*.py"))
         if "store" not in p.relative_to(source / "quire").parts
         and "ocr" not in p.relative_to(source / "quire").parts
+        and "sites" not in p.relative_to(source / "quire").parts
         and "server" not in p.relative_to(source / "quire").parts
         and p.relative_to(source).as_posix()
         not in {
@@ -31,6 +32,13 @@ def build(destination: Path) -> int:
             "quire/fetch/browser_cdp.py",
             "quire/fetch/browser_network.py",
             "quire/core_manga.py",
+            "quire/cli_m8.py",
+            "quire/core_series.py",
+            "quire/core_discovery.py",
+            "quire/series_size.py",
+            "quire/core_reassemble.py",
+            "quire/capture_plan.py",
+            "quire/parse/series.py",
             "quire/core_export.py",
             "quire/core_publish.py",
             "quire/core_novel.py",

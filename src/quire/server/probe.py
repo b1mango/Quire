@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..assemble.models import clean_metadata_text
 from ..errors import ParseError
@@ -14,6 +15,8 @@ from ..fetch.session import AsyncFetcher
 from ..parse.chapters import discover_chapters, looks_like_catalogue
 from ..parse.images import collect, prefilter
 from ..parse.minidom import parse as parse_html
+from ..parse.series import Volume, plan_volumes
+from ..sites.rules import resolve_rule
 from ..utils.urls import is_usable_url
 
 
@@ -23,6 +26,8 @@ class ProbeResult:
     title: str
     count: int  # 漫画为图片页数，小说为章节数
     url: str  # 重定向后的最终地址
+    volumes: tuple[Volume, ...] = ()
+    series: bool = False
 
 
 def validate_task_url(url: str) -> str:
@@ -42,17 +47,50 @@ def validate_task_url(url: str) -> str:
     return candidate
 
 
-async def probe_url(url: str, *, rate: float = 4.0, timeout: float = 20.0) -> ProbeResult:
+async def probe_url(
+    url: str,
+    *,
+    rate: float = 4.0,
+    timeout: float = 20.0,
+    data_root: Path | None = None,
+    kind: str | None = None,
+    split_by: str = "volume",
+) -> ProbeResult:
     url = validate_task_url(url)
     async with AsyncFetcher(timeout=timeout, retries=1, concurrency=2, rate=rate) as client:
         page = await client.get(url)
     doc = parse_html(page.text, base_url=page.url)
     title_node = doc.select_one("h1") or doc.select_one("title")
     title = clean_metadata_text(title_node.text if title_node else "") or "未命名"
-    links = discover_chapters(doc, page.url, limit=2001)
+    rule = resolve_rule(data_root, url) if data_root else None
+    links = discover_chapters(
+        doc, page.url, selector=rule.chapter_links if rule else None, limit=2001
+    )
+    if links and (rule and rule.kind == "manga" or kind == "manga"):
+        volumes, _ = plan_volumes(
+            doc,
+            page.url,
+            split_by=split_by,
+            chapter_selector=rule.chapter_links if rule else None,
+            volume_selector=rule.volume_selector if rule else None,
+            order=rule.chapter_order if rule else "auto",
+        )
+        return ProbeResult("manga", title, len(links), page.url, volumes, True)
     if looks_like_catalogue(links):
         return ProbeResult("novel", title, len(links), page.url)
-    kept, _ = prefilter(collect(doc, doc.effective_base() or page.url))
+    if rule:
+        for selector in rule.remove:
+            for node in doc.select(selector):
+                if node.parent is not None:
+                    node.parent.children.remove(node)
+    kept, _ = prefilter(
+        collect(
+            doc,
+            doc.effective_base() or page.url,
+            selector=rule.image_selector if rule else None,
+            attrs=rule.image_attrs if rule else None,
+        )
+    )
     if kept:
         return ProbeResult("manga", title, len(kept), page.url)
     raise ParseError(

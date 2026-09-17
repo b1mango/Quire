@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from ..models import MangaResult, NovelResult
 
 if TYPE_CHECKING:
-    from .jobs import Job
+    from .job_state import Job
 
 _LOG = logging.getLogger(__name__)
 

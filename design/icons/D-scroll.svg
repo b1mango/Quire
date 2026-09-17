@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Quire D · 卷轴</title>
+  <defs>
+    <radialGradient id="bgD" cx="0.5" cy="0.38" r="0.75">
+      <stop offset="0" stop-color="#222B27"/>
+      <stop offset="1" stop-color="#171C1A"/>
+    </radialGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bgD)"/>
+  <rect x="362" y="394" width="322" height="236" rx="18" fill="#F0E8D6"/>
+  <path d="M500 470H660M500 540H630" stroke="#2A3430" stroke-width="12" stroke-linecap="round"/>
+  <polygon points="602,394 634,394 634,706 618,688 602,706" fill="#E8705A"/>
+  <circle cx="362" cy="512" r="118" fill="#F0E8D6"/>
+  <circle cx="362" cy="512" r="62" fill="#C9BC9F"/>
+  <circle cx="362" cy="512" r="24" fill="#171C1A"/>
+</svg>

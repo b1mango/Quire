@@ -94,6 +94,20 @@
             </div>
           </div>
 
+          <div class="field" id="seriesField" hidden>
+            <label for="splitMode">分卷方式</label>
+            <div class="hint">
+              <select class="input" id="splitMode">
+                <option value="volume">按站点卷结构</option>
+                <option value="chapters 20">每 20 章一卷</option>
+                <option value="chapters 1">每章一卷</option>
+                <option value="size 50MB">每卷不超过 50 MB</option>
+                <option value="none">合为一卷</option>
+              </select>
+            </div>
+            <div id="volumeList" class="volume-list" aria-label="选择需要的卷"></div>
+            <p class="hint">页数与体积在读取章节后确定。每卷完成后即可从书库打开。</p>
+          </div>
           <div class="actions">
             <button class="btn primary" id="startBtn" disabled>开始抓取</button>
             <span class="meta" id="startMeta"></span>
@@ -157,6 +171,15 @@
 
         <!-- ============ 设置 ============ -->
         <div class="view" data-view="set" hidden>
+          <details class="help-panel"><summary>站点适配帮助</summary>
+            <p>未识别出内容时，可在本机终端依次运行：</p>
+            <pre>quire inspect URL --dump-html debug.html
+quire sites new example.com
+quire sites test example.com URL
+quire manga URL --core --site example.com</pre>
+            <p>在规则文件中填写章节、图片或正文选择器；动态页面使用 --render。
+            若目录被识别为小说，可在新建任务中切换为漫画。⌘K 打开快捷导航。</p>
+          </details>
           <div class="vhead">
             <h1>设置</h1>
             <p class="sub">数据全部保存在本机</p>
@@ -202,6 +225,13 @@
   </div>
 </main>
 
+<dialog id="commandMenu" class="command-menu">
+  <form method="dialog"><button class="btn ghost" aria-label="关闭命令面板">关闭 · Esc</button></form>
+  <h2>前往</h2>
+  <button class="btn" data-command="new">新建任务</button>
+  <button class="btn" data-command="lib">书库</button>
+  <button class="btn" data-command="set">设置</button>
+</dialog>
 <script src="/static/app.js"></script>
 </body>
 </html>

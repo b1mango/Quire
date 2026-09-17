@@ -16,7 +16,7 @@ from ..errors import ConfigError
 from ..store import library
 from ..store.models import JsonValue
 from . import settings as settings_mod
-from .jobs import JobSpec
+from .job_state import JobSpec
 from .probe import probe_url, validate_task_url
 
 if TYPE_CHECKING:
@@ -68,14 +68,38 @@ def put_settings(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
 def probe(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
     if not isinstance(payload, dict) or not isinstance(payload.get("url"), str):
         raise ConfigError("缺少链接")
-    result = asyncio.run(probe_url(payload["url"]))
+    result = asyncio.run(
+        probe_url(
+            payload["url"],
+            data_root=ctx.data_root,
+            kind=payload.get("kind"),
+            split_by=str(payload.get("split_by", "volume")),
+        )
+    )
     return {
         "kind": result.kind,
         "title": result.title,
         "count": result.count,
         "url": result.url,
         "chrome": find_chrome() is not None,
+        "series": result.series,
+        "volumes": [
+            {
+                "index": v.index,
+                "title": v.title,
+                "chapters": len(v.chapters),
+                "pages": None,
+                "bytes": None,
+            }
+            for v in result.volumes
+        ],
     }
+
+
+def _volumes(value: Any) -> tuple[int, ...]:
+    if not isinstance(value, list) or any(type(v) is not int for v in value):
+        raise ConfigError("卷号须为整数列表")
+    return tuple(value)
 
 
 def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
@@ -99,6 +123,9 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
         if payload.get("compress") == "lossless"
         else (int(target) * 1_000_000 if isinstance(target, int | float) else 50_000_000),
         ocr=str(payload.get("ocr") or "auto"),
+        series=payload.get("series", False),
+        split_by=str(payload.get("split_by", "none")),
+        volumes=_volumes(payload.get("volumes", [])),
     )
     job = ctx.manager.submit(spec, settings_mod.load(ctx.settings_path, ctx.data_root))
     return dict(job.snapshot())

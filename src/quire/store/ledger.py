@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
@@ -115,6 +116,14 @@ class Ledger:
             return TaskSnapshot(task_id, cast(TaskStatus, row[0]), tuple(map(_record, resources)))
         except sqlite3.Error as exc:
             raise LedgerError("Cannot read ledger task") from exc
+
+    def describe(self, task_id: str) -> tuple[str, dict[str, JsonValue]]:
+        row = self._db.execute(
+            "SELECT source_url, options_json FROM tasks WHERE id = ?", (task_id,)
+        ).fetchone()
+        if row is None:
+            raise LedgerError("Unknown ledger task")
+        return str(row[0]), cast(dict[str, JsonValue], json.loads(row[1]))
 
     def contains(self, task_id: str) -> bool:
         try:

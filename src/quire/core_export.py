@@ -14,7 +14,10 @@ from .core_pages import source_pages
 from .image.options import CompressionOptions, Encoding
 from .models import ArtifactResult, MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate
+from .store.export_files import check_workspace, clean_workspace
 from .store.models import TaskSnapshot
+
+_MEASURE_THRESHOLD = 50_000_000
 
 
 async def _trial(
@@ -29,8 +32,9 @@ async def _trial(
     progress: ProgressSink | None,
     formats: tuple[str, ...],
     source_url: str,
+    chapter_titles: tuple[str, ...] = (),
 ) -> MangaResult:
-    directory.mkdir()
+    directory.mkdir(exist_ok=True)
     with ExitStack() as stack:
         writers: list[CorePdfWriter | ArchiveWriter] = []
         for format in formats:
@@ -65,6 +69,8 @@ async def _trial(
             ) as pages:
                 for page, updated in pages:
                     for writer in writers:
+                        if isinstance(writer, CorePdfWriter) and chapter_titles:
+                            writer.chapter = chapter_titles[record.spec.chapter - 1]
                         writer.add_page(page)
                     result = updated
                     await asyncio.sleep(0)
@@ -98,12 +104,23 @@ async def export_books(
     workspace: Path,
     formats: tuple[str, ...],
     source_url: str,
+    chapter_titles: tuple[str, ...] = (),
 ) -> MangaResult:
     best: MangaResult | None = None
     selected: Encoding | None = None
-    for rounds, encoding in enumerate(compression.passes(), 1):
+    best_round = 0
+    inodes: dict[int, tuple[int, int]] = {}
+    # Large sources: measure formats sequentially, retaining sizes instead of all
+    # losing candidates. Rebuild only the selected encoding after the search.
+    measure = len(formats) > 1 and sum(r.size or 0 for r in snapshot.resources) > _MEASURE_THRESHOLD
+
+    async def run(round_no: int, encoding: Encoding, chosen: tuple[str, ...]) -> MangaResult:
+        directory = workspace / f"pass-{round_no}"
+        directory.mkdir()
+        stat = directory.lstat()
+        inodes[round_no] = (stat.st_dev, stat.st_ino)
         trial = await _trial(
-            workspace / f"pass-{rounds}",
+            directory,
             root,
             snapshot,
             candidates,
@@ -112,16 +129,44 @@ async def export_books(
             encoding,
             result,
             progress,
-            formats,
+            chosen,
             clean_metadata_text(source_url),
+            chapter_titles,
         )
-        if best is None or max(a.bytes for a in trial.artifacts) < max(
+        check_workspace(directory, inodes[round_no])
+        return trial
+
+    def discard(round_no: int, chosen: tuple[str, ...]) -> None:
+        clean_workspace(workspace / f"pass-{round_no}", inodes[round_no], chosen)
+
+    for rounds, encoding in enumerate(compression.passes(), 1):
+        if measure:
+            measured: list[ArtifactResult] = []
+            trial = None
+            for fmt in formats:
+                part = await run(rounds, encoding, (fmt,))
+                trial = trial or part
+                measured.extend(part.artifacts)
+                discard(rounds, (fmt,))
+            assert trial is not None
+            trial = replace(trial, artifacts=tuple(measured))
+        else:
+            trial = await run(rounds, encoding, formats)
+        better = best is None or max(a.bytes for a in trial.artifacts) < max(
             a.bytes for a in best.artifacts
-        ):
-            best, selected = trial, encoding
+        )
+        if better:
+            if best is not None and not measure:
+                discard(best_round, formats)
+            best, selected, best_round = trial, encoding, rounds
+        elif not measure:
+            discard(rounds, formats)
+        assert best is not None
         if all(a.target_met is not False for a in best.artifacts):
             break
     assert best is not None and selected is not None
+    if measure:
+        best = await run(best_round, selected, formats)
     met = None if compression.target_bytes is None else all(a.target_met for a in best.artifacts)
     if met is False:
         best = replace(

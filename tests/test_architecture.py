@@ -70,6 +70,10 @@ def test_layer_boundaries_and_module_sizes():
                     "quire.core_chapters",
                     "quire.novel_export",
                     "quire.cli_novel",
+                    "quire.core_series",
+                    "quire.core_discovery",
+                    "quire.core_reassemble",
+                    "quire.series_size",
                 }
             ), (module, target)
             assert not (

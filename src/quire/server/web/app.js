@@ -114,24 +114,29 @@ function updateChromeHint() {
   $("chromeHint").hidden = !(needChrome && state.caps && !state.caps.chrome);
 }
 
-function probeUrl(url) {
+function probeUrl(url, kind) {
+  const request = Symbol(); state.probeRequest = request;
+  $("startBtn").disabled = true;
   state.probe = null;
   $("probeHint").hidden = false;
   $("probeHint").textContent = "正在识别这个链接……";
-  api("/api/probe", { method: "POST", body: { url } }).then((result) => {
+  api("/api/probe", { method: "POST", body: { url, kind, split_by: $("splitMode").value } }).then((result) => {
+    if (state.probeRequest !== request) return;
     state.probe = result;
+    renderVolumes(result);
     state.kind = result.kind;
     setSeg($("kindSeg"), "kind", result.kind);
     renderFormatChips();
     $("probeHint").textContent =
       `${result.kind === "manga" ? "漫画" : "小说"} · ${result.title} · 约 ${result.count} ` +
-      (result.kind === "manga" ? "页" : "章");
+      (result.kind === "manga" && !result.series ? "页" : "章");
     $("kindField").hidden = false;
     $("formatField").hidden = false;
     updateKindFields();
     $("startBtn").disabled = false;
     $("startMeta").textContent = "";
   }).catch((err) => {
+    if (state.probeRequest !== request) return;
     $("probeHint").textContent = err.hint ? `${err.message} ${err.hint}` : err.message;
     $("startBtn").disabled = true;
   });
@@ -141,6 +146,19 @@ function updateKindFields() {
   $("compressField").hidden = state.kind !== "manga";
   $("ocrField").hidden = state.kind !== "novel";
   updateChromeHint();
+}
+
+function renderVolumes(result) {
+  $("seriesField").hidden = !result.series;
+  $("volumeList").textContent = "";
+  if (!result.series || $("splitMode").value.startsWith("size")) return;
+  for (const volume of result.volumes) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox"; input.value = volume.index; input.checked = true;
+    label.append(input, document.createTextNode(`${volume.title} · ${volume.chapters} 章`));
+    $("volumeList").append(label);
+  }
 }
 
 function startJob() {
@@ -155,7 +173,13 @@ function startJob() {
     compress,
     target_mb: parseInt($("targetInput").value, 10) || 50,
     ocr: segValue($("ocrSeg"), "ocr") || "auto",
+    series: Boolean(state.probe && state.probe.series && state.kind === "manga"),
+    split_by: $("splitMode").value,
+    volumes: [...$("volumeList").querySelectorAll("input:checked")].map(x => Number(x.value)),
   };
+  if (spec.series && !spec.split_by.startsWith("size") && !spec.volumes.length) {
+    $("startMeta").textContent = "至少选择一卷"; return;
+  }
   state.lastSpec = spec;
   $("startBtn").disabled = true;
   api("/api/jobs", { method: "POST", body: spec }).then((job) => {
@@ -179,7 +203,7 @@ function attachJob(job) {
   if (job.status === "pending" || job.status === "running") {
     const source = new EventSource(`/api/jobs/${job.id}/events?token=${encodeURIComponent(TOKEN)}`);
     state.events = source;
-    ["phase", "progress", "thumb", "done", "failed", "cancelled"].forEach((kind) =>
+    ["phase", "progress", "thumb", "volume", "done", "failed", "cancelled"].forEach((kind) =>
       source.addEventListener(kind, (e) => {
         state.lastSeq = parseInt(e.lastEventId, 10) || state.lastSeq;
         onJobEvent(kind, JSON.parse(e.data));
@@ -218,6 +242,10 @@ function onJobEvent(kind, data) {
     $("statFailed").textContent = data.failed;
     $("statTotal").textContent = data.total;
     if (data.total) $("meterFill").style.width = `${((data.done + data.failed) / data.total) * 100}%`;
+  } else if (kind === "volume") {
+    state.bookId = data.book_id;
+    $("runSub").textContent = `已交付 ${data.done} 卷 · ${data.title}`;
+    $("runDoneActions").hidden = false;
   } else if (kind === "thumb") {
     $("runEmpty").hidden = true;
     const tile = document.createElement("div");
@@ -238,6 +266,7 @@ function onJobEvent(kind, data) {
 }
 
 function finishRunView(status, data) {
+  if (state.job) state.job.status = status;
   if (state.events) { state.events.close(); state.events = null; }
   if (state.timer) { clearInterval(state.timer); state.timer = null; }
   $("cancelBtn").hidden = true;
@@ -389,7 +418,14 @@ function saveSettings() {
 
 document.querySelectorAll("[data-view-btn]").forEach((b) =>
   b.addEventListener("click", () => showView(b.dataset.viewBtn)));
-bindSeg($("kindSeg"), "kind", (kind) => { state.kind = kind; renderFormatChips(); updateKindFields(); });
+bindSeg($("kindSeg"), "kind", (kind) => {
+  state.kind = kind; renderFormatChips(); updateKindFields();
+  if ($("urlInput").value.trim()) probeUrl($("urlInput").value.trim(), kind);
+});
+$("splitMode").addEventListener("change", () => probeUrl($("urlInput").value.trim(), "manga"));
+document.querySelectorAll("[data-command]").forEach(button => button.addEventListener("click", () => {
+  $("commandMenu").close(); showView(button.dataset.command);
+}));
 bindSeg($("compressSeg"), "compress");
 bindSeg($("ocrSeg"), "ocr");
 bindSeg($("setCompressSeg"), "compress");
@@ -402,6 +438,8 @@ $("pasteBtn").addEventListener("click", () => {
 });
 let probeTimer = null;
 $("urlInput").addEventListener("input", () => {
+  state.probeRequest = Symbol(); state.probe = null;
+  $("seriesField").hidden = true;
   $("startBtn").disabled = true;
   clearTimeout(probeTimer);
   const url = $("urlInput").value.trim();
@@ -446,6 +484,10 @@ $("searchInput").addEventListener("input", () => {
 });
 $("saveSettingsBtn").addEventListener("click", saveSettings);
 document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault(); $("commandMenu").showModal(); return;
+  }
+  if ($("commandMenu").open) return;
   if (e.key === "Escape" && state.job && (state.job.status === "running" || state.job.status === "pending")) {
     api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" }).catch(() => {});
   }

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Quire E · 暗房书页</title>
+  <defs>
+    <radialGradient id="bgE" cx="0.5" cy="0.34" r="0.8">
+      <stop offset="0" stop-color="#1E2730"/>
+      <stop offset="1" stop-color="#101418"/>
+    </radialGradient>
+    <radialGradient id="glowE" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bgE)"/>
+  <ellipse cx="512" cy="520" rx="400" ry="330" fill="url(#glowE)"/>
+  <g opacity="0.10" fill="#FFFFFF" transform="rotate(-4 512 512) translate(-14 -18)">
+    <path d="M512 384C458 354 398 350 328 376L328 664C398 638 458 642 512 672Z"/>
+    <path d="M512 384C566 354 626 350 696 376L696 664C626 638 566 642 512 672Z"/>
+  </g>
+  <g opacity="0.16" fill="#FFFFFF" transform="rotate(3 512 512) translate(10 -8)">
+    <path d="M512 384C458 354 398 350 328 376L328 664C398 638 458 642 512 672Z"/>
+    <path d="M512 384C566 354 626 350 696 376L696 664C626 638 566 642 512 672Z"/>
+  </g>
+  <path d="M512 384C458 354 398 350 328 376L328 664C398 638 458 642 512 672Z" fill="#F2ECDD"/>
+  <path d="M512 384C566 354 626 350 696 376L696 664C626 638 566 642 512 672Z" fill="#9CC0AE"/>
+  <path d="M512 384V672" stroke="#101418" stroke-width="6" stroke-opacity="0.35"/>
+  <path d="M368 460H472M368 522H452M368 584H462" stroke="#1E3A33" stroke-width="13" stroke-linecap="round" stroke-opacity="0.5"/>
+  <polygon points="616,352 656,352 656,486 636,466 616,486" fill="#E8705A"/>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Quire A · 装订叠页</title>
+  <defs>
+    <radialGradient id="shA" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3A3226" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#3A3226" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#F4EEE1"/>
+  <ellipse cx="540" cy="812" rx="280" ry="34" fill="url(#shA)"/>
+  <rect x="380" y="252" width="380" height="500" rx="14" fill="#D8CDB4"/>
+  <rect x="350" y="272" width="380" height="500" rx="14" fill="#EAE1CD"/>
+  <rect x="320" y="292" width="380" height="500" rx="14" fill="#FBF7EC"/>
+  <path d="M372 420H632M372 500H572M372 580H612" stroke="#1E3A33" stroke-width="16" stroke-linecap="round"/>
+  <path d="M306 400H366M306 512H366M306 624H366" stroke="#E8705A" stroke-width="13" stroke-linecap="round"/>
+</svg>

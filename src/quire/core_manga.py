@@ -4,21 +4,22 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import nullcontext
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import cast
 
 from .assemble.models import clean_metadata_text
+from .capture_plan import MangaPlan
 from .core_export import export_books
 from .core_publish import begin, complete, preflight, prepare, recover_export
 from .errors import ConfigError, LedgerError
 from .export_options import output_paths
 from .export_receipt import export_key, read_receipt
-from .fetch.browser import RenderOptions, render_page
+from .fetch.browser import RenderOptions
 from .fetch.session import AsyncFetcher
 from .image.downloader import download_images
 from .image.options import CompressionOptions
-from .manga import discover_page
 from .models import MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate
 from .parse.minidom import parse as parse_html
@@ -30,6 +31,9 @@ def _identity_options(opts: MangaOptions, candidates: list[Candidate]) -> dict[s
     identity = cast(dict[str, JsonValue], json.loads(json.dumps(asdict(opts))))
     for key in ("concurrency", "rate", "timeout", "retries", "overwrite", "keep_images"):
         identity.pop(key)
+    for key in ("remove", "next_selector"):
+        if not identity[key]:
+            identity.pop(key)
     identity["alternatives"] = [list(c.alternatives) for c in candidates]
     return identity
 
@@ -46,6 +50,8 @@ async def run_core_manga(
     compression: CompressionOptions | None = None,
     formats: tuple[str, ...] = ("pdf",),
     render: RenderOptions | None = None,
+    plan: MangaPlan | None = None,
+    shared_fetcher: bool = False,
 ) -> MangaResult:
     opts = options or MangaOptions()
     encoding = compression or CompressionOptions()
@@ -69,19 +75,19 @@ async def run_core_manga(
         rate=opts.rate,
         max_bytes=opts.max_bytes,
     )
-    async with client:
-        page = await client.get(url, referer=opts.referer)
-        render_warnings: tuple[str, ...] = ()
-        if render is not None:
-            page, render_warnings = await render_page(page, client, render)
-        candidates, result = discover_page(url, opts, page)
-        result = replace(
-            result,
-            title=clean_metadata_text(result.title),
-            warnings=result.warnings + render_warnings,
-        )
-        specs = [ResourceSpec(1, i + 1, c.url, c.referer) for i, c in enumerate(candidates)]
+    async with nullcontext(client) if shared_fetcher else client:
+        if plan is None:
+            from .core_discovery import discover_manga
+
+            candidates, result = await discover_manga(client, url, opts, render)
+            specs = [ResourceSpec(1, i + 1, c.url, c.referer) for i, c in enumerate(candidates)]
+        else:
+            candidates, result, specs = list(plan.candidates), plan.result, list(plan.specs)
+        result = replace(result, title=clean_metadata_text(result.title))
         identity = _identity_options(opts, candidates)
+        if plan is not None:
+            identity["title"] = result.title
+            identity["chapter_titles"] = list(plan.chapter_titles)
         task_id, _ = task_identity(url, identity, specs)
         with Ledger(root) as ledger:
             if ledger.contains(task_id) and not resume:
@@ -134,6 +140,7 @@ async def run_core_manga(
                 workspace=receipt.workspace,
                 formats=formats,
                 source_url=url,
+                chapter_titles=plan.chapter_titles if plan else (),
             )
             if result.partial:
                 result = replace(

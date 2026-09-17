@@ -36,6 +36,10 @@ def discover_page(
     url: str, opts: MangaOptions, page: Response
 ) -> tuple[list[Candidate], MangaResult]:
     doc = parse_html(page.text, base_url=page.url)
+    for selector in opts.remove:
+        for node in doc.select(selector):
+            if node.parent is not None:
+                node.parent.children.remove(node)
     title_node = doc.select_one("h1") or doc.select_one("title")
     title = safe_filename(title_node.text if title_node else "comic", max_len=80)
     candidates = collect(

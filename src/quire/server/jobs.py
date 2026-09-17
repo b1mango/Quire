@@ -9,26 +9,26 @@ ProgressSink 回调，以及对账本（只读连接）与任务缓存目录的�
 from __future__ import annotations
 
 import asyncio
-import itertools
 import logging
 import secrets
 import sqlite3
 import threading
-import time
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ..core_series import SeriesResult
 from ..errors import QuireError
-from ..export_options import available_output, validate_formats
-from ..image.options import PRESETS, CompressionOptions
+from ..export_options import available_output
+from ..image.options import CompressionOptions
 from ..models import MangaOptions, MangaResult, NovelOptions, NovelResult
-from ..novel_options import available_novel_output, validate_novel_formats
+from ..novel_options import available_novel_output
+from ..sites.rules import resolve_rule
 from ..store import library
 from ..store.models import JsonValue
 from ..utils.naming import safe_filename
+from .job_state import Job, JobSpec
 from .progress import ChapterSink, ExportSink, make_thumbs, task_counts
 from .settings import UiSettings
 
@@ -40,125 +40,6 @@ type NovelRunner = Callable[..., Coroutine[Any, Any, NovelResult]]
 
 class JobConflictError(Exception):
     """已有任务进行中：UI 一次只跑一个任务（账本单写者边界）。"""
-
-
-@dataclass(frozen=True, slots=True)
-class JobSpec:
-    kind: str  # "manga" | "novel"
-    url: str
-    title: str
-    formats: tuple[str, ...]
-    compress: str = "balanced"
-    target_bytes: int | None = 50_000_000
-    ocr: str = "auto"
-
-    def __post_init__(self) -> None:
-        from ..errors import ConfigError
-        from .probe import validate_task_url
-
-        validate_task_url(self.url)
-        if self.kind == "manga":
-            validate_formats(self.formats)
-        elif self.kind == "novel":
-            validate_novel_formats(self.formats)
-        else:
-            raise ConfigError("任务类型须为 manga 或 novel")
-        if not safe_filename(self.title, default=""):
-            raise ConfigError("书名不能为空")
-        if self.compress not in PRESETS:
-            raise ConfigError("未知压缩档位")
-        if self.target_bytes is not None and (
-            type(self.target_bytes) is not int or not 1 <= self.target_bytes <= 10**12
-        ):
-            raise ConfigError("目标体积须为 1 byte 至 1 TB 的整数字节")
-        if self.ocr not in {"auto", "always", "never"}:
-            raise ConfigError("OCR 模式须为 auto、always 或 never")
-
-
-@dataclass(frozen=True, slots=True)
-class JobEvent:
-    seq: int
-    kind: str
-    data: dict[str, JsonValue]
-
-
-class Job:
-    """一个任务的共享状态；事件追加与状态迁移都在条件变量锁内完成。"""
-
-    def __init__(self, job_id: str, spec: JobSpec) -> None:
-        self.id = job_id
-        self.spec = spec
-        self.created_at = datetime.now(UTC).isoformat()
-        self.status = "pending"
-        self.phase = ""
-        self.done = 0
-        self.total = 0
-        self.failed_pages = 0
-        self.error = ""
-        self.hint: str | None = None
-        self.book_id: str | None = None
-        self.condition = threading.Condition()
-        self._events: list[JobEvent] = []
-        self._seq = itertools.count(1)
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._task: asyncio.Task[Any] | None = None
-        self._cancel_requested = False
-
-    def emit(self, kind: str, data: dict[str, JsonValue]) -> None:
-        with self.condition:
-            event = JobEvent(next(self._seq), kind, data)
-            self._events.append(event)
-            if len(self._events) > 1000:
-                del self._events[:200]
-            self.condition.notify_all()
-
-    def attach(self, loop: asyncio.AbstractEventLoop, task: asyncio.Task[Any]) -> None:
-        with self.condition:
-            self._loop = loop
-            self._task = task
-            pending_cancel = self._cancel_requested
-        if pending_cancel:
-            loop.call_soon_threadsafe(task.cancel)
-
-    def cancel(self) -> None:
-        with self.condition:
-            if self.status not in {"pending", "running"}:
-                return
-            self._cancel_requested = True
-            loop, task = self._loop, self._task
-        if loop is not None and task is not None:
-            loop.call_soon_threadsafe(task.cancel)
-
-    def events_after(self, seq: int, timeout: float) -> list[JobEvent]:
-        """返回序号之后的事件；任务已结束时附带最后一条，便于客户端收尾。"""
-        deadline = time.monotonic() + timeout
-        with self.condition:
-            while True:
-                events = [event for event in self._events if event.seq > seq]
-                if events or self.status not in {"pending", "running"}:
-                    return events or self._events[-1:]
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    return []
-                self.condition.wait(remaining)
-
-    def snapshot(self) -> dict[str, JsonValue]:
-        with self.condition:
-            return {
-                "id": self.id,
-                "kind": self.spec.kind,
-                "url": self.spec.url,
-                "title": self.spec.title,
-                "status": self.status,
-                "phase": self.phase,
-                "done": self.done,
-                "total": self.total,
-                "failed_pages": self.failed_pages,
-                "error": self.error,
-                "hint": self.hint,
-                "book_id": self.book_id,
-                "created_at": self.created_at,
-            }
 
 
 class JobManager:
@@ -226,6 +107,21 @@ class JobManager:
             self._settle(job, "failed", f"任务失败：{type(exc).__name__}")
             return
         try:
+            if isinstance(result, SeriesResult):
+                self._settle(
+                    job,
+                    "partial" if result.partial else "done",
+                    "",
+                    done_payload={
+                        "book_id": job.book_id,
+                        "title": result.title,
+                        "partial": result.partial,
+                        "warnings": list(result.warnings),
+                        "volumes": len(result.volumes),
+                        "bytes": sum(v.total_bytes for v in result.volumes),
+                    },
+                )
+                return
             book = self._register(job, result)
         except QuireError as exc:
             self._settle(job, "failed", exc.message, exc.hint)
@@ -276,7 +172,9 @@ class JobManager:
         with job.condition:
             job.condition.notify_all()
 
-    async def _capture(self, job: Job, settings: UiSettings) -> MangaResult | NovelResult:
+    async def _capture(
+        self, job: Job, settings: UiSettings
+    ) -> MangaResult | NovelResult | SeriesResult:
         spec = job.spec
         job.attach(asyncio.get_running_loop(), asyncio.current_task())  # type: ignore[arg-type]
         out_dir = settings.output_path
@@ -295,6 +193,38 @@ class JobManager:
             for page in made:
                 job.emit("thumb", {"page": page, "url": f"/api/jobs/{job.id}/thumbs/{page}"})
 
+        rule = resolve_rule(self.data_root, spec.url)
+        manga_options = MangaOptions(concurrency=settings.concurrency, rate=settings.rate)
+        novel_options = NovelOptions(
+            concurrency=settings.concurrency,
+            rate=settings.rate,
+            ocr_mode=spec.ocr,
+            model_dir=self.data_root / "models",
+        )
+        if rule:
+            manga_options, novel_options = rule.manga(manga_options), rule.novel(novel_options)
+        if spec.series:
+            from ..core_series import run_series
+
+            def delivered(result: MangaResult) -> None:
+                book = self._register(job, result)
+                with job.condition:
+                    job.book_id = book.id
+                    job.done += 1
+                job.emit("volume", {"book_id": book.id, "title": result.title, "done": job.done})
+
+            return await run_series(
+                spec.url,
+                base,
+                split_by=spec.split_by,
+                selected=spec.volumes,
+                rule=rule,
+                options=manga_options,
+                workdir=workdir,
+                compression=CompressionOptions(spec.compress, spec.target_bytes),
+                formats=spec.formats,
+                on_volume=delivered,
+            )
         poll = asyncio.create_task(self._poll(job, workdir, thumbs))
         try:
             if spec.kind == "manga":
@@ -304,7 +234,7 @@ class JobManager:
                 return await self._run_manga(
                     spec.url,
                     out,
-                    options=MangaOptions(concurrency=settings.concurrency, rate=settings.rate),
+                    options=manga_options,
                     workdir=workdir,
                     resume=True,
                     progress=ExportSink(job, on_page=sweep_thumbs),
@@ -317,12 +247,7 @@ class JobManager:
             return await self._run_novel(
                 spec.url,
                 out,
-                options=NovelOptions(
-                    concurrency=settings.concurrency,
-                    rate=settings.rate,
-                    ocr_mode=spec.ocr,
-                    model_dir=self.data_root / "models",
-                ),
+                options=novel_options,
                 workdir=workdir,
                 formats=spec.formats,
                 progress=ChapterSink(job),
