@@ -79,6 +79,29 @@ class NoImagesError(ParseError):
         self.url = url
 
 
+class NoTextError(ParseError):
+    """页面上没找到可用的正文（选择器没命中，或整页都不是正文）。"""
+
+    def __init__(self, url: str, *, hint: str | None = None) -> None:
+        super().__init__(
+            f"没找到正文：{redact(url)}",
+            hint=hint
+            or "用 `quire inspect <url> --selector <css>` 确认正文容器，再用 --content-selector 指定。",
+        )
+        self.url = url
+
+
+class NoChaptersError(ParseError):
+    """目录页上没发现任何章节链接。"""
+
+    def __init__(self, url: str, *, hint: str | None = None) -> None:
+        super().__init__(
+            f"没发现章节链接：{redact(url)}",
+            hint=hint or "用 --chapter-selector 指定目录里的章节链接，或直接给出单章地址。",
+        )
+        self.url = url
+
+
 # ---------------------------------------------------------------- 退出码 6
 
 

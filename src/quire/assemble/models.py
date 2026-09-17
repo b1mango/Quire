@@ -26,3 +26,24 @@ class ExportPage:
     source_url: str
     part: int = 1
     missing_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class NovelChapter:
+    """一章已清洗的正文。``missing_reason`` 非空表示这一章抓取失败。"""
+
+    index: int
+    title: str
+    paragraphs: tuple[str, ...]
+    source_url: str = ""
+    missing_reason: str | None = None
+    pages: int = 1
+    truncated: bool = False
+
+    @property
+    def chars(self) -> int:
+        return sum(len(paragraph) for paragraph in self.paragraphs)
+
+    @property
+    def heading(self) -> str:
+        return self.title.strip() or f"第 {self.index} 章"

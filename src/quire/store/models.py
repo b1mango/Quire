@@ -15,7 +15,7 @@ from ..utils.urls import is_usable_url
 type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
 type TaskStatus = Literal["pending", "running", "done", "partial", "failed"]
 type ResourceStatus = Literal["pending", "downloading", "done", "failed"]
-type FailureCode = Literal["network", "invalid_image", "blocked", "cancelled"]
+type FailureCode = Literal["network", "invalid_image", "invalid_text", "blocked", "cancelled"]
 
 
 def _absolute_url(url: str) -> bool:

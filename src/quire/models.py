@@ -95,3 +95,90 @@ class MangaResult:
 
 class ProgressSink(Protocol):
     def update(self, done: int, total: int, result: MangaResult) -> None: ...
+
+
+class ChapterProgress(Protocol):
+    """小说章节级进度。``result`` 为 None 表示只报数量，不带快照。"""
+
+    def update(self, done: int, total: int, result: NovelResult | None = None) -> None: ...
+
+
+# ============================================================ 小说
+
+
+@dataclass(frozen=True, slots=True)
+class NovelOptions:
+    """小说采集参数。``clean_version`` 参与任务身份，抽取算法变更即换任务。"""
+
+    content_selector: str | None = None
+    chapter_selector: str | None = None
+    next_selector: str | None = None
+    max_chapters: int = 2000
+    max_pages: int = 20
+    concurrency: int = 3
+    rate: float = 4.0
+    retries: int = 3
+    timeout: float = 20.0
+    keep_html: bool = False
+    overwrite: bool = False
+    referer: str | None = None
+    max_bytes: int = 32 * 1024 * 1024
+    clean_version: int = 3
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.concurrency <= 16 or not 0 <= self.retries <= 10:
+            raise ConfigError("并发须为 1-16，重试须为 0-10")
+        if not 1 <= self.max_chapters <= 20000 or not 1 <= self.max_pages <= 200:
+            raise ConfigError("章节数上限须为 1-20000，单章页数上限须为 1-200")
+        if any(not math.isfinite(v) or v <= 0 for v in (self.rate, self.timeout)):
+            raise ConfigError("速率和超时须为有限正数")
+        if not 1 <= self.max_bytes <= 128 * 1024 * 1024:
+            raise ConfigError("单个资源大小上限须在 1 byte 到 128 MiB 之间")
+
+
+@dataclass(frozen=True, slots=True)
+class ChapterResult:
+    """一章的结果：序号、标题、字符数，以及是否复用缓存/是否失败。"""
+
+    index: int
+    title: str
+    url: str
+    chars: int = 0
+    paragraphs: int = 0
+    pages: int = 1
+    reused: bool = False
+    truncated: bool = False
+    missing_reason: str | None = None
+
+    @property
+    def failed(self) -> bool:
+        return self.missing_reason is not None
+
+
+@dataclass(frozen=True, slots=True)
+class NovelResult:
+    output: Path
+    title: str = ""
+    chapters_written: int = 0
+    chapters_failed: int = 0
+    characters: int = 0
+    elapsed_s: float = 0.0
+    warnings: tuple[str, ...] = ()
+    failures: tuple[tuple[str, str], ...] = ()
+    chapters: tuple[ChapterResult, ...] = ()
+    artifacts: tuple[ArtifactResult, ...] = ()
+    report: Path | None = None
+    task_id: str | None = None
+    resources_reused: int = 0
+    source_resources: int = 0
+    pages_fetched: int = 0
+    html_dir: Path | None = None
+    truncated: bool = False
+
+    @property
+    def total_bytes(self) -> int:
+        return sum(artifact.bytes for artifact in self.artifacts)
+
+    @property
+    def partial(self) -> bool:
+        return bool(self.failures) or self.truncated or any(c.truncated for c in self.chapters)

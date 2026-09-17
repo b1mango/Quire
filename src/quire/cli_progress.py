@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 import time
 
-from .models import MangaResult
+from .models import MangaResult, NovelResult
 
 
 class Progress:
@@ -14,7 +14,9 @@ class Progress:
         self.width = width
         self._last = 0.0
 
-    def update(self, done: int, total: int, result: MangaResult) -> None:
+    def update(
+        self, done: int, total: int, result: MangaResult | NovelResult | None = None
+    ) -> None:
         if not self.enabled:
             return
         now = time.monotonic()
@@ -24,8 +26,17 @@ class Progress:
         ratio = done / total if total else 0
         filled = int(self.width * ratio)
         bar = "█" * filled + "·" * (self.width - filled)
-        tail = f"失败 {result.pages_failed}" if result.pages_failed else ""
+        failed = _failures(result)
+        tail = f"失败 {failed}" if failed else ""
         sys.stderr.write(f"\r  {bar} {done:>4}/{total}  {tail}   ")
         sys.stderr.flush()
         if done >= total:
             sys.stderr.write("\n")
+
+
+def _failures(result: MangaResult | NovelResult | None) -> int:
+    if isinstance(result, MangaResult):
+        return result.pages_failed
+    if isinstance(result, NovelResult):
+        return result.chapters_failed
+    return 0

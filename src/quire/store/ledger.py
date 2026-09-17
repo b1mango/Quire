@@ -176,7 +176,7 @@ class Ledger:
             db.execute("UPDATE tasks SET updated_at = ? WHERE id = ?", (_now(), task_id))
 
     def fail(self, task_id: str, chapter: int, page: int, code: FailureCode) -> None:
-        if code not in {"network", "invalid_image", "blocked", "cancelled"}:
+        if code not in {"network", "invalid_image", "invalid_text", "blocked", "cancelled"}:
             raise LedgerError("Unknown resource failure code")
         key = (task_id, chapter, page)
         with self._transaction() as db:

@@ -22,13 +22,13 @@ Quire is a macOS desktop tool in development for collecting comics and novels in
 ## Features
 
 - **Comic collection**: Public web pages, dynamically loaded images, and local image folders.
-- **Export formats**: Save comics as PDF, CBZ, or image ZIP archives.
+- **Export formats**: PDF, CBZ, and image ZIP for comics; TXT, EPUB, and PDF for novels.
 - **Reading preparation**: Image compression, long-image splitting, missing-page placeholders, and interrupted download recovery.
-- **Planned**: TXT / EPUB / PDF for novels, local OCR, a library, and four interface themes.
+- **Planned**: Local OCR, a library, and four interface themes.
 
 ## Get the App
 
-The comic collection core is ready. The desktop interface and `.dmg` installer are not yet released. Once available, download the app from [Releases](https://github.com/b1mango/Quire/releases), add links or images in the app, and export your books.
+The comic and novel collection core is implemented. The desktop interface and `.dmg` installer are not yet released. Once available, download the app from [Releases](https://github.com/b1mango/Quire/releases), add links or images in the app, and export your books.
 
 <a id="license"></a>
 

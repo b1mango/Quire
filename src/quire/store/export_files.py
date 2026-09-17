@@ -306,7 +306,9 @@ def check_workspace(path: Path, identity: tuple[int, int]) -> None:
 
 def clean_workspace(path: Path, identity: tuple[int, int], formats: tuple[str, ...]) -> None:
     """Validate the entire registered layout before deleting any known entry."""
-    if path.name in {"", ".."} or any(fmt not in {"pdf", "cbz", "zip"} for fmt in formats):
+    if path.name in {"", ".."} or any(
+        fmt not in {"pdf", "cbz", "zip", "epub", "txt"} for fmt in formats
+    ):
         raise LedgerError("Invalid export workspace or formats")
     try:
         with _directory(path.parent) as (parent, check), ExitStack() as stack:
@@ -321,9 +323,11 @@ def clean_workspace(path: Path, identity: tuple[int, int], formats: tuple[str, .
             files: list[tuple[int, str, os.stat_result]] = []
             listings: dict[int, set[str]] = {}
             passes = {f"pass-{index}" for index in (1, 2, 3)}
-            root_files = {"book.report.json", "publish-report.tmp"} | {
-                f"publish-{fmt}.tmp" for fmt in formats
-            }
+            root_files = (
+                {"book.report.json", "publish-report.tmp"}
+                | {f"publish-{fmt}.tmp" for fmt in formats}
+                | {f"book.{fmt}" for fmt in formats}
+            )
 
             def scan(fd: int, allowed: set[str], directories: set[str]) -> None:
                 before = os.fstat(fd)

@@ -1,0 +1,312 @@
+"""小说采集编排：目录 → 章节 → 导出 → 发布（项目设计.md §37）。
+
+顺序有意与漫画一致：先确认网页身份与章节清单，再建账本、恢复、抓取，
+最后一次性生成候选并逐文件原子发布。**导出阶段不联网**——正文全部来自
+账本缓存，所以成品重建只是本地计算，不需要再碰站点。
+"""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
+from pathlib import Path
+
+from .assemble.models import NovelChapter, clean_metadata_text
+from .core_chapters import (
+    FAILURE_TEXT,
+    TRUNCATION_NOTE,
+    Renderer,
+    capture_chapters,
+    decode_chapter,
+)
+from .errors import NoChaptersError, NoTextError, UnsupportedError
+from .fetch.browser import RenderOptions, render_page
+from .fetch.browser_process import find_chrome
+from .fetch.session import AsyncFetcher
+from .fetch.simple import Response
+from .models import (
+    ChapterProgress,
+    ChapterResult,
+    NovelOptions,
+    NovelResult,
+)
+from .novel_export import export_novel, preflight
+from .novel_options import novel_output_paths, validate_novel_formats
+from .parse.article import extract_article, page_title, validate_article
+from .parse.chapters import ChapterLink, discover_chapters, looks_like_catalogue
+from .parse.minidom import Document
+from .parse.minidom import parse as parse_html
+from .store.cache import read_cached
+from .store.ledger import Ledger
+from .store.models import JsonValue, ResourceSpec, task_identity
+from .text.clean import chapter_number
+from .utils.urls import redact
+
+
+@dataclass(frozen=True, slots=True)
+class _Plan:
+    title: str
+    links: tuple[ChapterLink, ...]
+    preloaded: dict[str, Response]
+    warnings: tuple[str, ...]
+    truncated: bool = False
+
+
+def plan_chapters(page: Response, opts: NovelOptions, warnings: Sequence[str] = ()) -> _Plan:
+    """从入口页决定抓哪些章节：目录页按目录，单章页只抓这一章。"""
+    doc = parse_html(page.text, base_url=page.url)
+    title = clean_metadata_text(page_title(doc, fallback="未命名")) or "未命名"
+    links = discover_chapters(
+        doc, page.url, selector=opts.chapter_selector, limit=opts.max_chapters + 1
+    )
+    notes = list(warnings)
+    if opts.chapter_selector and not links:
+        raise NoChaptersError(page.url)
+    single_entry = not opts.chapter_selector and (
+        not looks_like_catalogue(links) or _chapter_entry(doc, title, links, opts)
+    )
+    if single_entry:
+        single = ChapterLink(title=title, url=page.url, number=None)
+        return _Plan(title, (single,), {page.url: page}, tuple(notes))
+    truncated = len(links) > opts.max_chapters
+    if truncated:
+        links = links[: opts.max_chapters]
+        notes.append(f"章节数超过上限 {opts.max_chapters}，只抓前 {opts.max_chapters} 章")
+    return _Plan(title, links, {}, tuple(notes), truncated)
+
+
+def _chapter_entry(
+    doc: Document, title: str, links: tuple[ChapterLink, ...], opts: NovelOptions
+) -> bool:
+    """章节标题、前后章导航及有效正文共同证明入口是单章，避免把简介当正文。"""
+    number = chapter_number(title)
+    if number is None or not links or len(links) > 2:
+        return False
+    if any(link.number not in {number - 1, number + 1} for link in links):
+        return False
+    article = extract_article(doc, selector=opts.content_selector, title=title)
+    return validate_article(article)[0]
+
+
+def novel_identity(opts: NovelOptions, links: tuple[ChapterLink, ...]) -> dict[str, JsonValue]:
+    """参与任务身份的只有内容参数与章节清单；网络调优参数不影响复用。"""
+    return {
+        "content_selector": opts.content_selector,
+        "chapter_selector": opts.chapter_selector,
+        "next_selector": opts.next_selector,
+        "max_chapters": opts.max_chapters,
+        "max_pages": opts.max_pages,
+        "clean_version": opts.clean_version,
+        "chapters": [[link.title, link.url] for link in links],
+    }
+
+
+def load_chapters(
+    ledger: Ledger, task_id: str, links: tuple[ChapterLink, ...]
+) -> tuple[NovelChapter, ...]:
+    """把账本里的章节按阅读顺序还原成可导出的章节（失败章写明原因）。"""
+    snapshot = ledger.snapshot(task_id)
+    chapters: list[NovelChapter] = []
+    for record, link in zip(snapshot.resources, links, strict=True):
+        index = record.spec.chapter
+        done = (
+            record.status == "done"
+            and record.local_path is not None
+            and record.sha256 is not None
+            and record.size is not None
+        )
+        if done:
+            data = read_cached(
+                ledger.root,
+                task_id,
+                record.local_path or "",
+                sha256=record.sha256 or "",
+                size=record.size or 0,
+            )
+            cached = decode_chapter(data)
+            chapters.append(
+                NovelChapter(
+                    index,
+                    cached.title,
+                    cached.paragraphs,
+                    source_url=link.url,
+                    pages=cached.pages,
+                    truncated=cached.truncated,
+                )
+            )
+            continue
+        reason = FAILURE_TEXT.get(record.error_code or "", "未完成")
+        chapters.append(
+            NovelChapter(index, link.title, (), source_url=link.url, missing_reason=reason)
+        )
+    return tuple(chapters)
+
+
+def export_chapters(chapters: tuple[NovelChapter, ...]) -> tuple[NovelChapter, ...]:
+    """导出用章节：被分页上限截断的章追加一行说明，读者不会以为书是完整的。"""
+    return tuple(
+        replace(chapter, paragraphs=(*chapter.paragraphs, TRUNCATION_NOTE))
+        if chapter.truncated and chapter.missing_reason is None
+        else chapter
+        for chapter in chapters
+    )
+
+
+def _chapter_result(chapter: NovelChapter, reused: frozenset[int]) -> ChapterResult:
+    return ChapterResult(
+        index=chapter.index,
+        title=chapter.title,
+        url=chapter.source_url,
+        chars=chapter.chars,
+        paragraphs=len(chapter.paragraphs),
+        pages=chapter.pages,
+        reused=chapter.index in reused,
+        truncated=chapter.truncated,
+        missing_reason=chapter.missing_reason,
+    )
+
+
+async def run_core_novel(
+    url: str,
+    out: Path | str,
+    *,
+    options: NovelOptions | None = None,
+    workdir: Path | str | None = None,
+    resume: bool = False,
+    fetcher: AsyncFetcher | None = None,
+    formats: tuple[str, ...] = ("epub",),
+    render: RenderOptions | None = None,
+    pdf_chrome: str | None = None,
+    progress: ChapterProgress | None = None,
+) -> NovelResult:
+    opts = options or NovelOptions()
+    chosen = validate_novel_formats(formats)
+    executable = None
+    if "pdf" in chosen:
+        executable = find_chrome(pdf_chrome or (render.executable if render else None))
+        if executable is None:
+            raise UnsupportedError(
+                "小说 PDF 需要系统 Chrome/Edge/Brave/Chromium", hint="安装 Chrome 或指定 --chrome"
+            )
+    destinations = novel_output_paths(Path(out).absolute(), chosen)
+    output = destinations[0]
+    output.parent.mkdir(parents=True, exist_ok=True)
+    before = preflight(
+        (*destinations, output.with_suffix(".report.json")), overwrite=opts.overwrite
+    )
+    for selector in (opts.content_selector, opts.chapter_selector, opts.next_selector):
+        if selector:
+            parse_html("").select(selector)
+    started = time.monotonic()
+    root = Path(workdir) if workdir else output.parent / ".quire-core"
+    client = fetcher or AsyncFetcher(
+        timeout=opts.timeout,
+        retries=opts.retries,
+        concurrency=opts.concurrency,
+        rate=opts.rate,
+        max_bytes=opts.max_bytes,
+    )
+    async with client:
+        page = await client.get(url, referer=opts.referer)
+        render_warnings: tuple[str, ...] = ()
+        renderer: Renderer | None = None
+        if render is not None:
+            page, render_warnings = await render_page(page, client, render, content="text")
+            renderer = _browser_renderer(client, render)
+        plan = plan_chapters(page, opts, render_warnings)
+        specs = [ResourceSpec(i + 1, 1, link.url) for i, link in enumerate(plan.links)]
+        identity = novel_identity(opts, plan.links)
+        identity["render"] = render is not None
+        task_id, _ = task_identity(url, identity, specs)
+        with Ledger(root) as ledger:
+            ledger.create_task(url, identity, specs)
+            # 每次运行都校验缓存：已提交且哈希正确的章节直接复用，失败或损坏的重取。
+            ledger.recover(task_id)
+            # A fresh directory avoids trusting old diagnostic files or links.
+            html_dir = None
+            if opts.keep_html:
+                from .store.export_files import make_workspace
+
+                html_dir, _ = make_workspace(ledger.root, task_id)
+            on_progress = _progress_hook(progress)
+            captured = await capture_chapters(
+                client,
+                ledger,
+                task_id,
+                plan.links,
+                options=opts,
+                render=renderer,
+                preloaded=plan.preloaded,
+                html_dir=html_dir,
+                on_progress=on_progress,
+            )
+            chapters = load_chapters(ledger, task_id, plan.links)
+            written = sum(1 for chapter in chapters if chapter.missing_reason is None)
+            result = NovelResult(
+                output=output,
+                title=plan.title,
+                chapters_written=written,
+                chapters_failed=len(chapters) - written,
+                characters=sum(chapter.chars for chapter in chapters),
+                warnings=plan.warnings + captured.warnings,
+                failures=tuple(
+                    (redact(chapter.source_url), chapter.missing_reason or "")
+                    for chapter in chapters
+                    if chapter.missing_reason is not None
+                ),
+                chapters=tuple(
+                    _chapter_result(chapter, captured.reused_chapters) for chapter in chapters
+                ),
+                task_id=task_id,
+                resources_reused=captured.reused,
+                source_resources=len(plan.links),
+                pages_fetched=captured.pages_fetched,
+                html_dir=html_dir,
+                truncated=plan.truncated,
+            )
+            if not written:
+                # 一章都没成功：先落报告，再报错——否则用户看不到每章的具体原因。
+                result = replace(result, elapsed_s=time.monotonic() - started)
+                saved = await export_novel(result, (), (), (), (before[-1],), source_url=url)
+                raise NoTextError(
+                    url,
+                    hint="这页可能是目录或动态页面：用 --chapter-selector 指定章节链接，"
+                    "或 --content-selector 指定正文容器；JS 页面加 --render。"
+                    f"每章原因见 {saved.report or '报告'}。",
+                )
+            result = replace(result, elapsed_s=time.monotonic() - started)
+            return await export_novel(
+                result,
+                export_chapters(chapters),
+                destinations,
+                chosen,
+                before,
+                source_url=url,
+                pdf_chrome=executable,
+            )
+
+
+def _browser_renderer(client: AsyncFetcher, render: RenderOptions) -> Renderer:
+    """把浏览器渲染包成 core_chapters 需要的回调，避免它依赖具体浏览器。"""
+
+    import asyncio
+
+    slots = asyncio.Semaphore(1)
+
+    async def render_one(page: Response) -> tuple[Response, tuple[str, ...]]:
+        async with slots:
+            return await render_page(page, client, render, content="text")
+
+    return render_one
+
+
+def _progress_hook(progress: ChapterProgress | None) -> Callable[[int, int], None] | None:
+    """CLI 的进度条只需要一个 (done, total) 回调。"""
+    if progress is None:
+        return None
+
+    def report(done: int, total: int) -> None:
+        progress.update(done, total, None)
+
+    return report

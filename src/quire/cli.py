@@ -1,18 +1,34 @@
-"""CLI commands, capability diagnostics and user-facing error mapping."""
+"""CLI 命令、能力诊断与用户可见错误映射（项目设计.md §20）。"""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import platform
 import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Never
 
 from . import __version__
-from .cli_options import add_manga_options, compression_options, render_options
+from .cli_console import (
+    EXIT_CONFIG,
+    EXIT_FETCH,
+    EXIT_OK,
+    EXIT_PARSE,
+    EXIT_PARTIAL,
+    ArgumentParser,
+    data_home,
+    fail,
+    find_chrome,
+    human_size,
+    info,
+    warn,
+)
+from .cli_console import (
+    module_available as _module_available,
+)
+from .cli_options import add_manga_options, add_novel_options, compression_options, render_options
 from .cli_progress import Progress
 from .errors import ConfigError, QuireError, UnsupportedError
 from .export_options import available_output, parse_formats
@@ -22,50 +38,11 @@ from .parse.minidom import SelectorError
 from .utils.naming import unique_path
 from .utils.urls import redact
 
-EXIT_OK = 0
-EXIT_CONFIG = 1
-EXIT_FETCH = 2
-EXIT_PARSE = 3
-EXIT_PARTIAL = 4
-EXIT_BLOCKED = 5
-EXIT_DEPENDENCY = 6
-
-CHROME_CANDIDATES = (
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-)
-
-
-class ArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> Never:
-        from .errors import ConfigError
-
-        raise ConfigError(message)
-
-
-def info(message: str) -> None:
-    sys.stdout.write(message + "\n")
-
-
-def warn(message: str) -> None:
-    sys.stderr.write(f"  ! {message}\n")
-
-
-def fail(message: str, hint: str | None = None) -> None:
-    sys.stderr.write(f"\n✗ {message}\n")
-    if hint:
-        sys.stderr.write(f"  → {hint}\n")
-
-
-def human_size(num: int) -> str:
-    value = float(num)
-    for unit in ("B", "KB", "MB", "GB"):
-        if value < 1024 or unit == "GB":
-            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
-        value /= 1024
-    return f"{value:.1f} GB"
+_cmd_novel: Callable[[argparse.Namespace], int] | None
+try:  # micro 分发不包含小说命令，导入失败即视为没有该子命令
+    from .cli_novel import cmd_novel as _cmd_novel
+except ImportError:  # pragma: no cover - 只在缺少 core 模块的分发里发生
+    _cmd_novel = None
 
 
 def cmd_manga(args: argparse.Namespace) -> int:
@@ -285,7 +262,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         for name in ("httpx", "PIL", "pypdf", "websockets", "quire.core_manga")
     ):
         info("  core：漫画下载恢复、转码切页、PDF/CBZ/ZIP；--render使用系统Chrome加载动态页面")
-    info("  小说、OCR 和应用界面尚未实现")
+    if all(_module_available(name) for name in ("httpx", "websockets", "quire.core_novel")):
+        info("  core：小说目录、正文抽取、EPUB/TXT/PDF，章级断点恢复（quire novel）")
+    info("  OCR 和应用界面尚未实现")
 
     info("")
     info("数据目录")
@@ -293,35 +272,6 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     info("  当前 micro 的输出和临时缓存位于所选输出路径旁")
 
     return EXIT_OK
-
-
-def _module_available(name: str) -> bool:
-    import importlib.util
-
-    try:
-        return importlib.util.find_spec(name) is not None
-    except (ImportError, ValueError):
-        return False
-
-
-def find_chrome() -> str | None:
-    for path in CHROME_CANDIDATES:
-        if os.path.exists(path):
-            return path
-    for name in ("google-chrome", "chromium", "chrome"):
-        found = shutil.which(name)
-        if found:
-            return found
-    return None
-
-
-def data_home() -> Path:
-    override = os.environ.get("QUIRE_HOME")
-    if override:
-        return Path(override)
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "quire"
-    return Path.home() / ".local" / "share" / "quire"
 
 
 # ============================================================ 参数
@@ -338,6 +288,11 @@ def build_parser() -> argparse.ArgumentParser:
     m = sub.add_parser("manga", help="抓一页漫画并合成 PDF")
     add_manga_options(m)
     m.set_defaults(func=cmd_manga)
+
+    if _cmd_novel is not None:
+        n = sub.add_parser("novel", help="抓一本小说并导出 EPUB / TXT / PDF")
+        add_novel_options(n)
+        n.set_defaults(func=_cmd_novel)
 
     i = sub.add_parser("inspect", help="侦察页面结构（写站点规则用）")
     i.add_argument("url")

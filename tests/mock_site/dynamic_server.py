@@ -115,6 +115,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(200, b"User-agent: *\nDisallow: /forbidden\n")
         if path == "/redirect":
             return self.respond(302, b"", extra={"Location": "/dynamic"})
+        if path == "/novel":
+            prose = "".join(
+                f"<p>第{index}段，夜色静谧，窗外的风轻轻吹过街道。他合上手中的书，"
+                "回想起多年前的一段往事，直到钟声响起，才终于下定决心。</p>"
+                for index in range(1, 7)
+            )
+            html = (
+                '<html><head><meta charset="utf-8"><title>第一章 静夜</title></head>'
+                '<body><h1>第一章 静夜</h1><main id="content"></main><script>'
+                'setTimeout(() => { document.querySelector("main").innerHTML = '
+                + json.dumps(prose)
+                + "; }, 200);</script></body></html>"
+            )
+            return self.respond(200, html.encode(), "text/html; charset=utf-8")
         if path in {"/dynamic", "/endless", "/delayed", "/blocked-script"}:
             script = "/forbidden/reader.js" if path == "/blocked-script" else "/reader.js"
             return self.respond(200, reader_page(path[1:], script), "text/html; charset=utf-8")
