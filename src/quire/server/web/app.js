@@ -123,6 +123,8 @@ function resetRunView(job) {
   $("resumeBtn").hidden = true;
   $("cancelBtn").hidden = false;
   $("pauseBtn").hidden = false;
+  $("pauseBtn").disabled = false;
+  $("pauseBtn").textContent = "暂停";
   $("meterFill").style.width = "0";
   $("statDone").textContent = "0";
   $("statFailed").textContent = "0";
@@ -184,7 +186,10 @@ function finishRunView(status, data) {
     $("meterFill").style.width = "100%";
   } else if (status === "partial") {
     $("runTitle").textContent = data.title || $("runTitle").textContent;
-    $("runSub").textContent = "已完成，但有缺页";
+    const cancelled = (data.warnings || []).some((w) => String(w).includes("已取消"));
+    $("runSub").textContent = cancelled
+      ? "已取消：已抓取的部分已导出为半成品，点「重试」从缓存续抓，不重头"
+      : "已完成，但有缺页";
     $("partialNote").hidden = false;
     $("partialNote").textContent =
       `${data.failures} 页缺失，已用占位页补齐。修正链接后点「重试」可以只补缺失的部分。` +
@@ -361,10 +366,15 @@ $("cancelBtn").addEventListener("click", () => {
 });
 $("pauseBtn").addEventListener("click", () => {
   if (!state.job) return;
+  /* 暂停是协作式收尾，落定需要几秒；立即给出反馈，免得误以为没生效 */
   $("pauseBtn").disabled = true;
-  api(`/api/jobs/${state.job.id}/pause`, { method: "POST" })
-    .catch(() => {})
-    .finally(() => { $("pauseBtn").disabled = false; });
+  $("pauseBtn").textContent = "暂停中…";
+  $("runSub").textContent = "正在暂停：进行中的页面先收尾，已抓取的部分保留在缓存里";
+  api(`/api/jobs/${state.job.id}/pause`, { method: "POST" }).catch(() => {
+    $("pauseBtn").disabled = false;
+    $("pauseBtn").textContent = "暂停";
+    $("runSub").textContent = "暂停请求没发出去，请再试一次";
+  });
 });
 function resubmitSpec() {
   const spec = state.lastSpec || (state.job && state.job.spec);
