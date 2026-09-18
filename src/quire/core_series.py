@@ -62,6 +62,7 @@ async def run_series(
     split_by: str = "none",
     first: int = 1,
     last: int = 0,
+    ranges: str = "",
     selected: tuple[int, ...] = (),
     fallback_chapters: int = 20,
     rule: SiteRule | None = None,
@@ -109,6 +110,7 @@ async def run_series(
             order=rule.chapter_order if rule else "auto",
             first=first,
             last=last,
+            ranges=ranges,
             fallback_chapters=fallback_chapters,
         )
         if selected and (

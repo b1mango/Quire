@@ -17,7 +17,7 @@ from ..errors import ConfigError
 from ..export_options import validate_formats
 from ..image.options import PRESETS
 from ..novel_options import validate_novel_formats
-from ..parse.chapter_range import validate_range
+from ..parse.chapter_range import parse_ranges, validate_range
 from ..parse.series import split_spec
 from ..store.models import JsonValue
 from ..utils.naming import safe_filename
@@ -40,6 +40,7 @@ class JobSpec:
     render: bool = False
     chapter_first: int = 1
     chapter_last: int = 0
+    chapter_ranges: str = ""  # 多段范围表达式；非空时取代起止两章
     follow_prefix: int = 0  # 追更：导出时从旧任务缓存拼回的连续章节数
 
     def __post_init__(self) -> None:
@@ -48,17 +49,32 @@ class JobSpec:
         validate_task_url(self.url)
         validate_capture_mode(self.kind, self.capture_mode)
         validate_range(self.chapter_first, self.chapter_last)
+        if self.chapter_ranges:
+            if type(self.chapter_ranges) is not str:
+                raise ConfigError("章节范围表达式须为字符串")
+            parse_ranges(self.chapter_ranges)
+            if self.chapter_first != 1 or self.chapter_last != 0:
+                raise ConfigError("章节范围表达式与起止章节只能选一种")
         if type(self.follow_prefix) is not int or not 0 <= self.follow_prefix <= 20000:
             raise ConfigError("追更拼接的章节数无效")
         if self.follow_prefix and (
             self.kind != "novel" or self.chapter_first != self.follow_prefix + 1
         ):
             raise ConfigError("追更拼接仅用于小说，且须从已抓末章的下一章起抓")
-        if self.capture_mode == "single" and (
-            self.chapter_first != 1 or self.chapter_last not in (0, 1)
-        ):
+        if self.follow_prefix and self.chapter_ranges:
+            raise ConfigError("追更拼接不支持多段章节范围")
+        ranged = (
+            bool(self.chapter_ranges)
+            or self.chapter_first != 1
+            or self.chapter_last
+            not in (
+                0,
+                1,
+            )
+        )
+        if self.capture_mode == "single" and ranged:
             raise ConfigError("单章模式不能选择目录范围")
-        if self.volumes and (self.chapter_first != 1 or self.chapter_last != 0):
+        if self.volumes and (ranged or self.chapter_last != 0):
             raise ConfigError("自定义章节范围按范围重新分卷，不能同时预选原目录卷号")
         if type(self.render) is not bool:
             raise ConfigError("动态页面设置须为布尔值")
@@ -238,5 +254,6 @@ def _spec_payload(spec: JobSpec) -> dict[str, JsonValue]:
         "render": spec.render,
         "chapter_first": spec.chapter_first,
         "chapter_last": spec.chapter_last,
+        "chapter_ranges": spec.chapter_ranges,
         "follow_prefix": spec.follow_prefix,
     }

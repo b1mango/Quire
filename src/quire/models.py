@@ -134,14 +134,26 @@ class NovelOptions:
     capture_mode: str = "auto"  # auto | catalogue | single
     chapter_first: int = 1
     chapter_last: int = 0
+    chapter_ranges: str = ""  # 多段范围表达式（如 "1-10,15-20"）；非空时取代起止两章
 
     def __post_init__(self) -> None:
-        from .parse.chapter_range import validate_range
+        from .parse.chapter_range import parse_ranges, validate_range
 
         validate_range(self.chapter_first, self.chapter_last)
-        if self.capture_mode == "single" and (
-            self.chapter_first != 1 or self.chapter_last not in (0, 1)
-        ):
+        if self.chapter_ranges:
+            parse_ranges(self.chapter_ranges)
+            if self.chapter_first != 1 or self.chapter_last != 0:
+                raise ConfigError("章节范围表达式与起止章节只能选一种")
+        ranged = (
+            bool(self.chapter_ranges)
+            or self.chapter_first != 1
+            or self.chapter_last
+            not in (
+                0,
+                1,
+            )
+        )
+        if self.capture_mode == "single" and ranged:
             raise ConfigError("单章模式不能选择目录范围")
         if self.capture_mode not in {"auto", "catalogue", "single"}:
             raise ConfigError("采集模式须为 auto、catalogue 或 single")

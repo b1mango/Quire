@@ -228,6 +228,38 @@ def test_novel_chapter_range_flow(ui):
         assert "第1章第1页第1段" not in txt
 
 
+def test_novel_multi_range_flow(ui):
+    """多段范围表达式端到端：1-2,5 只抓第 1、2、5 章，跳过 404 的第 4 章。"""
+    server, _ = ui
+    with novel_site() as site:
+        status, probe = _request(server, "POST", "/api/probe", {"url": f"{site.url}/book/"})
+        assert status == 200
+        status, job = _request(
+            server,
+            "POST",
+            "/api/jobs",
+            {
+                "kind": "novel",
+                "url": probe["url"],
+                "title": probe["title"],
+                "formats": ["txt"],
+                "ocr": "never",
+                "chapter_ranges": "1-2,5",
+            },
+        )
+        assert status == 201
+        done = _wait_job(server, job["id"])
+        assert done["status"] == "done"
+        chapters = done["chapters"]
+        assert sorted(c["title"] for c in chapters) == ["第一章 起点", "第二章 分页", "第五章 尾声"]
+        assert site.hits("/book/3.html") == 0
+        assert site.hits("/book/4.html") == 0
+        txt = (server.data_root / "library" / f"{probe['title']}.txt").read_text("utf-8")
+        assert "第1章第1页第1段" in txt
+        assert "第5章第1页第1段" in txt
+        assert "第3章第1页第1段" not in txt
+
+
 def test_cancel_exports_partial_book(ui):
     """取消抓取后：已落定章节按所选格式导出半成品，书库可见，状态 partial。"""
     server, _ = ui

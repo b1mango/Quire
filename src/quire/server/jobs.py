@@ -296,6 +296,7 @@ class JobManager:
             max_chapters=20000,
             chapter_first=spec.chapter_first,
             chapter_last=spec.chapter_last,
+            chapter_ranges=spec.chapter_ranges,
         )
         render = RenderOptions(timeout=60, max_scrolls=1000) if spec.render else None
         if rule:
@@ -316,6 +317,7 @@ class JobManager:
                 split_by=spec.split_by,
                 first=spec.chapter_first,
                 last=spec.chapter_last,
+                ranges=spec.chapter_ranges,
                 selected=spec.volumes,
                 rule=rule,
                 options=manga_options,

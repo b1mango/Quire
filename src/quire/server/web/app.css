@@ -188,6 +188,7 @@ h1{font-family:var(--fd);font-size:28px;line-height:1.2;margin:0;letter-spacing:
 
 .hint{display:flex;align-items:center;gap:9px;margin-top:12px;font-size:12.5px;color:var(--muted);flex-wrap:wrap}
 .warn-hint{color:var(--warn)}
+.hint.invalid{color:var(--warn)}
 
 .btn{
   appearance:none;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;

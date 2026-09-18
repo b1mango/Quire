@@ -541,6 +541,36 @@ def test_job_chapter_range(server):
     assert done["chapters"] == []
 
 
+def test_job_chapter_ranges_expression(server):
+    """多段范围表达式：合法透传到 JobSpec，非法一律 400。"""
+    srv, _ = server
+    base = {"kind": "manga", "url": "http://x.c", "title": "t", "formats": ["pdf"]}
+    for bad in (
+        {"chapter_ranges": "abc"},
+        {"chapter_ranges": "10-5"},
+        {"chapter_ranges": "1-3,2"},  # 重复
+        {"chapter_ranges": "0-3"},
+        {"chapter_ranges": "1-20001"},
+        {"chapter_ranges": "5-,6"},  # 开放段须在末尾
+        {"chapter_ranges": "1-5", "chapter_first": 2},  # 与起止两章互斥
+        {"chapter_ranges": "1-5", "volumes": [1]},  # 与预选卷号互斥
+        {"chapter_ranges": "1-5", "capture_mode": "single"},  # 单章禁用
+        {"chapter_ranges": "1-5", "follow_prefix": 1},  # 追更拼接不支持
+        {"chapter_ranges": 5},
+    ):
+        status, _ = _request(srv, "POST", "/api/jobs", {**base, **bad})
+        assert status == 400, bad
+    status, job = _request(srv, "POST", "/api/jobs", {**base, "chapter_ranges": "1-3,5,7-"})
+    assert status == 201
+    spec = srv.manager.get(job["id"]).spec
+    assert spec.chapter_ranges == "1-3,5,7-"
+    assert (spec.chapter_first, spec.chapter_last) == (1, 0)
+    # 快照里的 spec 可原样回投（重试/继续共用）
+    done = _wait_job(srv, job["id"])
+    assert done["status"] == "done"
+    assert done["spec"]["chapter_ranges"] == "1-3,5,7-"
+
+
 def test_novel_pdf_requires_chrome(server, monkeypatch):
     srv, _ = server
     import quire.server.endpoints as endpoints

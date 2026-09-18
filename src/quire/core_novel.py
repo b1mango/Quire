@@ -37,7 +37,7 @@ from .novel_options import novel_output_paths, validate_novel_formats
 from .ocr.base import ReviewEntry
 from .ocr.postprocess import drop_repeated_short_lines
 from .parse.article import extract_article, page_title, validate_article
-from .parse.chapter_range import select_range
+from .parse.chapter_range import parse_ranges, select_range, select_ranges
 from .parse.chapters import ChapterLink, discover_chapters, looks_like_catalogue
 from .parse.minidom import Document
 from .parse.minidom import parse as parse_html
@@ -81,7 +81,10 @@ def plan_chapters(page: Response, opts: NovelOptions, warnings: Sequence[str] = 
     if truncated:
         links = links[: opts.max_chapters]
         notes.append(f"章节数超过上限 {opts.max_chapters}，只抓前 {opts.max_chapters} 章")
-    links = select_range(links, opts.chapter_first, opts.chapter_last)
+    if opts.chapter_ranges:
+        links = select_ranges(links, parse_ranges(opts.chapter_ranges))
+    else:
+        links = select_range(links, opts.chapter_first, opts.chapter_last)
     return _Plan(title, links, {}, tuple(notes), truncated)
 
 
@@ -109,6 +112,7 @@ def novel_identity(opts: NovelOptions, links: tuple[ChapterLink, ...]) -> dict[s
         "capture_mode": opts.capture_mode,
         "chapter_first": opts.chapter_first,
         "chapter_last": opts.chapter_last,
+        "chapter_ranges": opts.chapter_ranges,
         "clean_version": opts.clean_version,
         "ocr_mode": opts.ocr_mode,
         "ocr_engine": opts.ocr_engine,

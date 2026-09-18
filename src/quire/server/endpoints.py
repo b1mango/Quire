@@ -116,6 +116,9 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
     if not isinstance(kind, str) or not isinstance(title, str) or not isinstance(formats, list):
         raise ConfigError("任务缺少类型、书名或格式")
     target = payload.get("target_mb")
+    ranges = payload.get("chapter_ranges") or ""
+    if not isinstance(ranges, str):
+        raise ConfigError("章节范围表达式须为字符串")
     if kind == "novel" and "pdf" in formats and find_chrome() is None:
         raise ConfigError("转 PDF 需要 Chrome，这台机器上没找到", hint="安装 Chrome 后再试。")
     spec = JobSpec(
@@ -135,6 +138,7 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
         render=payload.get("render", False),
         chapter_first=payload.get("chapter_first", 1),
         chapter_last=payload.get("chapter_last", 0),
+        chapter_ranges=ranges,
         follow_prefix=payload.get("follow_prefix", 0),
     )
     job = ctx.manager.submit(spec, settings_mod.load(ctx.settings_path, ctx.data_root))

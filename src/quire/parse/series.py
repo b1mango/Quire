@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from ..errors import ConfigError, NoChaptersError
 from ..image.options import parse_size
 from ..utils.urls import join_document_url as join_url
-from .chapter_range import select_range
+from .chapter_range import parse_ranges, select_range, select_ranges
 from .chapters import ChapterLink, discover_chapters
 from .minidom import Document
 
@@ -45,11 +45,16 @@ def plan_volumes(
     volume_selector: str | None = None,
     first: int = 1,
     last: int = 0,
+    ranges: str = "",
     fallback_chapters: int = 20,
     order: str = "auto",
 ) -> tuple[tuple[Volume, ...], tuple[str, ...]]:
     mode, amount = split_spec(split_by)
-    if (
+    if ranges:
+        segments = parse_ranges(ranges)
+        if first != 1 or last != 0:
+            raise ConfigError("章节范围表达式与起止章节只能选一种")
+    elif (
         type(first) is not int
         or type(last) is not int
         or first < 1
@@ -74,7 +79,7 @@ def plan_volumes(
         raise ConfigError("目录排序参数无效")
     if not links:
         raise NoChaptersError(url)
-    links = select_range(links, first, last)
+    links = select_ranges(links, segments) if ranges else select_range(links, first, last)
     groups: list[tuple[str, list[ChapterLink]]] = []
     warnings: tuple[str, ...] = ()
     if mode == "volume":

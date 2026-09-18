@@ -91,7 +91,7 @@ function startJob() {
   if (!formats.length) { $("startMeta").textContent = "至少选一种格式"; return; }
   const compress = segValue($("compressSeg"), "compress") || "balanced";
   const range = chapterRangeSpec();
-  const customRange = range.chapter_first !== 1 || range.chapter_last !== 0;
+  const customRange = Boolean(range.chapter_ranges);
   const spec = {
     kind: state.kind,
     capture_mode: state.captureMode,
@@ -109,6 +109,7 @@ function startJob() {
       : [...$("volumeList").querySelectorAll("input:checked")].map(x => Number(x.value)),
     chapter_first: range.chapter_first,
     chapter_last: range.chapter_last,
+    chapter_ranges: range.chapter_ranges,
   };
   if (spec.series && !spec.split_by.startsWith("size") && !spec.volumes.length) {
     $("startMeta").textContent = "至少选择一卷"; return;
