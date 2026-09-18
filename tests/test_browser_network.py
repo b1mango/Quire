@@ -247,3 +247,36 @@ def test_rejected_page_api_calls_do_not_stop_capture():
         assert net.warnings == {"动态页面接口请求被拒绝了(HTTP 401),已跳过"}
 
     asyncio.run(run())
+
+
+def test_cancelled_interception_is_a_warning_not_fatal():
+    # 页面在应答前取消请求(广告/统计常见):Invalid InterceptionId 不再致命。
+    gone = FetchError("CDP command failed (code -32602): Invalid InterceptionId.")
+
+    async def run():
+        net = network()
+        net.cdp.call.side_effect = gone
+        await net._serve(request(URL + "/ad", "Image"))
+        net.check()
+        assert net.warnings == {"动态页面在应答前取消了部分请求,已跳过"}
+
+    asyncio.run(run())
+
+    async def run_main():
+        net = network()
+        net.cdp.call.side_effect = gone
+        await net._serve(request())
+        with pytest.raises(FetchError, match="Invalid InterceptionId"):
+            net.check()
+
+    asyncio.run(run_main())
+
+    async def run_fail():
+        net = network()
+        net.client.get.side_effect = BlockedError("robots denied")
+        net.cdp.call.side_effect = gone
+        await net._serve(request(URL + "/img", "Image"))
+        net.check()  # failRequest 落在已失效的拦截点上也不致命
+        assert net.warnings
+
+    asyncio.run(run_fail())

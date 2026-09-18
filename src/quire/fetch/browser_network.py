@@ -14,6 +14,17 @@ from .session import AsyncFetcher
 from .simple import Response
 
 
+def _interception_gone(exc: QuireError) -> bool:
+    # 页面在我们应答前取消了请求(广告/统计脚本常见),拦截点已失效,无需再应答。
+    return isinstance(exc, FetchError) and "Invalid InterceptionId" in exc.message
+
+
+def _site(host: str | None) -> str:
+    # 近似可注册域(末两段):判断子请求是否与主页面同站。
+    parts = (host or "").split(".")
+    return ".".join(parts[-2:]) if len(parts) >= 2 else (host or "")
+
+
 class BrowserNetwork:
     def __init__(self, cdp: Cdp, session: str, frame: str, client: AsyncFetcher, page: Response):
         self.cdp, self.session, self.frame, self.client = cdp, session, frame, client
@@ -21,6 +32,7 @@ class BrowserNetwork:
 
         # HTTP 请求没有 fragment；浏览器导航仍保留原 page.url 的 hash 路由。
         self.seed = {normalize_url(page.url): replace(page, url=normalize_url(page.url))}
+        self.site = _site(urlsplit(page.url).hostname)
         self.pending: set[asyncio.Task[None]] = set()
         self.error: BaseException | None = None
         self.warnings: set[str] = set()
@@ -105,7 +117,8 @@ class BrowserNetwork:
                     session_id=self.session,
                 )
             except QuireError as failure:
-                self.error = failure
+                if not _interception_gone(failure):
+                    self.error = failure
             finally:
                 self.last_activity = asyncio.get_running_loop().time()
             return
@@ -158,15 +171,27 @@ class BrowserNetwork:
                     ],
                     "body": base64.b64encode(response.content).decode("ascii"),
                 }
-            await self.cdp.call(
-                "Fetch.fulfillRequest",
-                {"requestId": params["requestId"], **payload},
-                session_id=self.session,
-            )
+            try:
+                await self.cdp.call(
+                    "Fetch.fulfillRequest",
+                    {"requestId": params["requestId"], **payload},
+                    session_id=self.session,
+                )
+            except FetchError as exc:
+                if _interception_gone(exc) and not main:
+                    self.warnings.add("动态页面在应答前取消了部分请求,已跳过")
+                    return
+                raise
         except QuireError as exc:
-            if isinstance(exc, BlockedError) and not main and kind not in {"Script", "Stylesheet"}:
-                # 页面自发的第三方 API 子请求被 robots 拦下:拒掉这一条、继续渲染,
-                # 主文档/脚本/样式被拦仍失败。漫画正文请求在本域,不受邻域 robots 影响。
+            same_site = _site(urlsplit(url).hostname) == self.site
+            dependency = kind in {"Script", "Fetch", "XHR", "Stylesheet"}
+            if (
+                isinstance(exc, BlockedError)
+                and not main
+                and not (same_site and kind in {"Script", "Stylesheet"})
+            ):
+                # 第三方/接口子请求被 robots 拦下:拒掉这一条、继续渲染,
+                # 主文档与同站脚本样式被拦仍失败(正文可能不完整)。
                 self.warnings.add(
                     f"动态页面部分资源被 robots.txt 拦截,已跳过：{urlsplit(url).netloc}"
                 )
@@ -174,11 +199,7 @@ class BrowserNetwork:
                 # 页面自发的接口调用未登录/被拒(如 bilibili GetInitInfo 401):
                 # 拒掉这一条继续渲染;正文接口若也失败,占位页会在下游被查出。
                 self.warnings.add(f"动态页面接口请求被拒绝了(HTTP {exc.status}),已跳过")
-            elif (
-                main
-                or kind in {"Script", "Fetch", "XHR", "Stylesheet"}
-                or self.bytes > 128 * 1024 * 1024
-            ):
+            elif main or (dependency and same_site) or self.bytes > 128 * 1024 * 1024:
                 self.error = exc
             else:
                 self.warnings.add(f"动态页面部分资源未加载：{type(exc).__name__}")
@@ -189,7 +210,8 @@ class BrowserNetwork:
                     session_id=self.session,
                 )
             except QuireError as failure:
-                self.error = failure
+                if not _interception_gone(failure):
+                    self.error = failure
         except Exception:
             self.error = FetchError("动态页面资源处理失败")
         finally:

@@ -249,7 +249,9 @@ def test_invalid_images_are_recorded_as_placeholders(tmp_path, bad):
         assert ledger.snapshot(result.task_id).resources[0].error_code == "invalid_image"
 
 
-def test_policy_denial_records_blocked_image(tmp_path):
+def test_robots_disallowed_image_binary_is_still_fetched(tmp_path):
+    # F1 起图片等二进制下载跳过 robots(REP 只管页面);这里 robots 禁了 /bad.jpg,
+    # 仍应尝试下载,失败按内容判定记为 invalid_image 而不是 blocked。
     def handler(request):
         if request.url.path == "/robots.txt":
             return answer(request, data=b"User-agent: *\nDisallow: /bad.jpg")
@@ -262,8 +264,9 @@ def test_policy_denial_records_blocked_image(tmp_path):
             fetcher=AsyncFetcher(transport=httpx.MockTransport(handler), rate=1e9),
         )
     )
+    assert result.pages_failed == 1
     with Ledger(tmp_path / ".quire-core") as ledger:
-        assert ledger.snapshot(result.task_id).resources[0].error_code == "blocked"
+        assert ledger.snapshot(result.task_id).resources[0].error_code == "invalid_image"
 
 
 def test_cancelled_worker_settles_and_later_resume_reuses_completed_page(tmp_path):

@@ -149,7 +149,14 @@ class Cdp:
                         continue
                     if "error" in message:
                         code = message["error"]["code"]
-                        future.set_exception(FetchError(f"CDP command failed (code {code})"))
+                        # Chrome 的 message 可能回显请求参数,只放行已知的安全短语。
+                        detail = message["error"]["message"]
+                        suffix = (
+                            ": Invalid InterceptionId" if "Invalid InterceptionId" in detail else ""
+                        )
+                        future.set_exception(
+                            FetchError(f"CDP command failed (code {code}){suffix}")
+                        )
                     else:
                         future.set_result(message["result"])
                 else:
