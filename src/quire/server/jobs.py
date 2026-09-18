@@ -29,7 +29,7 @@ from ..novel_options import available_novel_output
 from ..sites.rules import resolve_rule
 from ..store import library
 from ..store.models import JsonValue
-from ..utils.naming import safe_filename
+from ..utils.naming import available_book_dir, safe_filename
 from .books import register_book
 from .chapter_stream import ChapterTracker
 from .follows import resolve_prefix
@@ -264,7 +264,9 @@ class JobManager:
         out_dir = settings.output_path
         out_dir.mkdir(parents=True, exist_ok=True)
         workdir = job_workdir(out_dir, spec)
-        base = out_dir / safe_filename(spec.title, default="book")
+        book_dir = available_book_dir(out_dir, spec.title)  # 每作品独立成品文件夹
+        book_dir.mkdir(parents=True, exist_ok=True)
+        base = book_dir / safe_filename(spec.title, default="book")
         thumbs: dict[str, Any] = {"task_id": "", "done": set()}
 
         def sweep_thumbs() -> None:
@@ -313,7 +315,7 @@ class JobManager:
 
             return await run_series(
                 spec.url,
-                base,
+                book_dir,
                 split_by=spec.split_by,
                 first=spec.chapter_first,
                 last=spec.chapter_last,

@@ -58,11 +58,13 @@ def test_salvage_novel_exports_partial_in_chosen_formats(tmp_path):
     assert result is not None and result.partial
     assert result.title.endswith("（未完成）")
     assert {a.format for a in result.artifacts} == {"txt", "epub"}
-    txt = (tmp_path / "out" / "测试书（未完成）.txt").read_text("utf-8")
+    txt = (tmp_path / "out" / "测试书（未完成）" / "测试书（未完成）.txt").read_text("utf-8")
     assert "第1章正文第一段" in txt
     assert "第2章正文第二段" in txt
     assert "第3章" not in txt or "缺失" in txt or "未完成" in txt  # 未抓章节只有占位说明
-    assert (tmp_path / "out" / "测试书（未完成）.epub").read_bytes()[:2] == b"PK"
+    assert (tmp_path / "out" / "测试书（未完成）" / "测试书（未完成）.epub").read_bytes()[
+        :2
+    ] == b"PK"
 
 
 def test_salvage_manga_exports_partial_pdf(tmp_path):
@@ -84,7 +86,7 @@ def test_salvage_manga_exports_partial_pdf(tmp_path):
     result = asyncio.run(salvage_job(spec, task_id, _settings(tmp_path), tmp_path))
     assert result is not None and result.partial
     assert result.pages_written == 2 and result.pages_failed == 1
-    pdf = tmp_path / "out" / "测试漫（未完成）.pdf"
+    pdf = tmp_path / "out" / "测试漫（未完成）" / "测试漫（未完成）.pdf"
     assert pdf.read_bytes().startswith(b"%PDF")
 
 

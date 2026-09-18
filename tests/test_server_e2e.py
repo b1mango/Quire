@@ -102,7 +102,7 @@ def test_manga_full_flow(ui):
         assert book["formats"] == ["pdf"]
         assert book["cover"]
 
-        output = server.data_root / "library" / f"{probe['title']}.pdf"
+        output = server.data_root / "library" / probe["title"] / f"{probe['title']}.pdf"
         assert output.read_bytes().startswith(b"%PDF")
 
         # 封面（由下载页缩略图生成）与打开
@@ -178,8 +178,8 @@ def test_novel_full_flow(ui):
         assert len(data["books"]) == 1
         book = data["books"][0]
         assert book["formats"] == ["epub", "txt"]
-        epub = server.data_root / "library" / f"{probe['title']}.epub"
-        txt = server.data_root / "library" / f"{probe['title']}.txt"
+        epub = server.data_root / "library" / probe["title"] / f"{probe['title']}.epub"
+        txt = server.data_root / "library" / probe["title"] / f"{probe['title']}.txt"
         assert epub.read_bytes()[:2] == b"PK"
         content = txt.read_text("utf-8")
         assert "第一章" in content
@@ -223,7 +223,9 @@ def test_novel_chapter_range_flow(ui):
         raw = _sse_events(server, job["id"])
         assert "event: chapter" in raw
 
-        txt = (server.data_root / "library" / f"{probe['title']}.txt").read_text("utf-8")
+        txt = (server.data_root / "library" / probe["title"] / f"{probe['title']}.txt").read_text(
+            "utf-8"
+        )
         assert "第2章第1页第1段" in txt
         assert "第1章第1页第1段" not in txt
 
@@ -254,7 +256,9 @@ def test_novel_multi_range_flow(ui):
         assert sorted(c["title"] for c in chapters) == ["第一章 起点", "第二章 分页", "第五章 尾声"]
         assert site.hits("/book/3.html") == 0
         assert site.hits("/book/4.html") == 0
-        txt = (server.data_root / "library" / f"{probe['title']}.txt").read_text("utf-8")
+        txt = (server.data_root / "library" / probe["title"] / f"{probe['title']}.txt").read_text(
+            "utf-8"
+        )
         assert "第1章第1页第1段" in txt
         assert "第5章第1页第1段" in txt
         assert "第3章第1页第1段" not in txt
@@ -302,7 +306,9 @@ def test_cancel_exports_partial_book(ui):
         _, data = _request(server, "GET", "/api/books")
         assert len(data["books"]) == 1
         assert "（未完成）" in data["books"][0]["title"]
-        txt = (server.data_root / "library" / "测试之书（未完成）.txt").read_text("utf-8")
+        txt = (
+            server.data_root / "library" / "测试之书（未完成）" / "测试之书（未完成）.txt"
+        ).read_text("utf-8")
         assert "第1章第1页第1段" in txt  # 已抓章节在成品里
         assert "第2章第1页第1段" not in txt  # 未抓章节不伪造正文
 
@@ -346,7 +352,7 @@ def test_pause_and_resume(ui):
         assert final["status"] == "partial"  # 第 4 章 404 仍然缺
         assert site.hits("/book/1.html") == 1  # 已落定章节不重复下载
         assert site.hits("/book/2.html") == 1
-        txt = (server.data_root / "library" / "测试之书.txt").read_text("utf-8")
+        txt = (server.data_root / "library" / "测试之书" / "测试之书.txt").read_text("utf-8")
         assert "第1章第1页第1段" in txt
 
 
@@ -398,7 +404,7 @@ def test_follow_update_flow(ui):
         assert len(data["books"]) == 2
         newest = data["books"][0]  # created_at 倒序，追更产物在前
         assert newest["follow"]["chapters"] == 5
-        txts = sorted((server.data_root / "library").glob("*.txt"))
+        txts = sorted((server.data_root / "library").rglob("*.txt"))
         merged = [p for p in txts if "第5章第1页第1段" in p.read_text("utf-8")]
         assert len(merged) == 1
         assert "第1章第1页第1段" in merged[0].read_text("utf-8")

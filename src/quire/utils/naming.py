@@ -105,6 +105,29 @@ def unique_path(path: Path) -> Path:
     raise FileExistsError(f"同名文件过多：{path}")
 
 
+def available_book_dir(output: Path, title: str) -> Path:
+    """每作品独立成品文件夹：``输出目录/书名/``；同名已占用时 ``书名 (1)/`` 递增。
+
+    与 available_output 同一套避让习惯；空目录（上次失败留下的壳）可复用，
+    目录里有任何内容即视为占用。只算名字，不创建目录。
+    """
+    base = output / safe_filename(title, default="book")
+    candidate = base
+    number = 0
+    while _dir_taken(candidate):
+        number += 1
+        candidate = output / f"{base.name} ({number})"
+    return candidate
+
+
+def _dir_taken(path: Path) -> bool:
+    if path.is_symlink() or not path.exists():
+        return path.is_symlink()
+    if not path.is_dir():
+        return True
+    return any(path.iterdir())
+
+
 def image_filename(index: int, ext: str, *, total: int = 0) -> str:
     """页图片的落盘名：``001.jpg``。位宽随总页数走，保证字典序正确。"""
     width = max(3, pad_width(total)) if total else 3

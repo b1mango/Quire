@@ -30,7 +30,7 @@ from ..store import library
 from ..store.cache import read_cached
 from ..store.ledger import Ledger
 from ..store.models import TaskSnapshot
-from ..utils.naming import safe_filename
+from ..utils.naming import available_book_dir, safe_filename
 from ..utils.urls import redact
 from .job_state import Job, JobSpec, job_workdir
 from .settings import UiSettings
@@ -95,7 +95,9 @@ async def salvage_job(
     if not any(record.status == "done" for record in snapshot.resources):
         return None
     title = f"{spec.title}{PARTIAL_NOTE}"
-    base = settings.output_path / safe_filename(title, default="book")
+    book_dir = available_book_dir(settings.output_path, title)
+    book_dir.mkdir(parents=True, exist_ok=True)
+    base = book_dir / safe_filename(title, default="book")
     if spec.kind == "novel":
         return await _salvage_novel(workdir, snapshot, spec, title, base)
     return await _salvage_manga(workdir, snapshot, spec, settings, data_root, title, base)

@@ -6,7 +6,14 @@ import pytest
 
 from quire.image.probe import probe_bytes, probe_file, sniff_format
 from quire.manga import run_local
-from quire.utils.naming import image_filename, natural_key, safe_filename, unique_path, volume_label
+from quire.utils.naming import (
+    available_book_dir,
+    image_filename,
+    natural_key,
+    safe_filename,
+    unique_path,
+    volume_label,
+)
 from quire.utils.urls import (
     guess_ext,
     host_of,
@@ -137,6 +144,21 @@ def test_safe_names_and_existing_files(tmp_path):
     assert unique_path(path) == path
     path.touch()
     assert unique_path(path).name == "file (1).pdf"
+
+
+def test_available_book_dir(tmp_path):
+    # 空目录复用；有内容则递增避让；文件占位与符号链接都算占用
+    assert available_book_dir(tmp_path, "书") == tmp_path / "书"
+    (tmp_path / "书").mkdir()
+    assert available_book_dir(tmp_path, "书") == tmp_path / "书"
+    (tmp_path / "书" / "书.pdf").touch()
+    assert available_book_dir(tmp_path, "书") == tmp_path / "书 (1)"
+    (tmp_path / "书 (1)").mkdir()
+    (tmp_path / "书 (1)" / "x").touch()
+    assert available_book_dir(tmp_path, "书") == tmp_path / "书 (2)"
+    (tmp_path / "书 (2)").touch()  # 同名文件也避让
+    assert available_book_dir(tmp_path, "书") == tmp_path / "书 (3)"
+    assert available_book_dir(tmp_path, 'a/b"c') == tmp_path / "a／b＂c"
 
 
 @pytest.mark.parametrize("progressive", [False, True])

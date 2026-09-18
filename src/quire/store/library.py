@@ -282,6 +282,17 @@ def delete_book(data_root: Path, book_id: str) -> int:
         if artifact.path.exists():
             artifact.path.unlink()
             freed += artifact.bytes
+    # 每作品独立文件夹：成品删净后把与书名同名的空文件夹一并收掉；
+    # 旧版平铺产物的父目录是输出根（名字对不上），不会被误删。
+    from ..utils.naming import safe_filename
+
+    safe = safe_filename(book.title, default="book")
+    for directory in {a.path.parent for a in book.artifacts}:
+        if directory.name == safe or directory.name.startswith(f"{safe} ("):
+            try:
+                directory.rmdir()  # 目录里还有别的文件则保留
+            except OSError:
+                pass
     if book.cover:
         cover = root / book.cover
         if cover.is_file() and not cover.is_symlink() and cover.parent.parent == root:

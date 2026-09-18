@@ -137,6 +137,36 @@ def test_delete_tolerates_missing_artifact(tmp_path):
     assert library.list_books(tmp_path) == ()
 
 
+def test_delete_removes_empty_book_folder(tmp_path):
+    """每作品独立文件夹：成品删净后空的书名文件夹一并收掉，非空则保留。"""
+    folder = tmp_path / "out" / "测试书"
+    folder.mkdir(parents=True)
+    book = library.add_book(
+        tmp_path,
+        "bf",
+        title="测试书",
+        kind="manga",
+        source_url="https://e.c",
+        files=[("pdf", _artifact(folder / "测试书.pdf"))],
+    )
+    library.delete_book(tmp_path, book.id)
+    assert not folder.exists()
+
+    folder.mkdir(parents=True)
+    (folder / "用户笔记.txt").write_text("别动我")
+    book = library.add_book(
+        tmp_path,
+        "bf2",
+        title="测试书",
+        kind="manga",
+        source_url="https://e.c/2",
+        files=[("pdf", _artifact(folder / "测试书.pdf"))],
+    )
+    library.delete_book(tmp_path, book.id)
+    assert folder.exists()  # 还有用户的文件，文件夹保留
+    assert (folder / "用户笔记.txt").exists()
+
+
 def test_set_cover_unknown_book(tmp_path):
     with pytest.raises(LedgerError):
         library.set_cover(tmp_path, "ghost", "covers/x.jpg")
