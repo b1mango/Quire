@@ -41,6 +41,7 @@ function probeUrl(url) {
   api("/api/probe", { method: "POST", body: { url, kind: state.kind, capture_mode: state.captureMode, split_by: $("splitMode").value } }).then((result) => {
     if (state.probeRequest !== request) return;
     $("probeHint").classList.remove("is-loading");
+    $("probeHint").hidden = true;
     state.probe = result;
     renderVolumes(result);
     renderRange(result);
@@ -48,10 +49,12 @@ function probeUrl(url) {
     state.kind = result.kind;
     setSeg($("kindSeg"), "kind", result.kind);
     renderFormatChips();
-    $("probeHint").textContent =
+    const status = $("wsStatus");
+    status.hidden = false;
+    status.dataset.kind = result.kind;
+    status.textContent =
       `${result.kind === "manga" ? "漫画" : "小说"} · ${result.title} · 约 ${result.count} ` +
       (result.kind === "manga" && !result.series ? "页" : "章") + (result.render ? " · 动态页面已就绪" : "");
-    $("kindField").hidden = false;
     $("formatField").hidden = false;
     updateKindFields();
     $("startBtn").disabled = false;
@@ -60,6 +63,7 @@ function probeUrl(url) {
     if (state.probeRequest !== request) return;
     $("probeHint").classList.remove("is-loading");
     $("probeHint").textContent = err.hint ? `${err.message} ${err.hint}` : err.message;
+    $("wsStatus").hidden = true;
     $("startBtn").disabled = true;
   });
 }
@@ -129,6 +133,7 @@ function resetProbe() {
   state.probeRequest = Symbol(); state.probe = null;
   $("seriesField").hidden = true;
   $("rangeField").hidden = true;
+  $("wsStatus").hidden = true;
   $("startBtn").disabled = true;
   $("probeHint").hidden = true;
   $("probeHint").classList.remove("is-loading");
