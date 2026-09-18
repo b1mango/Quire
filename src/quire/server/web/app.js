@@ -308,14 +308,6 @@ function loadSettingsView() {
       dd.textContent = value;
       dl.append(dt, dd);
     });
-    const foot = $("sideFoot");
-    foot.textContent = "";
-    const chromeDot = document.createElement("span");
-    chromeDot.className = "dot" + (caps.chrome ? "" : " off");
-    foot.append(chromeDot, document.createTextNode(caps.chrome ? "Chrome 已就绪" : "缺 Chrome"), document.createElement("br"));
-    const ocrDot = document.createElement("span");
-    ocrDot.className = "dot" + (caps.ocr.models_ready || caps.ocr.tesseract ? "" : " off");
-    foot.append(ocrDot, document.createTextNode(caps.ocr.models_ready ? "OCR 模型已缓存" : "OCR 按需下载"));
   }).catch(() => {});
 }
 

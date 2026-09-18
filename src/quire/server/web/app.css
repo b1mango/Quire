@@ -104,7 +104,7 @@ main{flex:1;display:flex;flex-direction:column}
 /* 侧栏：sticky 固定在 sticky 顶栏（实测高 62px）之下，内容区滚动时不跟随 */
 .sidebar{
   position:sticky; top:62px; align-self:start;
-  max-height:calc(100vh - 62px); overflow-y:auto;
+  height:calc(100vh - 62px); overflow-y:auto;
   border-right:1px solid var(--border);padding:14px 10px;
   background:var(--surface-2);display:flex;flex-direction:column;gap:2px;
 }
@@ -120,17 +120,15 @@ main{flex:1;display:flex;flex-direction:column}
 .side-item[aria-current="true"]{color:var(--text);font-weight:600;background:var(--surface);border-color:var(--border)}
 [data-theme="swiss"] .side-item[aria-current="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
 .side-item svg{width:15px;height:15px;flex:none;opacity:.8}
-.side-foot{margin-top:auto;padding:10px 11px;font-size:11px;color:var(--faint);line-height:1.6}
-.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:6px}
-.dot.off{background:var(--warn)}
-[data-theme="swiss"] .dot{border-radius:0}
+/* 设置沉到侧栏底部,与功能入口拉开层级 */
+.side-settings{margin-top:auto}
 
 /* 窄窗口：侧栏收成顶部横排 */
 @media(max-width:720px){
   .win-body{grid-template-columns:1fr}
-  .sidebar{position:static;max-height:none;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--border)}
+  .sidebar{position:static;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--border)}
   .side-item{width:auto}
-  .side-foot{display:none}
+  .side-settings{margin-top:0}
 }
 
 /* 内容区 */
