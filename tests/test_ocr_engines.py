@@ -112,7 +112,7 @@ class StubFetch:
         self.payloads = payloads
         self.requests: list[str] = []
 
-    async def get(self, url: str, *, referer: str | None = None):  # noqa: ANN202
+    async def get(self, url: str, *, referer: str | None = None, robots: bool = True):  # noqa: ANN202
         self.requests.append(url)
         return type("R", (), {"content": self.payloads[url]})()
 

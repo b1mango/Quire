@@ -176,6 +176,21 @@ def test_missing_policy_cached_as_unrestricted(status: int) -> None:
     assert requested == ["https://example.test/robots.txt"]
 
 
+@pytest.mark.parametrize("status", [400, 401, 403, 429])
+def test_client_error_policy_cached_as_unrestricted(status: int) -> None:
+    """robots.txt 返回 4xx(含 CDN 反爬 403/429):按 REP 惯例视为没有限制。"""
+    requested: list[str] = []
+
+    def fetch(url: str) -> str:
+        requested.append(url)
+        raise HttpStatusError(url, status)
+
+    policy = RobotsPolicy(fetch)
+    policy.check("https://cdn.example.test/img/1.jpg")
+    policy.check("https://cdn.example.test/img/2.jpg")
+    assert requested == ["https://cdn.example.test/robots.txt"]
+
+
 @pytest.mark.parametrize(
     "error",
     [
@@ -237,6 +252,24 @@ def test_fetcher_never_requests_denied_paths(monkeypatch: pytest.MonkeyPatch) ->
             client.get("https://example.test" + path)
     assert client.get("https://example.test/open").content == b"ok"
     assert requested == ["https://example.test/robots.txt", "https://example.test/open"]
+
+
+def test_fetcher_image_requests_skip_robots(monkeypatch: pytest.MonkeyPatch) -> None:
+    """图片二进制请求不查 robots(页面级策略只管 HTML),CDN 误伤不再发生。"""
+    requested: list[str] = []
+
+    def request(self: Fetcher, url: str, headers: object) -> Response:
+        requested.append(url)
+        content = b"User-agent: *\nDisallow: /" if url.endswith("/robots.txt") else b"ok"
+        return Response(url, 200, {}, content, 0)
+
+    monkeypatch.setattr(Fetcher, "_request", request)
+    client = Fetcher(rate=1000000, retries=0)
+    assert client.get("https://img.example.test/1.jpg", robots=False).content == b"ok"
+    assert requested == ["https://img.example.test/1.jpg"]  # robots.txt 都没取
+    with pytest.raises(BlockedError):  # 页面请求仍受 robots 约束
+        client.get("https://img.example.test/1.jpg")
+    assert requested[-1] == "https://img.example.test/robots.txt"
 
 
 def test_micro_policy_imports_without_site_packages() -> None:

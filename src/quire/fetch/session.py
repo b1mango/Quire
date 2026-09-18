@@ -135,7 +135,12 @@ class AsyncFetcher:
             self._client = None
 
     async def get(
-        self, url: str, *, referer: str | None = None, headers: Mapping[str, str] | None = None
+        self,
+        url: str,
+        *,
+        referer: str | None = None,
+        headers: Mapping[str, str] | None = None,
+        robots: bool = True,
     ) -> Response:
         if self._client is None or self._closing or self._loop is not asyncio.get_running_loop():
             raise ConfigError("AsyncFetcher must be used inside its owning async context")
@@ -145,7 +150,7 @@ class AsyncFetcher:
         self._active.add(task)
         started = time.monotonic()
         try:
-            response = await self._fetch(request_url, request_headers, policy=False)
+            response = await self._fetch(request_url, request_headers, policy=False, robots=robots)
             fragment = route_fragment(url)
             return Response(
                 response.url + ("#" + fragment if fragment else ""),
@@ -160,12 +165,14 @@ class AsyncFetcher:
     async def _robots_text(self, url: str) -> str:
         return (await self._fetch(_url(url), _headers(None, None), policy=True)).text
 
-    async def _fetch(self, url: httpx.URL, headers: dict[str, str], *, policy: bool) -> Response:
+    async def _fetch(
+        self, url: httpx.URL, headers: dict[str, str], *, policy: bool, robots: bool = True
+    ) -> Response:
         redirects = 0
         attempt = 0
         seen = {str(url)}
         while True:
-            if not policy:
+            if not policy and robots:
                 await self.robots.check(str(url))
             try:
                 async with self.limiter.admit(str(url), self._slots, self.timeout) as remaining:

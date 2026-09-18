@@ -119,8 +119,9 @@ class RobotsPolicy:
                 try:
                     body = self._fetch_text(origin + "/robots.txt")
                 except HttpStatusError as exc:
-                    if exc.status not in {404, 410}:
+                    if exc.status >= 500:
                         raise
+                    # 4xx(含 404/410/反爬 403):按 REP 惯例视为没有限制
                     body = ""
                 self._policies[origin] = _parse(body)
             rules = self._policies[origin]

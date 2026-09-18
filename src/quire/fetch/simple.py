@@ -73,7 +73,12 @@ class Response:
 
 class FetchPort(Protocol):
     def get(
-        self, url: str, *, referer: str | None = None, headers: Mapping[str, str] | None = None
+        self,
+        url: str,
+        *,
+        referer: str | None = None,
+        headers: Mapping[str, str] | None = None,
+        robots: bool = True,
     ) -> Response: ...
 
 
@@ -165,7 +170,10 @@ class Fetcher:
             self._local.fetching_policy = False
 
     def _redirect_check(self, url: str) -> None:
-        if not getattr(self._local, "fetching_policy", False):
+        skip = getattr(self._local, "fetching_policy", False) or getattr(
+            self._local, "skip_robots", False
+        )
+        if not skip:
             self.robots.check(url)
         self.limiter.acquire(url)
 
@@ -174,13 +182,23 @@ class Fetcher:
             raise FetchError("Task cancelled")
 
     def get(
-        self, url: str, *, referer: str | None = None, headers: Mapping[str, str] | None = None
+        self,
+        url: str,
+        *,
+        referer: str | None = None,
+        headers: Mapping[str, str] | None = None,
+        robots: bool = True,
     ) -> Response:
         if not is_usable_url(url) or urlsplit(url).scheme not in {"http", "https"}:
             raise ConfigError("URL must be an absolute HTTP(S) address without credentials")
         self._sleep(0)
-        self.robots.check(url)
-        return self._get(url, referer=referer, headers=headers)
+        if robots:
+            self.robots.check(url)
+        self._local.skip_robots = not robots  # 图片等二进制请求的重定向也不再查 robots
+        try:
+            return self._get(url, referer=referer, headers=headers)
+        finally:
+            self._local.skip_robots = False
 
     def _get(
         self, url: str, *, referer: str | None = None, headers: Mapping[str, str] | None = None

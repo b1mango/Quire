@@ -140,7 +140,7 @@ def _download_one(
     last: FetchError = FetchError("No usable image address")
     for url in (candidate.url, *candidate.alternatives):
         try:
-            response = client.get(url, referer=candidate.referer or None)
+            response = client.get(url, referer=candidate.referer or None, robots=False)
             probe = probe_bytes(response.content)
             if not probe.ok:
                 last = FetchError(probe.error or "Image is incomplete or unsupported")

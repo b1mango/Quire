@@ -21,7 +21,9 @@ class ImageResponse(Protocol):
 
 
 class ImageFetcher(Protocol):
-    async def get(self, url: str, *, referer: str | None = None) -> ImageResponse: ...
+    async def get(
+        self, url: str, *, referer: str | None = None, robots: bool = True
+    ) -> ImageResponse: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +91,7 @@ async def _download_one(
     spec = record.spec
     for url in (candidate.url, *candidate.alternatives):
         try:
-            response = await client.get(url, referer=candidate.referer or None)
+            response = await client.get(url, referer=candidate.referer or None, robots=False)
         except BlockedError:
             failure = "blocked"
             continue

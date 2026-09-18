@@ -62,7 +62,9 @@ FAILURE_TEXT = {
 
 
 class ChapterFetcher(Protocol):
-    async def get(self, url: str, *, referer: str | None = None) -> Response: ...
+    async def get(
+        self, url: str, *, referer: str | None = None, robots: bool = True
+    ) -> Response: ...
 
 
 class Renderer(Protocol):

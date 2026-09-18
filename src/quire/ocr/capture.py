@@ -27,7 +27,9 @@ from .trigger import content_node, image_urls
 class ImageFetch(Protocol):
     """取图端口：由编排层注入（复用 AsyncFetcher，继承限速/重试/大小上限）。"""
 
-    async def get(self, url: str, *, referer: str | None = None) -> ImageResponse: ...
+    async def get(
+        self, url: str, *, referer: str | None = None, robots: bool = True
+    ) -> ImageResponse: ...
 
 
 class ImageResponse(Protocol):
@@ -122,7 +124,7 @@ class OcrRunner:
         warnings: list[str] = []
         used = 0
         for url in urls:
-            response = await fetch.get(url, referer=referer)
+            response = await fetch.get(url, referer=referer, robots=False)
             if len(response.content) > self.max_bytes:
                 warnings.append(f"正文图超过大小上限，已跳过：{url[:100]}")
                 continue

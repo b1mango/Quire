@@ -193,3 +193,21 @@ def test_chunked_body_is_read_and_oversize_body_releases_connection() -> None:
             await site.wait_idle()
 
     run_scenario(run())
+
+
+def test_image_requests_skip_robots_lookup() -> None:
+    """robots=False(图片等二进制)不取 robots.txt;页面请求仍查。"""
+
+    async def run() -> None:
+        async with AsyncMockSite() as site:
+            async with AsyncFetcher(timeout=1, retries=0, rate=10000) as client:
+                response = await asyncio.wait_for(
+                    client.get(site.url + "/body", robots=False), 3
+                )
+                assert response.content == BODY
+                assert site.counts["/robots.txt"] == 0
+                await get(client, site, "/body")
+                assert site.counts["/robots.txt"] == 1
+            await site.wait_idle()
+
+    run_scenario(run())
