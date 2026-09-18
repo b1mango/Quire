@@ -1,12 +1,17 @@
-"""看漫画系(m.manhuagui.com)手机版打包脚本里的整章图片清单。
+"""脚本内嵌的整章图片清单提取(DOM 收集的兜底/补充)。
 
-页面把章节数据藏进 Dean Edwards packer 的 eval 脚本,字典串先经
-LZString.decompressFromBase64 再按 ``|`` 切分(站点自定义 ``String.prototype.splic``),
-解包后得到 ``SMH.reader({...,"images":[...],"sl":{"e":..,"m":".."}})``。
-图片地址 = CDN 主机 + 路径 + ``?e=..&m=..`` 签名(超时即换,必须现取现用)。
+两种已知藏法:
 
-纯函数、零依赖、只在 DOM 收集为空时兜底;任何一步对不上都返回空表,
-不抛异常——混淆随时可能改版,不能把整次采集拖垮。
+* 看漫画系(m.manhuagui.com)手机版:Dean Edwards packer 的 eval 脚本,字典串
+  先经 LZString.decompressFromBase64 再按 ``|`` 切分(站点自定义
+  ``String.prototype.splic``),解包后得到
+  ``SMH.reader({...,"images":[...],"sl":{"e":..,"m":".."}})``;
+  图片地址 = CDN 主机 + 路径 + ``?e=..&m=..`` 签名(超时即换,必须现取现用)。
+* Nuxt 系 SPA(在漫画 zaimanhua 等):内联 ``page_url:["...","..."]`` 数组,
+  DOM 只渲染当前页,``\\u002F`` 转义交给 json 解析。
+
+纯函数、零依赖;任何一步对不上都返回空表,不抛异常——
+站点改版随时可能发生,不能把整次采集拖垮。
 """
 
 from __future__ import annotations
@@ -196,3 +201,28 @@ def extract_smh_reader_images(html: str) -> list[str]:
         if urls:
             return urls
     return []
+
+
+#: Nuxt/SSR 内联状态里的整章数组:``page_url:["https://..","https://.."]``。
+_PAGE_URL_LIST = re.compile(r'page_url:\[((?:"(?:[^"\\]|\\.)*"(?:\s*,\s*)*)+)\]')
+
+
+def extract_page_url_list(html: str) -> list[str]:
+    """提取 Nuxt 内联状态里的 ``page_url`` 整章地址,取最长的一份。"""
+    best: list[str] = []
+    for match in _PAGE_URL_LIST.finditer(html):
+        try:
+            raw = json.loads("[" + match.group(1) + "]")
+        except ValueError:
+            continue
+        urls = [u for u in raw if isinstance(u, str) and u.startswith(("http://", "https://"))]
+        if len(urls) > len(best):
+            best = urls
+    return best[:2000]
+
+
+def extract_script_images(html: str) -> list[str]:
+    """脚本内嵌清单的统一入口,返回两种藏法中更长的一份。"""
+    smh = extract_smh_reader_images(html)
+    page_urls = extract_page_url_list(html)
+    return smh if len(smh) >= len(page_urls) else page_urls

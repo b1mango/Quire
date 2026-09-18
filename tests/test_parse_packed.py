@@ -6,7 +6,11 @@ import pytest
 
 from quire.fetch.simple import Response
 from quire.manga import MangaOptions, run_manga
-from quire.parse.packed import _lz_decompress_base64, extract_smh_reader_images
+from quire.parse.packed import (
+    _lz_decompress_base64,
+    extract_script_images,
+    extract_smh_reader_images,
+)
 from tests.mock_site.server import page_image
 
 _ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
@@ -154,4 +158,59 @@ def test_manga_falls_back_to_packed_script_images(tmp_path):
         options=MangaOptions(rate=1000, retries=0, concurrency=2),
     )
     assert result.pages_written == 2
+    assert result.pages_failed == 0
+
+
+def test_extracts_nuxt_page_url_list():
+    html = (
+        "<html><body><img src='https://static.example.com/pre.cur'>"
+        "<script>data:{chapterInfo:{chapter_id:192726,page_url:["
+        '"https:\\u002F\\u002Fimg.example.com\\u002Fc\\u002F01.jpg?sign=a",'
+        '"https:\\u002F\\u002Fimg.example.com\\u002Fc\\u002F02.jpg?sign=b",'
+        '"https:\\u002F\\u002Fimg.example.com\\u002Fc\\u002F03.jpg?sign=c"'
+        "]}}}</script></body></html>"
+    )
+    assert extract_script_images(html) == [
+        "https://img.example.com/c/01.jpg?sign=a",
+        "https://img.example.com/c/02.jpg?sign=b",
+        "https://img.example.com/c/03.jpg?sign=c",
+    ]
+
+
+def test_page_url_list_ignores_malformed_and_picks_longest():
+    html = (
+        'page_url:["not-a-url",]'
+        ' page_url:["https://img.example.com/a.jpg",'
+        '"https://img.example.com/b.jpg"]'
+    )
+    assert extract_script_images(html) == [
+        "https://img.example.com/a.jpg",
+        "https://img.example.com/b.jpg",
+    ]
+
+
+def test_script_list_wins_over_cursor_noise(tmp_path):
+    html = (
+        "<html><head><title>第1回</title></head><body>"
+        "<img src='https://static.example.com/next.cur'>"
+        "<img src='https://img.example.com/c/02.jpg?sign=b'>"
+        "<script>x={page_url:["
+        '"https://img.example.com/c/01.jpg?sign=a",'
+        '"https://img.example.com/c/02.jpg?sign=b",'
+        '"https://img.example.com/c/03.jpg?sign=c"'
+        "]}</script></body></html>"
+    )
+
+    class FakeFetcher:
+        def get(self, url, **kwargs):
+            content = html.encode() if url.endswith("/chapter") else page_image(1)
+            return Response(url, 200, {}, content, 0)
+
+    result = run_manga(
+        "https://www.zaimanhua.example/chapter",
+        tmp_path / "book.pdf",
+        fetcher=FakeFetcher(),
+        options=MangaOptions(rate=1000, retries=0, concurrency=2),
+    )
+    assert result.pages_written == 3
     assert result.pages_failed == 0

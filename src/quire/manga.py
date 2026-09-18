@@ -16,7 +16,7 @@ from .image.probe import probe_bytes
 from .models import MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate, collect, order_candidates, postfilter, prefilter
 from .parse.minidom import parse as parse_html
-from .parse.packed import extract_smh_reader_images
+from .parse.packed import extract_script_images
 from .utils.naming import image_filename, natural_key, safe_filename
 from .utils.urls import is_image_url, redact
 from .workspace import task_cache, write_bytes
@@ -47,15 +47,15 @@ def discover_page(
         doc, doc.effective_base() or page.url, selector=opts.selector, attrs=opts.attrs
     )
     kept, rejected = prefilter(candidates)
-    if not kept:
-        # DOM 收集为空:试打包脚本里的整章清单(看漫画手机版等)。
-        script_urls = extract_smh_reader_images(page.text)
-        if script_urls:
-            referer = doc.base_url or page.url
-            candidates = [
-                Candidate(url, index, "script", referer) for index, url in enumerate(script_urls)
-            ]
-            kept, rejected = prefilter(candidates)
+    # 脚本内嵌的整章清单(看漫画手机版 packer / Nuxt page_url)比 DOM 更全时采用它:
+    # SPA 阅读器的 DOM 只渲染当前页,而光标图等装饰 <img> 会混进收集结果。
+    script_urls = extract_script_images(page.text)
+    if len(script_urls) > len(kept):
+        referer = doc.base_url or page.url
+        script_candidates = [
+            Candidate(url, index, "script", referer) for index, url in enumerate(script_urls)
+        ]
+        kept, rejected = prefilter(script_candidates)
     if not kept:
         raise NoImagesError(url, hint="尝试指定 --selector；动态网页可用 --core --render。")
     ordered, warning = order_candidates(kept, opts.order)
