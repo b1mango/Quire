@@ -161,6 +161,21 @@ def _sort_by_trust(items: list[tuple[str, str]]) -> list[str]:
     return out
 
 
+def _declared_thumbnail(node: Node) -> bool:
+    """声明展示尺寸双轴都小于 200px 的 ``<img>`` 是缩略图/图标,不是正文页。
+
+    Webtoon 系阅读器的缩略图条(``width="92" height="87"`` + ``data-url``)
+    会被懒加载收集当成正文页,下载后才被尺寸精筛拦下变成占位页——
+    在收集阶段就排除,与 ``FilterPolicy`` 的 200px 阈值对齐。
+    """
+    try:
+        width = float(node.get("width") or "")
+        height = float(node.get("height") or "")
+    except ValueError:
+        return False
+    return width < 200 and height < 200
+
+
 def collect(
     doc: Document,
     base_url: str,
@@ -179,7 +194,7 @@ def collect(
     scoped = [n for n in doc.iter_elements() if id(n) in allowed]
     referer = doc.base_url or base_url
     for node in scoped:
-        if node.tag != "img":
+        if node.tag != "img" or _declared_thumbnail(node):
             continue
         order = positions.get(id(node), len(positions))
         urls = _sort_by_trust(_img_urls(node, base_url, attr_order))

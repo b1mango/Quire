@@ -151,3 +151,33 @@ def test_collection_other_sources_and_filters():
     assert order_candidates([c], "unknown")[1]
     assert order_candidates([c])[0] == [c]
     assert parse_srcset(" ,p.jpg badw") == [("p.jpg", 1)]
+
+
+def test_declared_thumbnails_skipped_at_collect():
+    """声明尺寸 <200px 的 <img>(缩略图条/图标)在收集阶段排除,不占页码。"""
+    doc = parse(
+        '<div class="viewer">'
+        '<img src="bg.png" width="690" height="1636" data-url="p1.jpg">'
+        '<img src="bg.png" width="690" height="1635" data-url="p2.jpg">'
+        "</div>"
+        '<div class="thumbs">'
+        '<img src="bg.png" width="92" height="87" data-url="t1.jpg">'
+        '<img src="bg.png" width="92" height="87" data-url="t2.jpg">'
+        '<img src="icon.png" width="32" height="32">'
+        "</div>",
+        base_url="https://x/read",
+    )
+    assert [c.url for c in collect(doc, doc.base_url)] == [
+        "https://x/p1.jpg",
+        "https://x/p2.jpg",
+    ]
+    # 单边小于阈值不算缩略图(横幅由下载后精筛处理);非数字尺寸声明照常收集
+    doc = parse(
+        '<img src="wide.png" width="690" height="80">'
+        '<img src="flex.png" width="100%" data-src="real.jpg">',
+        base_url="https://x/read",
+    )
+    assert [c.url for c in collect(doc, doc.base_url)] == [
+        "https://x/wide.png",
+        "https://x/real.jpg",
+    ]
