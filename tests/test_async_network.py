@@ -201,13 +201,51 @@ def test_image_requests_skip_robots_lookup() -> None:
     async def run() -> None:
         async with AsyncMockSite() as site:
             async with AsyncFetcher(timeout=1, retries=0, rate=10000) as client:
-                response = await asyncio.wait_for(
-                    client.get(site.url + "/body", robots=False), 3
-                )
+                response = await asyncio.wait_for(client.get(site.url + "/body", robots=False), 3)
                 assert response.content == BODY
                 assert site.counts["/robots.txt"] == 0
                 await get(client, site, "/body")
                 assert site.counts["/robots.txt"] == 1
             await site.wait_idle()
+
+    run_scenario(run())
+
+
+def test_post_sends_body_and_content_type() -> None:
+    """动态渲染代理的 XHR POST(如 twirp API)带 body 与 content-type 转发。"""
+
+    async def run() -> None:
+        async with AsyncMockSite() as site:
+            async with AsyncFetcher(timeout=2, retries=0, rate=10000) as client:
+                response = await asyncio.wait_for(
+                    client.post(
+                        site.url + "/body",
+                        body=b'{"ep_id":1}',
+                        content_type="application/json",
+                        referer=site.url + "/reader",
+                    ),
+                    3,
+                )
+                assert response.content == BODY
+                record = site.records("/body")[0]
+                assert record.method == "POST"
+                assert record.body == b'{"ep_id":1}'
+                assert record.headers["content-type"] == "application/json"
+                assert record.headers["referer"] == site.url + "/reader"
+                assert site.counts["/robots.txt"] == 1
+            await site.wait_idle()
+
+    run_scenario(run())
+
+
+def test_post_body_size_limit() -> None:
+    async def run() -> None:
+        async with AsyncFetcher(timeout=1, retries=0) as client:
+            with pytest.raises(ConfigError, match="POST"):
+                await client.post(
+                    "http://127.0.0.1/api",
+                    body=b"x" * (2 * 1024 * 1024 + 1),
+                    content_type="application/octet-stream",
+                )
 
     run_scenario(run())

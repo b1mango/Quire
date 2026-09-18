@@ -162,11 +162,51 @@ class AsyncFetcher:
         finally:
             self._active.discard(task)
 
+    async def post(
+        self,
+        url: str,
+        *,
+        body: bytes,
+        content_type: str,
+        referer: str | None = None,
+    ) -> Response:
+        # 仅供动态渲染代理页面自发的 XHR POST(如 twirp API),同样过 robots 与限额。
+        if len(body) > 2 * 1024 * 1024:
+            raise ConfigError("POST 请求体超过 2 MiB 限制")
+        if self._client is None or self._closing or self._loop is not asyncio.get_running_loop():
+            raise ConfigError("AsyncFetcher must be used inside its owning async context")
+        request_url = _url(url)
+        request_headers = {**_headers(referer, None), "content-type": content_type}
+        task = asyncio.current_task()
+        assert task is not None
+        self._active.add(task)
+        started = time.monotonic()
+        try:
+            response = await self._fetch(
+                request_url, request_headers, policy=False, method="POST", content=body
+            )
+            return Response(
+                response.url,
+                response.status,
+                response.headers,
+                response.content,
+                int((time.monotonic() - started) * 1000),
+            )
+        finally:
+            self._active.discard(task)
+
     async def _robots_text(self, url: str) -> str:
         return (await self._fetch(_url(url), _headers(None, None), policy=True)).text
 
     async def _fetch(
-        self, url: httpx.URL, headers: dict[str, str], *, policy: bool, robots: bool = True
+        self,
+        url: httpx.URL,
+        headers: dict[str, str],
+        *,
+        policy: bool,
+        robots: bool = True,
+        method: str = "GET",
+        content: bytes | None = None,
     ) -> Response:
         redirects = 0
         attempt = 0
@@ -178,7 +218,9 @@ class AsyncFetcher:
                 async with self.limiter.admit(str(url), self._slots, self.timeout) as remaining:
                     deadline = time.monotonic() + remaining
                     async with asyncio.timeout(remaining):
-                        response, location, delay = await self._request(url, headers)
+                        response, location, delay = await self._request(
+                            url, headers, method=method, content=content
+                        )
                         if time.monotonic() > deadline:
                             raise TimeoutError("Response deadline exceeded")
             except (httpx.HTTPError, TimeoutError) as exc:
@@ -186,6 +228,8 @@ class AsyncFetcher:
                     raise NetworkError(f"{type(exc).__name__}: {redact(str(url))}") from None
             else:
                 if response.status in _REDIRECTS:
+                    if method != "GET":
+                        raise NetworkError("POST 请求不允许跟随重定向")
                     target = _redirect(url, location)
                     if url.scheme == "https" and target.scheme != "https":
                         raise BlockedError("HTTPS redirect downgrade is not allowed")
@@ -215,11 +259,16 @@ class AsyncFetcher:
             attempt += 1
 
     async def _request(
-        self, url: httpx.URL, headers: dict[str, str]
+        self,
+        url: httpx.URL,
+        headers: dict[str, str],
+        *,
+        method: str = "GET",
+        content: bytes | None = None,
     ) -> tuple[Response, str, float]:
         assert self._client is not None
         # Direct Request bypasses the client's cookie jar and default auth headers.
-        request = httpx.Request("GET", url, headers=headers)
+        request = httpx.Request(method, url, headers=headers, content=content)
         response = await self._client.send(request, stream=True)
         try:
             location = response.headers.get("location", "")

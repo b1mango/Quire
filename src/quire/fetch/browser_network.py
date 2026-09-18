@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import base64
 from typing import Any
+from urllib.parse import urlsplit
 
-from ..errors import FetchError, QuireError
+from ..errors import BlockedError, FetchError, HttpStatusError, QuireError
 from ..utils.urls import normalize_url
 from .browser_cdp import Cdp
 from .session import AsyncFetcher
@@ -73,20 +74,61 @@ class BrowserNetwork:
         request = params["request"]
         kind, url = params.get("resourceType"), request["url"]
         main = kind == "Document" and params.get("frameId") == self.frame
+        # 页面自发的 XHR POST(如 bilibili 的 twirp API)带 postData 时可代理;
+        # 缺 body 或超大时仍按不支持处理。
+        post_data = request.get("postData")
+        proxyable_post = (
+            request["method"] == "POST"
+            and kind in {"Fetch", "XHR"}
+            and isinstance(post_data, str)
+            and len(post_data) <= 2 * 1024 * 1024
+        )
+        unsupported = (
+            request["method"] != "GET"
+            and not proxyable_post
+            or not url.startswith(("http://", "https://"))
+            or kind in {"WebSocket", "EventSource"}
+            or kind == "Document"
+            and not main
+        )
+        if unsupported:
+            # 页面自己发的 POST/WebSocket/子框架代理不了:拒掉这一条、继续渲染,
+            # 只有主文档本身不支持才让整个渲染失败。
+            if main:
+                self.error = FetchError("动态页面包含不支持的请求或内嵌文档")
+            else:
+                self.warnings.add("动态页面发起了无法代理的请求(POST/WebSocket 等),已跳过")
+            try:
+                await self.cdp.call(
+                    "Fetch.failRequest",
+                    {"requestId": params["requestId"], "errorReason": "BlockedByClient"},
+                    session_id=self.session,
+                )
+            except QuireError as failure:
+                self.error = failure
+            finally:
+                self.last_activity = asyncio.get_running_loop().time()
+            return
         try:
-            if (
-                request["method"] != "GET"
-                or not url.startswith(("http://", "https://"))
-                or kind in {"WebSocket", "EventSource"}
-                or kind == "Document"
-                and not main
-            ):
-                raise FetchError("动态页面包含不支持的请求或内嵌文档")
-            response = self.seed.pop(url, None)
+            response = self.seed.pop(url, None) if not proxyable_post else None
             if response is None:
                 headers = request.get("headers", {})
                 referer = headers.get("Referer") or headers.get("referer")
-                response = await self.client.get(url, referer=referer)
+                if proxyable_post:
+                    assert isinstance(post_data, str)
+                    content_type = (
+                        headers.get("Content-Type")
+                        or headers.get("content-type")
+                        or "application/octet-stream"
+                    )
+                    response = await self.client.post(
+                        url,
+                        body=post_data.encode("utf-8"),
+                        content_type=content_type,
+                        referer=referer,
+                    )
+                else:
+                    response = await self.client.get(url, referer=referer)
             self.bytes += len(response.content)
             if self.bytes > 128 * 1024 * 1024:
                 raise FetchError("动态页面总资源超过128 MiB限制")
@@ -122,7 +164,17 @@ class BrowserNetwork:
                 session_id=self.session,
             )
         except QuireError as exc:
-            if (
+            if isinstance(exc, BlockedError) and not main and kind not in {"Script", "Stylesheet"}:
+                # 页面自发的第三方 API 子请求被 robots 拦下:拒掉这一条、继续渲染,
+                # 主文档/脚本/样式被拦仍失败。漫画正文请求在本域,不受邻域 robots 影响。
+                self.warnings.add(
+                    f"动态页面部分资源被 robots.txt 拦截,已跳过：{urlsplit(url).netloc}"
+                )
+            elif isinstance(exc, HttpStatusError) and kind in {"Fetch", "XHR"}:
+                # 页面自发的接口调用未登录/被拒(如 bilibili GetInitInfo 401):
+                # 拒掉这一条继续渲染;正文接口若也失败,占位页会在下游被查出。
+                self.warnings.add(f"动态页面接口请求被拒绝了(HTTP {exc.status}),已跳过")
+            elif (
                 main
                 or kind in {"Script", "Fetch", "XHR", "Stylesheet"}
                 or self.bytes > 128 * 1024 * 1024

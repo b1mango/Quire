@@ -28,6 +28,8 @@ class RequestRecord:
     bytes_sent: int = 0
     complete: bool = False
     ended_at: float | None = None
+    method: str = "GET"
+    body: bytes = b""
 
 
 class AsyncMockSite:
@@ -116,10 +118,13 @@ class AsyncMockSite:
         try:
             while True:
                 async with asyncio.timeout(8):
-                    request = await self._read_request(protocol, reader)
-                    if request is None:
+                    read = await self._read_request(protocol, reader)
+                    if read is None:
                         break
-                    await self._handle(connection_id, request, protocol, reader, writer)
+                    request, request_body = read
+                    await self._handle(
+                        connection_id, request, request_body, protocol, reader, writer
+                    )
                 if protocol.our_state is not h11.DONE or protocol.their_state is not h11.DONE:
                     break
                 protocol.start_next_cycle()
@@ -136,17 +141,20 @@ class AsyncMockSite:
 
     async def _read_request(
         self, protocol: h11.Connection, reader: asyncio.StreamReader
-    ) -> h11.Request | None:
+    ) -> tuple[h11.Request, bytes] | None:
         request = None
+        body = bytearray()
         while True:
             event = protocol.next_event()
             if event is h11.NEED_DATA:
                 protocol.receive_data(await reader.read(8192))
             elif isinstance(event, h11.Request):
                 request = event
+            elif isinstance(event, h11.Data):
+                body.extend(event.data)
             elif isinstance(event, h11.EndOfMessage):
-                assert request is not None and request.method == b"GET"
-                return request
+                assert request is not None and request.method in {b"GET", b"POST"}
+                return request, bytes(body)
             elif isinstance(event, h11.ConnectionClosed):
                 return None
             else:
@@ -156,6 +164,7 @@ class AsyncMockSite:
         self,
         connection_id: int,
         request: h11.Request,
+        request_body: bytes,
         protocol: h11.Connection,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
@@ -166,6 +175,8 @@ class AsyncMockSite:
             time.monotonic(),
             request.http_version.decode("ascii"),
             {key.decode("ascii"): value.decode("ascii") for key, value in request.headers},
+            method=request.method.decode("ascii"),
+            body=request_body,
         )
         self.requests.append(record)
         self.counts[record.path] += 1
