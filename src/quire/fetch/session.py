@@ -16,6 +16,7 @@ from ..utils.urls import is_usable_url, redact, route_fragment
 from .async_policy import AsyncRateLimiter, AsyncRobotsPolicy, HostPace
 from .decoding import decode_body
 from .simple import (
+    CONNECTION_HINT,
     DEFAULT_ACCEPT,
     DEFAULT_LANGUAGE,
     DEFAULT_UA,
@@ -225,7 +226,9 @@ class AsyncFetcher:
                             raise TimeoutError("Response deadline exceeded")
             except (httpx.HTTPError, TimeoutError) as exc:
                 if attempt >= self.retries:
-                    raise NetworkError(f"{type(exc).__name__}: {redact(str(url))}") from None
+                    raise NetworkError(
+                        f"{type(exc).__name__}: {redact(str(url))}", hint=CONNECTION_HINT
+                    ) from None
             else:
                 if response.status in _REDIRECTS:
                     if method != "GET":

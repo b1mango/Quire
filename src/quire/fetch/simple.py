@@ -39,6 +39,10 @@ CLOUDFLARE_HINT = (
     "站点启用了 Cloudflare 等安全防护，当前网络环境被拦截（真实浏览器访问同样被拒）；"
     "可更换网络环境后重试。"
 )
+CONNECTION_HINT = (
+    "连接未能建立或被中途重置；站点可能对当前网络环境不可达"
+    "（防火墙/运营商拦截或站点故障），可更换网络环境后重试。"
+)
 
 
 def cloudflare_block(headers: Mapping[str, str], body: bytes) -> bool:
@@ -237,7 +241,7 @@ class Fetcher:
                     raise last from None
                 self.limiter.defer(url, delay)
             except (OSError, urllib.error.URLError, http.client.HTTPException, zlib.error) as exc:
-                last = NetworkError(f"{type(exc).__name__}: {redact(url)}")
+                last = NetworkError(f"{type(exc).__name__}: {redact(url)}", hint=CONNECTION_HINT)
             if attempt < self.retries:
                 self._sleep(min(8.0, 0.6 * 2**attempt) * self.rng.uniform(0.6, 1.4))
         raise last

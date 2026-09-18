@@ -555,3 +555,20 @@ def test_redirect_hop_limit_and_target_policy_denial():
         assert sum(p.rsplit("/", 1)[-1].isdigit() for p in paths) == 11
 
     asyncio.run(run())
+
+
+def test_connection_failure_carries_actionable_hint():
+    async def run():
+        def handler(request):
+            if request.url.path == "/robots.txt":
+                return answer(request, 404)
+            raise httpx.ConnectError("reset by peer", request=request)
+
+        async with AsyncFetcher(
+            transport=httpx.MockTransport(handler), retries=0, rate=1e9
+        ) as client:
+            with pytest.raises(NetworkError) as exc:
+                await client.get("https://example.test/page")
+            assert exc.value.hint and "网络环境" in exc.value.hint
+
+    asyncio.run(run())
