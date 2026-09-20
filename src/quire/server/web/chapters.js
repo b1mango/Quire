@@ -86,6 +86,7 @@ function segmentLabel([first, last]) {
 }
 
 function updateRangeSummary() {
+  updateSizeEstimate();
   if ($("rangeField").hidden || !state.probe) return;
   const chapters = state.probe.chapters || [];
   const summary = $("rangeSummary");
@@ -168,8 +169,26 @@ $("rangeExpr").addEventListener("input", () => {
 /* ------------------------------------------------------------ 已落定章节 */
 
 const chapterState = { seen: new Set(), done: 0, failed: 0 };
+const thumbnailGroups = new Map();
+function thumbnailGroup(id = "single") {
+  if (!thumbnailGroups.has(id)) {
+    const group = document.createElement("details");
+    group.className = "thumbnail-chapter";
+    group.open = !chapterState.seen.has(String(id));
+    const heading = document.createElement("summary");
+    heading.textContent = "正在采集 · 章节预览";
+    const grid = document.createElement("div");
+    grid.className = "stream";
+    group.append(heading, grid);
+    $("stream").appendChild(group);
+    thumbnailGroups.set(id, { group, heading, grid });
+  }
+  return thumbnailGroups.get(id).grid;
+}
+
 
 function resetChapters() {
+  thumbnailGroups.clear();
   chapterState.seen = new Set();
   chapterState.done = 0;
   chapterState.failed = 0;
@@ -207,6 +226,10 @@ function appendChapters(chapters) {
   if (!fresh.length) return;
   fresh.forEach((c) => {
     chapterState.seen.add(String(c.id));
+    thumbnailGroup(c.id);
+    const preview = thumbnailGroups.get(c.id);
+    preview.group.open = false;
+    preview.heading.textContent = `${c.title} · ${c.pages} 页${c.status === "failed" ? " · 有缺页" : " · 已完成"}`;
     if (c.status === "failed") chapterState.failed += 1; else chapterState.done += 1;
   });
   $("chapterPanel").hidden = false;

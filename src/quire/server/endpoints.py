@@ -88,6 +88,8 @@ def probe(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
         "series": result.series,
         "render": result.render,
         "chapters": [{"index": i, "title": title} for i, title in enumerate(result.chapters, 1)],
+        "estimate_bytes": result.estimate_bytes,
+        "estimates": dict(result.estimates),
         "volumes": [
             {
                 "index": v.index,

@@ -41,6 +41,7 @@ function humanSize(num) {
   return `${num} B`;
 }
 
+
 function setSeg(seg, attr, value) {
   seg.querySelectorAll("button").forEach((b) =>
     b.setAttribute("aria-pressed", String(b.dataset[attr] === value)));
@@ -110,63 +111,6 @@ function attachJob(job) {
   }
 }
 
-function resetRunView(job) {
-  $("runTitle").textContent = job.title || "准备中";
-  $("runSub").textContent = "正在连接……";
-  $("stream").textContent = "";
-  resetChapters();
-  $("runEmpty").hidden = false;
-  $("partialNote").hidden = true;
-  $("failedNote").hidden = true;
-  $("runDoneActions").hidden = true;
-  $("retryBtn").hidden = true;
-  $("resumeBtn").hidden = true;
-  $("cancelBtn").hidden = false;
-  $("pauseBtn").hidden = false;
-  $("pauseBtn").disabled = false;
-  $("pauseBtn").textContent = "暂停";
-  $("meterFill").style.width = "0";
-  $("statDone").textContent = "0";
-  $("statFailed").textContent = "0";
-  $("statTotal").textContent = "—";
-  if (state.timer) clearInterval(state.timer);
-  state.timer = setInterval(() => {
-    $("statElapsed").textContent = ((Date.now() - state.startedAt) / 1000).toFixed(1) + " s";
-  }, 200);
-}
-
-function onJobEvent(kind, data) {
-  if (kind === "phase") {
-    $("runSub").textContent = { fetching: "正在抓取页面……", encoding: "正在压缩与合成……" }[data.phase] || data.phase;
-  } else if (kind === "progress") {
-    $("statDone").textContent = data.done;
-    $("statFailed").textContent = data.failed;
-    $("statTotal").textContent = data.total;
-    if (data.total) $("meterFill").style.width = `${((data.done + data.failed) / data.total) * 100}%`;
-  } else if (kind === "volume") {
-    state.bookId = data.book_id;
-    $("runSub").textContent = `已交付 ${data.done} 卷 · ${data.title}`;
-    $("runDoneActions").hidden = false;
-  } else if (kind === "thumb") {
-    $("runEmpty").hidden = true;
-    const tile = document.createElement("div");
-    tile.className = "thumb";
-    const img = document.createElement("img");
-    img.src = `${data.url}?token=${encodeURIComponent(TOKEN)}`;
-    img.alt = "";
-    const pg = document.createElement("span");
-    pg.className = "pg";
-    pg.textContent = data.page;
-    tile.append(img, pg);
-    $("stream").appendChild(tile);
-  } else if (kind === "chapter") {
-    appendChapters([data]);
-  } else if (kind === "done") {
-    finishRunView(data.partial ? "partial" : "done", data);
-  } else if (kind === "failed" || kind === "cancelled" || kind === "paused") {
-    finishRunView(kind, data);
-  }
-}
 
 function finishRunView(status, data) {
   if (state.job) state.job.status = status;
@@ -283,6 +227,7 @@ function loadSettingsView() {
     state.settings = settings;
     $("setOutput").value = settings.output_dir;
     setSeg($("setCompressSeg"), "compress", settings.compress);
+    syncCompressDesc($("setCompressSeg"), "setCompressDesc");
     setSeg($("setOcrSeg"), "ocr", settings.ocr);
     $("setConcurrency").value = settings.concurrency;
     $("setRate").value = settings.rate;
@@ -340,9 +285,9 @@ $("splitMode").addEventListener("change", recheckUrl);
 document.querySelectorAll("[data-command]").forEach(button => button.addEventListener("click", () => {
   $("commandMenu").close(); showView(button.dataset.command);
 }));
-bindSeg($("compressSeg"), "compress");
+bindSeg($("compressSeg"), "compress", () => syncCompressDesc($("compressSeg"), "compressDesc"));
 bindSeg($("ocrSeg"), "ocr");
-bindSeg($("setCompressSeg"), "compress");
+bindSeg($("setCompressSeg"), "compress", () => syncCompressDesc($("setCompressSeg"), "setCompressDesc"));
 bindSeg($("setOcrSeg"), "ocr");
 
 $("pasteBtn").addEventListener("click", pasteUrl);

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ..assemble.models import clean_metadata_text
-from ..errors import ConfigError, ParseError
+from ..errors import ConfigError, ParseError, QuireError
 from ..fetch.browser import RenderOptions, render_page
 from ..fetch.session import AsyncFetcher
 from ..fetch.simple import Response
@@ -14,6 +14,7 @@ from ..parse.article import extract_article, validate_article
 from ..parse.chapters import discover_chapters, looks_like_catalogue
 from ..parse.images import collect, prefilter
 from ..parse.minidom import parse as parse_html
+from ..parse.packed import extract_script_images
 from ..parse.series import Volume, plan_volumes
 from ..sites.rules import SiteRule, resolve_rule
 from ..utils.urls import is_usable_url, route_fragment
@@ -29,6 +30,9 @@ class ProbeResult:
     series: bool = False
     render: bool = False
     chapters: tuple[str, ...] = ()
+    estimate_bytes: int | None = None
+    estimates: dict[str, int] = field(default_factory=dict)
+    sample_urls: tuple[str, ...] = ()  # 内部估算用,不暴露给前端
 
 
 def validate_task_url(url: str) -> str:
@@ -74,17 +78,79 @@ async def probe_url(
         dynamic = bool(route_fragment(url))
         if not dynamic:
             try:
-                return _inspect(page, chosen_kind, capture_mode, split_by, rule)
+                result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
             except ParseError:
                 if not parse_html(page.text).select("script[src],script[type=module]"):
                     raise
+            else:
+                estimate = await _estimate_bytes(client, result)
+                return replace(result, estimate_bytes=estimate)
         page, _ = await render_page(
             page,
             client,
             RenderOptions(timeout=60, max_scrolls=1000),
             content="images" if chosen_kind == "manga" and capture_mode == "single" else "text",
         )
-        return replace(_inspect(page, chosen_kind, capture_mode, split_by, rule), render=True)
+        result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
+        estimate = await _estimate_bytes(client, result)
+        return replace(result, render=True, estimate_bytes=estimate)
+
+
+async def _sample_page_bytes(
+    client: AsyncFetcher, urls: list[str], referer: str, estimates: dict[str, int]
+) -> int | None:
+    """实测前几张图片的平均字节数;样本最多 3 张,失败跳过,全失败返回 None。"""
+    sizes: list[int] = []
+    encoded: dict[str, list[int]] = {key: [] for key in ("archive", "balanced", "small")}
+    for image_url in urls[:3]:
+        try:
+            response = await client.get(image_url, referer=referer, robots=False)
+        except QuireError:
+            continue
+        sizes.append(len(response.content))
+        from ..image.compress import encode_pages
+        from ..image.options import CompressionOptions
+
+        for key in encoded:
+            options = CompressionOptions(preset=key, target_bytes=None)
+            try:
+                size = sum(
+                    len(page.data)
+                    for page in encode_pages(response.content, options.passes()[0], options)
+                )
+                encoded[key].append(size)
+            except QuireError:
+                continue
+    estimates.update({key: sum(values) // len(values) for key, values in encoded.items() if values})
+    return sum(sizes) // len(sizes) if sizes else None
+
+
+async def _estimate_bytes(client: AsyncFetcher, result: ProbeResult) -> int | None:
+    """体积预估:样本平均 × 页数;系列任务按首章页数 × 章数粗估。失败返回 None。"""
+    if result.kind != "manga" or not result.sample_urls:
+        return None
+    try:
+        if result.series:
+            chapter = await client.get(result.sample_urls[0])
+            urls = extract_script_images(chapter.text)
+            if not urls:
+                doc = parse_html(chapter.text, base_url=chapter.url)
+                kept, _ = prefilter(collect(doc, doc.effective_base() or chapter.url))
+                urls = [candidate.url for candidate in kept]
+            if not urls:
+                return None
+            average = await _sample_page_bytes(client, urls, chapter.url, result.estimates)
+            result.estimates.update(
+                {k: v * len(urls) * result.count for k, v in result.estimates.items()}
+            )
+            return average * len(urls) * result.count if average else None
+        average = await _sample_page_bytes(
+            client, list(result.sample_urls), result.url, result.estimates
+        )
+        result.estimates.update({k: v * result.count for k, v in result.estimates.items()})
+        return average * result.count if average else None
+    except QuireError:
+        return None
 
 
 def _inspect(
@@ -107,6 +173,7 @@ def _inspect(
                 volume_selector=rule.volume_selector if rule else None,
                 order=rule.chapter_order if rule else "auto",
             )
+            first_chapter = volumes[0].chapters[0].url if volumes and volumes[0].chapters else ""
             return ProbeResult(
                 "manga",
                 title,
@@ -115,6 +182,7 @@ def _inspect(
                 volumes,
                 True,
                 chapters=tuple(c.title for v in volumes for c in v.chapters),
+                sample_urls=(first_chapter,) if first_chapter else (),
             )
         if len(links) > 20000:
             raise ParseError("目录超过 20000 章上限", hint="请拆分目录后再抓取。")
@@ -144,8 +212,12 @@ def _inspect(
     )
     if kept and kind == "novel":
         return ProbeResult("novel", title, 1, page.url)
-    if kept:
-        return ProbeResult("manga", title, len(kept), page.url)
+    script_urls = extract_script_images(page.text) if kind != "novel" else []
+    if kept or script_urls:
+        # 与 discover_page 同一规则:脚本内嵌清单更长时以它为准(SPA 只渲染当前页)。
+        script_urls = extract_script_images(page.text)
+        urls = script_urls if len(script_urls) > len(kept) else [c.url for c in kept]
+        return ProbeResult("manga", title, len(urls), page.url, sample_urls=tuple(urls[:3]))
     raise ParseError(
         "这个链接没找到可用的正文或图片",
         hint="请确认选择的小说/漫画类型与链接一致，并使用对应的目录页或单章阅读页。",

@@ -55,6 +55,7 @@ function probeUrl(url) {
     status.textContent =
       `${result.kind === "manga" ? "漫画" : "小说"} · ${result.title} · 约 ${result.count} ` +
       (result.kind === "manga" && !result.series ? "页" : "章") + (result.render ? " · 动态页面已就绪" : "");
+    updateSizeEstimate();
     $("formatField").hidden = false;
     updateKindFields();
     $("startBtn").disabled = false;
@@ -134,6 +135,7 @@ function resetProbe() {
   $("seriesField").hidden = true;
   $("rangeField").hidden = true;
   $("wsStatus").hidden = true;
+  $("sizeEstimate").textContent = "识别后可估";
   $("startBtn").disabled = true;
   $("probeHint").hidden = true;
   $("probeHint").classList.remove("is-loading");
@@ -155,4 +157,20 @@ async function pasteUrl() {
     $("probeHint").hidden = false;
     $("probeHint").textContent = err.message || "无法读取剪贴板，请使用 ⌘V 粘贴";
   }
+}
+
+function updateSizeEstimate() {
+  const result = state.probe;
+  const preset = segValue($("compressSeg"), "compress");
+  let bytes = result && result.estimates && result.estimates[preset];
+  let selected = result && result.count;
+  if (result && result.series) {
+    try { const range = rangeState(); if (range.custom) selected = range.numbers.length; } catch (_) { bytes = null; }
+  }
+  if (bytes && result.count) bytes *= selected / result.count;
+  $("sizeEstimate").textContent = bytes
+    ? `图像体积约 ${humanSize(bytes * .7)}–${humanSize(bytes * 1.3)} · 抽样试压估算，不含封装；目标体积会影响结果`
+    : result && result.estimate_bytes
+      ? `原图总量约 ${humanSize(result.estimate_bytes)} · 当前档位暂无法估算成品`
+      : "暂无法估算体积";
 }

@@ -237,3 +237,79 @@ def test_manga_single_collects_continuation_but_stops_at_next_chapter():
     )
     assert [p.url for p in found] == ["https://example.test/1.jpg", "https://example.test/2.jpg"]
     assert client.get.await_count == 2
+
+
+def _mock_client(pages: dict[str, Response]):
+    client = AsyncMock()
+
+    async def get(url, **kwargs):
+        return pages[url]
+
+    client.get.side_effect = get
+    client.__aenter__.return_value = client
+    return client
+
+
+def test_probe_estimates_size_from_image_samples(monkeypatch):
+    page_url = "https://example.test/ch"
+    images = {f"https://example.test/p{n}.jpg": 1000 + n for n in range(1, 5)}
+    html = "<h1>单章</h1>" + "".join(
+        f'<img src="/p{n}.jpg" width="800" height="1200">' for n in range(1, 5)
+    )
+    pages = {page_url: response(html, page_url)}
+    for url, size in images.items():
+        pages[url] = Response(url, 200, {"content-type": "image/jpeg"}, b"x" * size, 0)
+    client = _mock_client(pages)
+    monkeypatch.setattr(probing, "AsyncFetcher", lambda **kw: client)
+
+    result = asyncio.run(probe_url(page_url, kind="manga", capture_mode="single"))
+    expected = (1001 + 1002 + 1003) // 3 * 4
+    assert result.estimate_bytes == expected
+    calls = [c for c in client.get.call_args_list if c.args[0] in images]
+    assert len(calls) == 3 and all(c.kwargs.get("robots") is False for c in calls)
+
+
+def test_probe_estimates_series_from_first_chapter(monkeypatch):
+    catalogue_url = "https://example.test/book"
+    chapter_url = "https://example.test/ch1"
+    catalogue = "<h1>书</h1>" + "".join(f'<a href="/ch{n}">第{n}章</a>' for n in (1, 2))
+    chapter = "<h1>第1章</h1>" + "".join(
+        f'<img src="/c1-{n}.jpg" width="800" height="1200">' for n in (1, 2)
+    )
+    pages = {
+        catalogue_url: response(catalogue, catalogue_url),
+        chapter_url: response(chapter, chapter_url),
+        "https://example.test/c1-1.jpg": Response(
+            "https://example.test/c1-1.jpg", 200, {}, b"x" * 500, 0
+        ),
+        "https://example.test/c1-2.jpg": Response(
+            "https://example.test/c1-2.jpg", 200, {}, b"x" * 700, 0
+        ),
+    }
+    monkeypatch.setattr(probing, "AsyncFetcher", lambda **kw: _mock_client(pages))
+
+    result = asyncio.run(probe_url(catalogue_url, kind="manga", capture_mode="catalogue"))
+    assert result.series and result.count == 2
+    # 2 张样本均值 600 × 首章 2 页 × 2 章
+    assert result.estimate_bytes == 600 * 2 * 2
+
+
+def test_probe_estimates_each_preset_with_real_image(monkeypatch):
+    from io import BytesIO
+
+    from PIL import Image
+
+    image = Image.effect_noise((400, 600), 80).convert("RGB")
+    buffer = BytesIO()
+    image.save(buffer, "PNG")
+    image.close()
+    url = "https://example.test/ch"
+    pages = {
+        url: response('<h1>Chapter</h1><img src="/p.jpg">', url),
+        "https://example.test/p.jpg": Response(url, 200, {}, buffer.getvalue(), 0),
+    }
+    monkeypatch.setattr(probing, "AsyncFetcher", lambda **kw: _mock_client(pages))
+    result = asyncio.run(probe_url(url, kind="manga", capture_mode="single"))
+    assert (
+        result.estimates["archive"] > result.estimates["balanced"] > result.estimates["small"] > 0
+    )

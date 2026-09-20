@@ -72,10 +72,12 @@ class ObservedFetcher(AsyncFetcher):
             record["status"], headers=record["headers"], stream=Body(data), request=request
         )
 
-    async def _request(self, url, headers):
+    async def _request(self, url, headers, *, method="GET", content=None):
         started = time.perf_counter()
         try:
-            response, location, delay = await super()._request(url, headers)
+            response, location, delay = await super()._request(
+                url, headers, method=method, content=content
+            )
         except (httpx.HTTPError, QuireError) as exc:
             error = type(exc).__name__
             self.requests.append({"url": str(url), "error": error})

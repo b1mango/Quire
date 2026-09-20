@@ -34,7 +34,7 @@ from .books import register_book
 from .chapter_stream import ChapterTracker
 from .follows import resolve_prefix
 from .job_state import Job, JobSpec, job_workdir
-from .progress import ChapterSink, ExportSink, make_thumbs, poll_job
+from .progress import ChapterSink, ExportSink, make_thumbs, poll_job, thumb_event
 from .salvage import settle_cancelled
 from .settings import UiSettings
 
@@ -274,16 +274,17 @@ class JobManager:
             if spec.kind != "manga" or not task_id:
                 return
             made = make_thumbs(
-                workdir / "cache" / task_id, self.thumbs_root / job.id, thumbs["done"]
+                workdir / "cache" / task_id, self.thumbs_root / job.id, thumbs["done"], task_id
             )
             for page in made:
-                job.emit("thumb", {"page": page, "url": f"/api/jobs/{job.id}/thumbs/{page}"})
+                job.emit("thumb", thumb_event(workdir / "cache" / task_id, job.id, task_id, page))
 
         rule = resolve_rule(self.data_root, spec.url)
 
         def on_task(task_id: str) -> None:
             with job.condition:
                 job.task_id = task_id
+                thumbs["task_id"] = task_id
             chapters.register(task_id)
 
         manga_options = MangaOptions(

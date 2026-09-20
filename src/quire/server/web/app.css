@@ -394,3 +394,9 @@ html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--faint) 45%,tra
 .ws-go{margin-left:auto;border-radius:var(--ws-pill);padding:12px 34px;font-size:14.5px}
 [data-theme="swiss"] .ws-go{border-radius:0}
 .ws-foot .meta + .ws-go{margin-left:0}
+
+/* Chapter previews: compact settled chapters, expanded active captures. */
+.thumbnail-chapter{grid-column:1/-1;width:100%;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.thumbnail-chapter summary{cursor:pointer;padding:14px 16px;font-size:13px;color:var(--muted)}
+.thumbnail-chapter .stream{padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px}
+.thumbnail-chapter:not([open]) .stream{display:none}

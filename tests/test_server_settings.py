@@ -134,3 +134,19 @@ def test_jobspec_validation():
         JobSpec(kind="manga", url="http://e.c", title="t", formats=("pdf",), target_bytes=0)
     spec = JobSpec(kind="manga", url="http://e.c", title="t", formats=("pdf",), target_bytes=None)
     assert spec.compress == "balanced"
+
+
+def test_thumbnail_identity_is_scoped_to_ledger_task(tmp_path):
+    from quire.server.progress import thumb_event
+
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "00002-000001.jpg").write_bytes(page_image(1))
+    seen = set()
+    for task in ("volume-a", "volume-b"):
+        assert make_thumbs(cache, tmp_path / "thumbs", seen, task) == [1]
+        event = thumb_event(cache, "job", task, 1)
+        assert event["chapter_id"] == f"{task}:2"
+        identity = event["url"].rsplit("/", 1)[-1]
+        assert (tmp_path / "thumbs" / f"p{identity}.jpg").exists()
+    assert len(list((tmp_path / "thumbs").iterdir())) == 2

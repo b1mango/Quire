@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 import sqlite3
@@ -43,7 +44,7 @@ def task_counts(
     return (by_status.get("done", 0), by_status.get("failed", 0), total), task_id
 
 
-def make_thumbs(cache: Path, dest: Path, thumbed: set[int]) -> list[int]:
+def make_thumbs(cache: Path, dest: Path, thumbed: set[int], namespace: str = "") -> list[int]:
     """为缓存里新完成的漫画页生成缩略图；损坏文件跳过，不影响任务。"""
     if not cache.is_dir():
         return []
@@ -57,20 +58,36 @@ def make_thumbs(cache: Path, dest: Path, thumbed: set[int]) -> list[int]:
         if match is None:
             continue
         page = int(match[1])
-        if page in thumbed:
+        identity = thumb_number(namespace, page) if namespace else page
+        if identity in thumbed:
             continue
-        thumbed.add(page)
+        thumbed.add(identity)
         try:
             from PIL import Image
 
             dest.mkdir(parents=True, exist_ok=True)
             with Image.open(cache / name) as image:
                 image.thumbnail((160, 224))
-                image.convert("RGB").save(dest / f"p{page}.jpg", "JPEG", quality=68)
+                image.convert("RGB").save(dest / f"p{identity}.jpg", "JPEG", quality=68)
             made.append(page)
         except Exception:
             _LOG.debug("thumbnail failed for %s", name, exc_info=True)
     return made
+
+
+def thumb_number(task_id: str, page: int) -> int:
+    return int(hashlib.sha256(task_id.encode()).hexdigest()[:16], 16) * 1_000_000 + page
+
+
+def thumb_event(cache: Path, job_id: str, task_id: str, page: int) -> dict[str, Any]:
+    """Attach the cache filename's chapter to each thumbnail, independent of event order."""
+    name = next(cache.glob(f"*-{page:06d}.*"), None)
+    chapter = int(name.name.split("-", 1)[0]) if name else 1
+    return {
+        "page": page,
+        "url": f"/api/jobs/{job_id}/thumbs/{thumb_number(task_id, page)}",
+        "chapter_id": f"{task_id}:{chapter}",
+    }
 
 
 class ExportSink:
@@ -135,9 +152,12 @@ async def poll_job(job: Job, workdir: Path, thumbs: dict[str, Any], thumbs_root:
                     workdir / "cache" / task_id,
                     thumbs_root / job.id,
                     thumbs["done"],
+                    task_id,
                 )
                 for page in pages:
-                    job.emit("thumb", {"page": page, "url": f"/api/jobs/{job.id}/thumbs/{page}"})
+                    job.emit(
+                        "thumb", thumb_event(workdir / "cache" / task_id, job.id, task_id, page)
+                    )
     finally:
         if connection is not None:
             connection.close()
