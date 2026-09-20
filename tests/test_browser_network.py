@@ -280,3 +280,27 @@ def test_cancelled_interception_is_a_warning_not_fatal():
         assert net.warnings
 
     asyncio.run(run_fail())
+
+
+def test_preflight_is_forwarded_and_upstream_cors_is_preserved():
+    async def run():
+        net = network()
+        net.client.preflight.return_value = Response(
+            URL,
+            204,
+            {
+                "access-control-allow-origin": "https://example.test",
+                "access-control-allow-credentials": "true",
+            },
+            b"",
+            0,
+        )
+        await net._serve(request(URL, "XHR", method="OPTIONS", headers={"Origin": URL}))
+        net.client.preflight.assert_awaited_once_with(URL, {"Origin": URL})
+        payload = net.cdp.call.call_args.args[1]
+        assert payload["responseCode"] == 204
+        assert {"name": "access-control-allow-credentials", "value": "true"} in payload[
+            "responseHeaders"
+        ]
+
+    asyncio.run(run())

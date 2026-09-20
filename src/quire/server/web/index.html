@@ -192,14 +192,13 @@
               <input class="input nofx" id="searchInput" placeholder="搜索书名或作者">
             </div>
           </div>
-          <div class="book-actions" id="bookActions" hidden>
+          <div class="book-actions" id="bookActions" role="group" aria-label="书籍操作" popover>
             <b id="bookActionsTitle"></b>
             <button class="btn primary" id="bookOpenBtn">打开</button>
             <button class="btn ghost" id="bookRevealBtn">在 Finder 中显示</button>
             <button class="btn ghost" id="bookCheckBtn" hidden>检查更新</button>
             <button class="btn primary" id="bookFollowBtn" hidden>追更</button>
             <button class="btn danger" id="bookDeleteBtn">删除</button>
-            <button class="btn ghost" id="bookActionsClose">收起</button>
           </div>
           <div class="grid" id="grid"></div>
           <div class="empty-state" id="libEmpty" hidden>
@@ -281,6 +280,7 @@ quire manga URL --core --site example.com</pre>
 </dialog>
 <script src="/static/capture.js"></script>
 <script src="/static/run-events.js"></script>
+<script src="/static/library.js"></script>
 <script src="/static/app.js"></script>
 <script src="/static/chapters.js"></script>
 <script src="/static/follows.js"></script>

@@ -32,6 +32,7 @@ _MAX_BODY = 65_536
 _STATIC = {
     "app.css": "text/css; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
+    "library.js": "text/javascript; charset=utf-8",
     "run-events.js": "text/javascript; charset=utf-8",
     "capture.js": "text/javascript; charset=utf-8",
     "chapters.js": "text/javascript; charset=utf-8",

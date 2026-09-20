@@ -36,6 +36,7 @@ class BrowserNetwork:
         self.pending: set[asyncio.Task[None]] = set()
         self.error: BaseException | None = None
         self.warnings: set[str] = set()
+        self.catalogue_script: str | None = None
         self.count = 0
         self.bytes = 0
         self.last_activity = asyncio.get_running_loop().time()
@@ -95,9 +96,16 @@ class BrowserNetwork:
             and isinstance(post_data, str)
             and len(post_data) <= 2 * 1024 * 1024
         )
+        preflight = request["method"] == "OPTIONS" and kind in {
+            "Fetch",
+            "XHR",
+            "Other",
+            "Preflight",
+        }
         unsupported = (
             request["method"] != "GET"
             and not proxyable_post
+            and not preflight
             or not url.startswith(("http://", "https://"))
             or kind in {"WebSocket", "EventSource"}
             or kind == "Document"
@@ -123,11 +131,24 @@ class BrowserNetwork:
                 self.last_activity = asyncio.get_running_loop().time()
             return
         try:
-            response = self.seed.pop(url, None) if not proxyable_post else None
+            response = self.seed.pop(url, None) if request["method"] == "GET" else None
             if response is None:
                 headers = request.get("headers", {})
                 referer = headers.get("Referer") or headers.get("referer")
-                if proxyable_post:
+                if (
+                    self.site == "shuqi.com"
+                    and urlsplit(url).hostname == "ocean.shuqireader.com"
+                    and request["method"] in {"GET", "POST"}
+                ):
+                    response = await self.client.shuqi_request(
+                        url,
+                        method=request["method"],
+                        headers=headers,
+                        body=post_data.encode("utf-8") if isinstance(post_data, str) else None,
+                    )
+                elif preflight:
+                    response = await self.client.preflight(url, headers)
+                elif proxyable_post:
                     assert isinstance(post_data, str)
                     content_type = (
                         headers.get("Content-Type")
@@ -160,6 +181,8 @@ class BrowserNetwork:
                     "access-control-allow-origin",
                     "access-control-allow-headers",
                     "access-control-allow-methods",
+                    "access-control-allow-credentials",
+                    "access-control-max-age",
                     "x-content-type-options",
                 }
                 payload = {

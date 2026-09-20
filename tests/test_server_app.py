@@ -144,7 +144,7 @@ def test_origin_checked(server):
 
 def test_static_assets(server):
     srv, _ = server
-    for name, marker in (("app.css", "--accent"), ("app.js", "quire")):
+    for name, marker in (("app.css", "--accent"), ("app.js", "quire"), ("library.js", "bookCard")):
         conn = _conn(srv)
         conn.request("GET", f"/static/{name}", headers={"X-Quire-Token": srv.token})
         response = conn.getresponse()

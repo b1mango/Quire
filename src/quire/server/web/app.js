@@ -173,7 +173,7 @@ function loadBooks() {
   api("/api/books" + (search ? `?search=${encodeURIComponent(search)}` : "")).then((data) => {
     state.books = data.books;
     state.selectedBook = null;
-    $("bookActions").hidden = true;
+    closeBookMenu(false);
     $("checkAllBtn").hidden = !data.books.some((b) => b.follow);
     const grid = $("grid");
     grid.textContent = "";
@@ -184,40 +184,6 @@ function loadBooks() {
       : `${data.books.length} 部作品 · 共 ${humanSize(total)}`;
     data.books.forEach((book) => grid.appendChild(bookCard(book)));
   }).catch(() => {});
-}
-
-function bookCard(book) {
-  const card = document.createElement("button");
-  card.className = "card";
-  card.type = "button";
-  const cover = document.createElement("div");
-  cover.className = "cover";
-  const img = document.createElement("img");
-  img.alt = "";
-  img.src = book.cover ? `${book.cover}?token=${encodeURIComponent(TOKEN)}`
-                       : coverPlaceholder(book.title, book.id);
-  cover.appendChild(img);
-  if (typeof followBadge === "function") {
-    const badge = followBadge(book);
-    if (badge) cover.appendChild(badge);
-  }
-  const title = document.createElement("div");
-  title.className = "ct";
-  title.textContent = book.title;
-  const meta = document.createElement("div");
-  meta.className = "cm";
-  meta.textContent = `${book.formats.join(" / ").toUpperCase()} · ${humanSize(book.bytes)}`;
-  card.append(cover, title, meta);
-  card.addEventListener("click", () => selectBook(book, card));
-  return card;
-}
-
-function selectBook(book, card) {
-  state.selectedBook = book;
-  document.querySelectorAll(".card").forEach((c) => c.setAttribute("aria-current", String(c === card)));
-  $("bookActions").hidden = false;
-  $("bookActionsTitle").textContent = book.title;
-  if (typeof updateFollowButtons === "function") updateFollowButtons(book);
 }
 
 /* ------------------------------------------------------------ 设置 */
@@ -329,7 +295,7 @@ $("openBookBtn").addEventListener("click", () => {
 });
 $("retryBtn").addEventListener("click", resubmitSpec);
 $("bookOpenBtn").addEventListener("click", () => {
-  if (state.selectedBook) api(`/api/books/${state.selectedBook.id}/open`, { method: "POST" }).catch(() => {});
+  if (state.selectedBook) openLibraryBook(state.selectedBook);
 });
 $("bookRevealBtn").addEventListener("click", () => {
   if (!state.selectedBook) return;
@@ -344,11 +310,6 @@ $("bookDeleteBtn").addEventListener("click", () => {
   api(`/api/books/${book.id}`, { method: "DELETE" }).then(() => loadBooks()).catch((err) => {
     $("libSub").textContent = err.message;
   });
-});
-$("bookActionsClose").addEventListener("click", () => {
-  state.selectedBook = null;
-  $("bookActions").hidden = true;
-  document.querySelectorAll(".card").forEach((c) => c.setAttribute("aria-current", "false"));
 });
 let searchTimer = null;
 $("searchInput").addEventListener("input", () => {

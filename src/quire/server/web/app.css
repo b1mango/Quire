@@ -400,3 +400,19 @@ html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--faint) 45%,tra
 .thumbnail-chapter summary{cursor:pointer;padding:14px 16px;font-size:13px;color:var(--muted)}
 .thumbnail-chapter .stream{padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px}
 .thumbnail-chapter:not([open]) .stream{display:none}
+/* Actions stay next to their book; popover top layer avoids clipping. */
+.book-open{display:block;width:100%;text-align:left;border:0;padding:0;background:none;color:inherit;font:inherit;cursor:pointer}
+.book-footer{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px}
+.book-footer .cm{margin:0;min-width:0}
+.book-more{flex:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;color:var(--muted);cursor:pointer}
+.book-more:hover,.book-more[aria-expanded=true]{color:var(--text);background:var(--surface);border-color:var(--border)}
+.book-actions[popover]{position:fixed;inset:auto;margin:0;width:224px;max-width:calc(100vw - 16px);padding:8px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.book-actions[popover]:not(:popover-open){display:none}
+.book-actions[popover]:popover-open{display:flex;flex-direction:column;align-items:stretch;gap:3px}
+.book-actions[popover] b{font-family:var(--fb);font-size:12px;color:var(--muted);padding:7px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.book-actions[popover] .btn{justify-content:flex-start;text-align:left;width:100%;background:transparent;color:var(--text);border:0;box-shadow:none;padding:10px}
+.book-actions[popover] .btn:hover{background:var(--surface-2)}
+.book-actions[popover] .danger{color:var(--accent);border-top:1px solid var(--border);border-radius:0;margin-top:4px}
+.book-open:focus-visible,.book-more:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+.book-footer .cm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px}

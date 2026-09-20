@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from ..errors import ConfigError, FetchError, UnsupportedError
 from ..utils.urls import is_usable_url
+from .browser_catalogue import catalogue_script
 from .browser_cdp import Cdp
 from .browser_network import BrowserNetwork
 from .browser_process import ChromeProcess, find_chrome
@@ -74,6 +75,9 @@ async def _scroll(
     scrolls = 0
     while True:
         network.check()
+        script = network.catalogue_script
+        if isinstance(script, str) and script and await _evaluate(cdp, session, script):
+            return
         state = await _evaluate(cdp, session, _STATE)
         if not isinstance(state, dict) or not is_usable_url(state.get("url", "")):
             raise FetchError("动态页面导航到了不支持的地址")
@@ -135,6 +139,7 @@ async def render_page(
                 async with BrowserNetwork(
                     cdp, session, tree["frameTree"]["frame"]["id"], client, page
                 ) as network:
+                    network.catalogue_script = catalogue_script(page.url)
                     navigation = await cdp.call(
                         "Page.navigate", {"url": page.url}, session_id=session
                     )

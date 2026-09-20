@@ -27,6 +27,7 @@ def build(destination: Path) -> int:
             "quire/fetch/async_policy.py",
             "quire/fetch/decoding.py",
             "quire/fetch/browser.py",
+            "quire/fetch/browser_catalogue.py",
             "quire/fetch/browser_pdf.py",
             "quire/fetch/browser_process.py",
             "quire/fetch/browser_cdp.py",

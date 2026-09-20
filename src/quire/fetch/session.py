@@ -163,6 +163,40 @@ class AsyncFetcher:
         finally:
             self._active.discard(task)
 
+    async def shuqi_request(
+        self, url: str, *, method: str, headers: Mapping[str, str], body: bytes | None
+    ) -> Response:
+        """Preserve the isolated page's anonymous API token only on Shuqi's exact API host."""
+        if body is not None and len(body) > 2 * 1024 * 1024:
+            raise ConfigError("POST 请求体超过 2 MiB 限制")
+        target = _url(url)
+        if (
+            target.scheme != "https"
+            or target.host != "ocean.shuqireader.com"
+            or method not in {"GET", "POST"}
+        ):
+            raise ConfigError("Invalid Shuqi API target")
+        public = {
+            k.lower(): v
+            for k, v in headers.items()
+            if k.lower() in {"authorization", "origin", "content-type", "referer", "accept"}
+        }
+        if any(any(ord(c) < 32 or ord(c) > 126 for c in v) for v in public.values()):
+            raise ConfigError("Invalid page API headers")
+        return await self._fetch(
+            target, {**_headers(None, None), **public}, policy=False, method=method, content=body
+        )
+
+    async def preflight(self, url: str, headers: Mapping[str, str]) -> Response:
+        """Forward public CORS metadata only; upstream decides access, never synthesize it."""
+        allowed = {"origin", "access-control-request-method", "access-control-request-headers"}
+        public = {k.lower(): v for k, v in headers.items() if k.lower() in allowed}
+        if any(any(ord(c) < 32 or ord(c) > 126 for c in v) for v in public.values()):
+            raise ConfigError("Invalid CORS preflight headers")
+        return await self._fetch(
+            _url(url), {**_headers(None, None), **public}, policy=False, method="OPTIONS"
+        )
+
     async def post(
         self,
         url: str,
@@ -243,7 +277,11 @@ class AsyncFetcher:
                         target.host,
                         target.port,
                     ):
-                        headers = {k: v for k, v in headers.items() if k != "referer"}
+                        headers = {
+                            k: v
+                            for k, v in headers.items()
+                            if k not in {"referer", "authorization", "origin"}
+                        }
                     url = target
                     seen.add(str(url))
                     redirects += 1
