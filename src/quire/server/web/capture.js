@@ -70,6 +70,7 @@ function probeUrl(url) {
 }
 
 function updateKindFields() {
+  syncOcrAvailability();
   $("captureHint").textContent = state.captureMode === "single"
     ? "仅抓取当前章节，保留本章分页，不跟随其他章节。"
     : state.kind === "novel" ? "识别小说目录，按阅读顺序合为一本书。" : "识别漫画目录，批量抓取章节，可选择分卷。";
@@ -173,4 +174,17 @@ function updateSizeEstimate() {
     : result && result.estimate_bytes
       ? `原图总量约 ${humanSize(result.estimate_bytes)} · 当前档位暂无法估算成品`
       : "暂无法估算体积";
+}
+
+function syncOcrAvailability() {
+  const ocr = state.caps && state.caps.ocr;
+  const mode = segValue($("ocrSeg"), "ocr");
+  const message = mode === "never" ? "已关闭图片文字识别，仅提取网页文字。"
+    : !ocr ? "正在检查 OCR 可用性…"
+    : ocr.tesseract || (ocr.onnxruntime && ocr.models_ready)
+      ? "OCR 已就绪；自动模式仅在正文为图片时启用。"
+      : ocr.onnxruntime ? "自动是识别策略：模型尚未下载，遇到图片正文时按需下载。"
+      : "自动是识别策略：OCR 引擎未安装；普通文字可采集，图片正文暂不能识别。";
+  $("ocrAvailability").textContent = message;
+  $("ocrAvailability").hidden = state.kind !== "novel";
 }

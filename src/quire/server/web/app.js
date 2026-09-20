@@ -124,6 +124,10 @@ function finishRunView(status, data) {
   $("goLibBtn").hidden = !state.bookId;
   $("resumeBtn").hidden = true;
   $("retryBtn").hidden = !(state.lastSpec || (state.job && state.job.spec));
+  if (Number.isFinite(data.failures)) {
+    $("statFailed").textContent = data.failures;
+    $("statDone").textContent = Math.max(0, Number($("statTotal").textContent) - data.failures);
+  }
   if (status === "done") {
     $("runTitle").textContent = data.title || $("runTitle").textContent;
     $("runSub").textContent = `完成 · ${humanSize(data.bytes || 0)} · ${data.elapsed_s ?? "—"} 秒`;
@@ -157,7 +161,7 @@ function finishRunView(status, data) {
 function coverPlaceholder(title, seedText) {
   let seed = 0;
   for (const ch of seedText) seed = (seed * 31 + ch.codePointAt(0)) >>> 0;
-  const colors = ["#1F3A5F", "#5B2A2A", "#243B32", "#3A2F52", "#4A3A1E", "#1E3B45", "#432B3B", "#2C3A20"];
+  const colors = document.documentElement.dataset.theme === "paper" ? ["#625B50", "#746B5D", "#514D45"] : ["#1F3A5F", "#5B2A2A", "#243B32", "#3A2F52", "#4A3A1E", "#1E3B45", "#432B3B", "#2C3A20"];
   const c = colors[seed % colors.length], c2 = colors[(seed >> 3) % colors.length];
   const ch = (title || "书").slice(0, 1);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="420" viewBox="0 0 300 420">` +
@@ -201,6 +205,7 @@ function loadSettingsView() {
   }).catch((err) => { $("settingsMeta").textContent = err.message; });
   api("/api/capabilities").then((caps) => {
     state.caps = caps;
+    syncOcrAvailability();
     updateChromeHint();
     const dl = $("doctorList");
     dl.textContent = "";
@@ -252,7 +257,7 @@ document.querySelectorAll("[data-command]").forEach(button => button.addEventLis
   $("commandMenu").close(); showView(button.dataset.command);
 }));
 bindSeg($("compressSeg"), "compress", () => syncCompressDesc($("compressSeg"), "compressDesc"));
-bindSeg($("ocrSeg"), "ocr");
+bindSeg($("ocrSeg"), "ocr", syncOcrAvailability);
 bindSeg($("setCompressSeg"), "compress", () => syncCompressDesc($("setCompressSeg"), "setCompressDesc"));
 bindSeg($("setOcrSeg"), "ocr");
 
@@ -303,14 +308,6 @@ $("bookRevealBtn").addEventListener("click", () => {
     $("libSub").textContent = err.hint ? `${err.message} ${err.hint}` : err.message;
   });
 });
-$("bookDeleteBtn").addEventListener("click", () => {
-  const book = state.selectedBook;
-  if (!book) return;
-  if (!window.confirm(`删除《${book.title}》？成品文件会一起删掉。`)) return;
-  api(`/api/books/${book.id}`, { method: "DELETE" }).then(() => loadBooks()).catch((err) => {
-    $("libSub").textContent = err.message;
-  });
-});
 let searchTimer = null;
 $("searchInput").addEventListener("input", () => {
   clearTimeout(searchTimer);
@@ -321,7 +318,7 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault(); $("commandMenu").showModal(); return;
   }
-  if ($("commandMenu").open) return;
+  if ($("commandMenu").open || $("deleteBookDialog").open) return;
   if (e.key === "Escape" && state.job && (state.job.status === "running" || state.job.status === "pending")) {
     api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" }).catch(() => {});
   }

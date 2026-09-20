@@ -255,8 +255,8 @@ h1{font-family:var(--fd);font-size:28px;line-height:1.2;margin:0;letter-spacing:
 }
 .book-actions b{font-family:var(--fd);letter-spacing:var(--track)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:20px 16px}
-[data-theme="swiss"] .grid{gap:1px;background:var(--border);padding:1px}
-[data-theme="swiss"] .grid>*{background:var(--bg);padding:8px}
+[data-theme="swiss"] .grid{gap:0;background:var(--bg);padding:0;border-top:1px solid var(--border);border-left:1px solid var(--border)}
+[data-theme="swiss"] .grid>*{background:var(--bg);padding:8px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)}
 .card{cursor:pointer;text-align:left;border:0;background:transparent;padding:0;font:inherit;color:inherit}
 .cover{
   position:relative;aspect-ratio:3/4.2;border-radius:var(--radius-sm);overflow:hidden;
@@ -416,3 +416,15 @@ html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--faint) 45%,tra
 .book-open:focus-visible,.book-more:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
 .book-footer .cm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px}
+
+.range-row{margin-top:12px;margin-bottom:10px}
+.book-actions[popover]{overflow-x:hidden;box-sizing:border-box}
+.book-actions[popover]>b,.book-actions[popover]>.btn{min-width:0;max-width:100%;box-sizing:border-box}
+.book-actions[popover]>b{display:block;width:100%;flex:none}
+[data-theme="darkroom"][data-mode="dark"] .sidebar{background:var(--bg)}
+[data-theme="paper"]{--accent:#62584B;--accent-soft:#E8E2D8;--ok:#617064;--warn:#8D7348}
+[data-theme="paper"] .cover img{filter:saturate(.65)}
+.delete-book-dialog{width:min(420px,calc(100vw - 48px));box-sizing:border-box;padding:26px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.delete-book-dialog::backdrop{background:rgb(0 0 0 / .35)}
+.delete-book-dialog p{overflow-wrap:anywhere;line-height:1.6}
+.dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}

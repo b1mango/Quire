@@ -223,6 +223,11 @@ def extract_page_url_list(html: str) -> list[str]:
 
 def extract_script_images(html: str) -> list[str]:
     """脚本内嵌清单的统一入口,返回两种藏法中更长的一份。"""
+    from .tencent import extract_tencent_images
+
+    tencent = extract_tencent_images(html)
+    if tencent:
+        return tencent
     smh = extract_smh_reader_images(html)
     page_urls = extract_page_url_list(html)
     return smh if len(smh) >= len(page_urls) else page_urls

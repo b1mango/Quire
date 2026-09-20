@@ -77,3 +77,24 @@ document.addEventListener("keydown", event => {
     event.preventDefault(); event.stopImmediatePropagation(); closeBookMenu();
   }
 }, true);
+
+let pendingDeleteBook = null;
+$("bookDeleteBtn").addEventListener("click", () => {
+  if (!state.selectedBook) return;
+  pendingDeleteBook = state.selectedBook;
+  closeBookMenu(false);
+  $("deleteBookMessage").textContent = `删除《${pendingDeleteBook.title}》？`;
+  $("deleteBookError").textContent = "";
+  $("deleteBookDialog").showModal();
+  $("deleteBookCancel").focus();
+});
+$("deleteBookCancel").addEventListener("click", () => $("deleteBookDialog").close());
+$("deleteBookConfirm").addEventListener("click", async () => {
+  if (!pendingDeleteBook) return;
+  $("deleteBookConfirm").disabled = true;
+  try {
+    await api(`/api/books/${pendingDeleteBook.id}`, { method: "DELETE" });
+    $("deleteBookDialog").close(); pendingDeleteBook = null; loadBooks();
+  } catch (err) { $("deleteBookError").textContent = err.message; }
+  finally { $("deleteBookConfirm").disabled = false; }
+});

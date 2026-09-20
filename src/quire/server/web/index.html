@@ -101,6 +101,7 @@
                   </div>
                 </div>
 
+                <div class="hint" id="ocrAvailability" role="status"></div>
                 <div class="field" id="rangeField" hidden>
                   <label for="rangeExpr">章节范围</label>
                   <input class="input" id="rangeExpr" placeholder="留空为全部；如 1-10,15-20,103 或 200-" spellcheck="false" autocomplete="off">
@@ -271,6 +272,13 @@ quire manga URL --core --site example.com</pre>
   </div>
 </main>
 
+<dialog id="deleteBookDialog" class="delete-book-dialog" aria-labelledby="deleteBookTitle">
+  <h2 id="deleteBookTitle">删除书籍</h2>
+  <p id="deleteBookMessage"></p>
+  <p class="hint">成品文件会一起删除，此操作无法撤销。</p>
+  <p id="deleteBookError" role="alert"></p>
+  <div class="dialog-actions"><button class="btn" id="deleteBookCancel">保留</button><button class="btn danger" id="deleteBookConfirm">删除</button></div>
+</dialog>
 <dialog id="commandMenu" class="command-menu">
   <form method="dialog"><button class="btn ghost" aria-label="关闭命令面板">关闭 · Esc</button></form>
   <h2>前往</h2>
@@ -280,8 +288,8 @@ quire manga URL --core --site example.com</pre>
 </dialog>
 <script src="/static/capture.js"></script>
 <script src="/static/run-events.js"></script>
-<script src="/static/library.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/library.js"></script>
 <script src="/static/chapters.js"></script>
 <script src="/static/follows.js"></script>
 </body>

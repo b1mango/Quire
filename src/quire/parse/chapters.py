@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 from ..text.clean import chapter_number, has_chapter_mark
 from ..utils.urls import is_usable_url, route_fragment
 from ..utils.urls import join_document_url as join_url
+from .catalog_links import is_linked_reader
 from .minidom import Document, Node
 
 #: 明确不是章节的导航链接文本。
@@ -130,7 +131,8 @@ def discover_chapters(
     weak: list[ChapterLink] = []
     for anchor in anchors:
         url = join_url(base, anchor.get("href") or "")
-        if not url or not is_usable_url(url) or not _same_origin(base_url, url):
+        linked_reader = is_linked_reader(base_url, url or "")
+        if not url or not is_usable_url(url) or not (_same_origin(base_url, url) or linked_reader):
             continue
         if _namespace_link(url):
             continue
@@ -154,7 +156,11 @@ def discover_chapters(
     chosen = strong if len(strong) >= 2 else weak
     # 最新章节通常在完整目录前重复出现；以后面的阅读清单位置为准。
     chosen = list({link.url: link for link in reversed(chosen)}.values())[::-1]
-    return tuple(_sort_chapters(_modal_group(chosen))[:limit])
+    grouped = _modal_group(chosen)
+    if grouped and all(is_linked_reader(base_url, link.url) for link in grouped):
+        grouped.sort(key=lambda link: int(urlsplit(link.url).path.rsplit("/", 1)[-1]))
+        return tuple(grouped[:limit])
+    return tuple(_sort_chapters(grouped)[:limit])
 
 
 def find_next_page(

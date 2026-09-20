@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quire-local"
-version = "1.4.1"
+version = "1.4.2"
 description = "Quire local manga and novel collector"
 requires-python = ">=3.12"
 dependencies = []

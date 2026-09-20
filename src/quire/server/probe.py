@@ -213,10 +213,16 @@ def _inspect(
     if kept and kind == "novel":
         return ProbeResult("novel", title, 1, page.url)
     script_urls = extract_script_images(page.text) if kind != "novel" else []
+    if "ac.qq.com/ComicView/" in page.url and not script_urls:
+        raise ParseError("腾讯漫画正文清单未能解析，不能将装饰图作为正文")
     if kept or script_urls:
         # 与 discover_page 同一规则:脚本内嵌清单更长时以它为准(SPA 只渲染当前页)。
         script_urls = extract_script_images(page.text)
-        urls = script_urls if len(script_urls) > len(kept) else [c.url for c in kept]
+        urls = (
+            script_urls
+            if script_urls and (len(script_urls) > len(kept) or "ac.qq.com/ComicView/" in page.url)
+            else [c.url for c in kept]
+        )
         return ProbeResult("manga", title, len(urls), page.url, sample_urls=tuple(urls[:3]))
     raise ParseError(
         "这个链接没找到可用的正文或图片",

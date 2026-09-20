@@ -43,6 +43,13 @@ def discover_page(
                 node.parent.children.remove(node)
     title_node = doc.select_one("h1") or doc.select_one("title")
     title = safe_filename(title_node.text if title_node else "comic", max_len=80)
+    if "ac.qq.com/ComicView/" in page.url:
+        from .parse.tencent import reader_data
+
+        data = reader_data(page.text)
+        chapter = data.get("chapter") if data else None
+        if isinstance(chapter, dict):
+            title = safe_filename(str(chapter.get("cTitle") or title), max_len=80)
     candidates = collect(
         doc, doc.effective_base() or page.url, selector=opts.selector, attrs=opts.attrs
     )
@@ -50,7 +57,11 @@ def discover_page(
     # 脚本内嵌的整章清单(看漫画手机版 packer / Nuxt page_url)比 DOM 更全时采用它:
     # SPA 阅读器的 DOM 只渲染当前页,而光标图等装饰 <img> 会混进收集结果。
     script_urls = extract_script_images(page.text)
-    if len(script_urls) > len(kept):
+    if "ac.qq.com/ComicView/" in page.url and not script_urls:
+        raise NoImagesError(
+            url, hint="腾讯漫画正文清单未能解析，已停止，避免把装饰图导出为占位页。"
+        )
+    if script_urls and (len(script_urls) > len(kept) or "ac.qq.com/ComicView/" in page.url):
         referer = doc.base_url or page.url
         script_candidates = [
             Candidate(url, index, "script", referer) for index, url in enumerate(script_urls)
