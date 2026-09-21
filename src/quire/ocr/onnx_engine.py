@@ -12,14 +12,15 @@ det 零检出时退回预处理的投影切行（§6.7 的兜底路径）。
 from __future__ import annotations
 
 import importlib.util
-from io import BytesIO
+from contextlib import closing
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 from PIL import Image
 
-from ..errors import UnsupportedError
+from ..errors import FetchError, UnsupportedError
+from ..image.codec import check_image_size, decoded_image
 from .base import OcrLine, OcrPage
 from .models import check_models, manual_hint
 from .preprocess import prepare, split_lines
@@ -92,6 +93,7 @@ def _resize_det(image: Image.Image) -> tuple[Image.Image, float]:
 def _to_tensor(np: ModuleType, image: Image.Image, size: tuple[int, int] | None = None) -> Any:
     """RGB 图转 ``1×3×H×W`` 的 (x-0.5)/0.5 归一化张量。"""
     if size is not None:
+        check_image_size(size)
         image = image.resize(size, Image.Resampling.BILINEAR)
     array = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
     array = (array - 0.5) / 0.5
@@ -160,16 +162,14 @@ class OnnxEngine:
 
     def recognize(self, image_bytes: bytes) -> OcrPage:
         try:
-            image = Image.open(BytesIO(image_bytes))
-            image.load()
-        except Exception as exc:
-            raise OcrEngineError(f"OCR 输入不是可解码的图片（{type(exc).__name__}）") from exc
-        prepared = prepare(image)
-        boxes = self._detect(prepared)
-        if not boxes:
-            boxes = split_lines(prepared)
-        lines = [line for box in boxes if (line := self._recognize_line(prepared, box))]
-        return OcrPage(tuple(lines), self.name)
+            with decoded_image(image_bytes) as (image, _), closing(prepare(image)) as prepared:
+                boxes = self._detect(prepared)
+                if not boxes:
+                    boxes = split_lines(prepared)
+                lines = [line for box in boxes if (line := self._recognize_line(prepared, box))]
+                return OcrPage(tuple(lines), self.name)
+        except FetchError as exc:
+            raise OcrEngineError(f"OCR 输入不是可解码或尺寸合规的图片：{exc}") from exc
 
     # ---------------------------------------------------------- det
     def _detect(self, image: Image.Image) -> list[tuple[int, int, int, int]]:

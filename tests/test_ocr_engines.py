@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from quire.errors import UnsupportedError
 from quire.ocr import capture
@@ -14,6 +16,13 @@ from quire.ocr.base import OcrLine, OcrPage
 from quire.ocr.capture import OcrRunner
 from quire.ocr.tesseract import OcrEngineError, TesseractEngine, _parse_tsv
 from quire.parse.minidom import parse
+
+
+def image_bytes() -> bytes:
+    with Image.new("RGB", (100, 120), "white") as image, BytesIO() as buffer:
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
 
 TSV = (
     "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
@@ -63,8 +72,8 @@ def test_recognize_pipes_image_and_parses_tsv(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     engine = TesseractEngine(executable="/usr/bin/tesseract")
-    page = engine.recognize(b"image-bytes")
-    assert seen["input"] == b"image-bytes"
+    page = engine.recognize(image_bytes())
+    assert seen["input"] == image_bytes()
     assert page.engine == "tesseract" and len(page.lines) == 3
     cmd = seen["cmd"]
     assert isinstance(cmd, list) and "chi_sim+eng" in cmd and "tsv" in cmd
@@ -76,21 +85,21 @@ def test_recognize_failures_become_engine_errors(monkeypatch: pytest.MonkeyPatch
     )
     engine = TesseractEngine(executable="tesseract")
     with pytest.raises(OcrEngineError, match="bad image"):
-        engine.recognize(b"x")
+        engine.recognize(image_bytes())
 
     def timeout(*a: object, **k: object) -> _Proc:
         raise subprocess.TimeoutExpired(cmd="tesseract", timeout=1)
 
     monkeypatch.setattr(subprocess, "run", timeout)
     with pytest.raises(OcrEngineError, match="超时"):
-        engine.recognize(b"x")
+        engine.recognize(image_bytes())
 
     def missing(*a: object, **k: object) -> _Proc:
         raise OSError("no such file")
 
     monkeypatch.setattr(subprocess, "run", missing)
     with pytest.raises(OcrEngineError, match="无法运行"):
-        engine.recognize(b"x")
+        engine.recognize(image_bytes())
 
 
 class FakeEngine:

@@ -10,8 +10,11 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+from contextlib import closing
+from io import BytesIO
 
-from ..errors import QuireError
+from ..errors import FetchError, QuireError
+from ..image.codec import decoded_image
 from .base import OcrLine, OcrPage
 
 #: 单页识别上限（秒）：扫描页正常 1-3 秒，超时视为引擎故障。
@@ -49,6 +52,17 @@ class TesseractEngine:
     def recognize(self, image: bytes) -> OcrPage:
         if self.executable is None:
             raise OcrEngineError("系统没有 tesseract", hint="安装 tesseract 或改用 onnx 引擎")
+        try:
+            # Pass only the validated first frame; no resizing/EXIF rotation so TSV
+            # coordinates retain the input pixel geometry.
+            with decoded_image(image) as (frame, _), BytesIO() as buffer:
+                mode = "RGBA" if "A" in frame.getbands() or "transparency" in frame.info else "RGB"
+                with closing(frame.convert(mode)) as png:
+                    png.info.clear()
+                    png.save(buffer, format="PNG")
+                image = buffer.getvalue()
+        except FetchError as exc:
+            raise OcrEngineError(f"OCR 输入不是可解码或尺寸合规的图片：{exc}") from exc
         try:
             proc = subprocess.run(
                 [

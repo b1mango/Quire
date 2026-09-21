@@ -24,20 +24,22 @@ class ImageInfo:
     frames: int
 
 
-def _check_size(image: Image.Image) -> None:
-    width, height = image.size
+def check_image_size(size: tuple[int, int]) -> None:
+    """Reject dimensions before decoding or allocating transformed pixels."""
+    width, height = size
     if not (0 < width <= MAX_DIM and 0 < height <= MAX_DIM and width * height <= MAX_PIXELS):
         raise FetchError("Image exceeds the allowed dimensions or pixel count")
 
 
 @contextmanager
-def _decoded_image(data: bytes) -> Iterator[tuple[Image.Image, ImageInfo]]:
+def decoded_image(data: bytes) -> Iterator[tuple[Image.Image, ImageInfo]]:
+    """Yield a validated first frame without changing orientation or coordinates."""
     with ExitStack() as stack:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("error", Image.DecompressionBombWarning)
                 with BytesIO(data) as buffer, closing(Image.open(buffer)) as probe:
-                    _check_size(probe)
+                    check_image_size(probe.size)
                     info = ImageInfo(
                         (probe.format or "").lower(),
                         probe.width,
@@ -48,9 +50,9 @@ def _decoded_image(data: bytes) -> Iterator[tuple[Image.Image, ImageInfo]]:
                 # verify invalidates some decoders; load from a fresh, owned stream.
                 buffer = stack.enter_context(BytesIO(data))
                 image = stack.enter_context(closing(Image.open(buffer)))
-                _check_size(image)
+                check_image_size(image.size)
                 image.load()
-                _check_size(image)
+                check_image_size(image.size)
         except FetchError:
             raise
         except Exception:
@@ -60,7 +62,7 @@ def _decoded_image(data: bytes) -> Iterator[tuple[Image.Image, ImageInfo]]:
 
 def inspect_image(data: bytes) -> ImageInfo:
     """Validate decoding and normalization; report the oriented first-frame size."""
-    with _decoded_image(data) as (source, info), closing(_normalize_checked(source)) as image:
+    with decoded_image(data) as (source, info), closing(_normalize_checked(source)) as image:
         return ImageInfo(info.format, image.width, image.height, info.frames)
 
 
@@ -131,7 +133,7 @@ def _normalize(image: Image.Image) -> Image.Image:
 @contextmanager
 def normalized_image(data: bytes) -> Iterator[Image.Image]:
     """Yield an owned, oriented, opaque first frame; close it on context exit."""
-    with _decoded_image(data) as (source, _):
+    with decoded_image(data) as (source, _):
         with closing(_normalize_checked(source)) as image:
             yield image
 

@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from ..errors import ConfigError
 from ..image.options import PRESETS
+from ..workspace import atomic_output
 
 THEMES = ("paper:light", "darkroom:light", "darkroom:dark", "swiss:light")
 MAX_RATE = 5.0  # 应用默认策略上限，并非站点承载能力测量值
@@ -108,6 +108,5 @@ def save(path: Path, settings: UiSettings) -> None:
     settings.output_path.mkdir(parents=True, exist_ok=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(asdict(settings), ensure_ascii=False, indent=2) + "\n"
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(payload, "utf-8")
-    os.replace(temporary, path)
+    with atomic_output(path, overwrite=True) as handle:
+        handle.write(payload.encode("utf-8"))

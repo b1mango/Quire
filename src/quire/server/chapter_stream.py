@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,9 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .job_state import Job
+
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -94,7 +98,13 @@ class ChapterTracker:
         finally:
             db.close()
 
+    def sweep_safely(self) -> None:
+        try:
+            self.sweep()
+        except Exception:
+            _LOG.exception("job %s chapter sweep failed", self.job.id)
+
     async def watch(self) -> None:
         while True:
             await asyncio.sleep(0.3)
-            self.sweep()
+            self.sweep_safely()

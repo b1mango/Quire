@@ -9,9 +9,12 @@
 
 from __future__ import annotations
 
+from math import sqrt
 from typing import cast
 
 from PIL import Image, ImageFilter
+
+from ..image.codec import MAX_DIM, MAX_PIXELS, check_image_size
 
 #: 短边放大的目标（项目设计.md §6.7）。
 MIN_SHORT_EDGE = 1000
@@ -85,13 +88,23 @@ def denoise(image: Image.Image) -> Image.Image:
 
 
 def upscale(image: Image.Image, min_short_edge: int = MIN_SHORT_EDGE) -> Image.Image:
-    """短边不足 ``min_short_edge`` 时按比例放大；已经足够则原样返回。"""
+    """按比例放大短边，同时限制目标像素与最长边；不缩小原图。"""
+    check_image_size(image.size)
     width, height = image.size
     short = min(width, height)
     if short >= min_short_edge or short == 0:
         return image
-    factor = min_short_edge / short
-    return image.resize((round(width * factor), round(height * factor)), Image.Resampling.LANCZOS)
+    factor = min(
+        min_short_edge / short,
+        sqrt(MAX_PIXELS / (width * height)),
+        MAX_DIM / max(width, height),
+    )
+    # Floor keeps rounding from crossing the allocation budget.
+    size = (int(width * factor), int(height * factor))
+    check_image_size(size)
+    if size == image.size:
+        return image
+    return image.resize(size, Image.Resampling.LANCZOS)
 
 
 def _ink_profile(image: Image.Image) -> list[int]:
@@ -169,4 +182,5 @@ def split_lines(image: Image.Image) -> list[tuple[int, int, int, int]]:
 
 def prepare(image: Image.Image) -> Image.Image:
     """完整预处理流水线（项目设计.md §6.7 的顺序）。"""
+    check_image_size(image.size)
     return deskew(upscale(denoise(enhance_contrast(image))))

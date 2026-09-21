@@ -134,7 +134,7 @@ def test_recognize_decodes_ctc_with_blank_and_repeats() -> None:
 
 def test_recognize_rejects_undecodable_bytes() -> None:
     engine = make_engine()
-    with pytest.raises(OcrEngineError, match="不是可解码的图片"):
+    with pytest.raises(OcrEngineError, match="不是可解码或尺寸合规的图片"):
         engine.recognize(b"not an image")
 
 

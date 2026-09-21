@@ -150,3 +150,50 @@ def test_thumbnail_identity_is_scoped_to_ledger_task(tmp_path):
         identity = event["url"].rsplit("/", 1)[-1]
         assert (tmp_path / "thumbs" / f"p{identity}.jpg").exists()
     assert len(list((tmp_path / "thumbs").iterdir())) == 2
+
+
+def test_concurrent_settings_saves_use_distinct_staging_files(tmp_path, monkeypatch):
+    import os
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from quire import workspace
+
+    path = tmp_path / "settings.json"
+    settings_mod.save(path, settings_mod.defaults(tmp_path))
+    original_replace = os.replace
+    barrier = threading.Barrier(2)
+    staged = []
+
+    def synchronized_replace(source, destination):
+        staged.append(source)
+        barrier.wait(timeout=5)
+        original_replace(source, destination)
+
+    monkeypatch.setattr(workspace.os, "replace", synchronized_replace)
+    candidates = [
+        settings_mod.UiSettings(str(tmp_path / "books"), theme=theme)
+        for theme in ("darkroom:dark", "swiss:light")
+    ]
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(lambda settings: settings_mod.save(path, settings), candidates))
+    assert len(set(staged)) == 2
+    assert settings_mod.load(path, tmp_path) in candidates
+    assert all(not stage.exists() for stage in staged)
+
+
+def test_settings_failed_replace_preserves_original_and_cleans_staging(tmp_path, monkeypatch):
+    from quire import workspace
+
+    path = tmp_path / "settings.json"
+    original = settings_mod.defaults(tmp_path)
+    settings_mod.save(path, original)
+
+    def fail_replace(*args):
+        raise OSError("disk failure")
+
+    monkeypatch.setattr(workspace.os, "replace", fail_replace)
+    with pytest.raises(OSError):
+        settings_mod.save(path, settings_mod.UiSettings(str(tmp_path), theme="swiss:light"))
+    assert settings_mod.load(path, tmp_path) == original
+    assert not list(tmp_path.glob(".settings.json.*"))

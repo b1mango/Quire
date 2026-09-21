@@ -98,7 +98,7 @@ class JobManager:
         if queued:
             # 还在排队：直接落定，不占执行槽
             job.cancel()
-            self._settle(job, "cancelled", "已取消", pump=False)
+            self._settle(job, "cancelled", "已取消")
         else:
             job.cancel()
         return job
@@ -131,7 +131,7 @@ class JobManager:
                     start.append((job, settings))
             self._queue = kept
         for job in settle:
-            self._settle(job, "cancelled", "已取消", pump=False)
+            self._settle(job, "cancelled", "已取消")
         for job, settings in start:
             threading.Thread(
                 target=self._thread_main, args=(job, settings), daemon=True, name=f"quire-{job.id}"
@@ -140,12 +140,20 @@ class JobManager:
     # ---------------------------------------------------------- 执行线程
 
     def _thread_main(self, job: Job, settings: UiSettings) -> None:
-        # 渲染任务串行：等待期间任务仍是 pending，不占浏览器
-        if job.spec.render:
-            with self._render_lock:
+        try:
+            # 渲染任务串行：等待期间任务仍是 pending，不占浏览器
+            if job.spec.render:
+                with self._render_lock:
+                    self._execute(job, settings)
+            else:
                 self._execute(job, settings)
-        else:
-            self._execute(job, settings)
+        except Exception as exc:
+            _LOG.exception("job %s finalization failed", job.id)
+            self._settle(job, "failed", f"任务失败：{type(exc).__name__}")
+        finally:
+            with self._lock:
+                self._active.pop(job.id, None)
+            self._pump()
 
     def _execute(self, job: Job, settings: UiSettings) -> None:
         with job.condition:
@@ -218,8 +226,6 @@ class JobManager:
         message: str,
         hint: str | None = None,
         done_payload: dict[str, JsonValue] | None = None,
-        *,
-        pump: bool = True,
     ) -> None:
         with job.condition:
             job.status = status
@@ -235,10 +241,6 @@ class JobManager:
             job.emit("failed", {"message": message, "hint": hint})
         with job.condition:
             job.condition.notify_all()
-        with self._lock:
-            self._active.pop(job.id, None)
-        if pump:
-            self._pump()
 
     async def _capture(
         self, job: Job, settings: UiSettings
@@ -250,7 +252,7 @@ class JobManager:
         finally:
             watcher.cancel()
             await asyncio.gather(watcher, return_exceptions=True)
-            chapters.sweep()
+            chapters.sweep_safely()
 
     async def _run_capture(
         self, job: Job, settings: UiSettings, chapters: ChapterTracker
@@ -372,7 +374,10 @@ class JobManager:
         finally:
             poll.cancel()
             await asyncio.gather(poll, return_exceptions=True)
-            sweep_thumbs()  # 部分成功/保留原图时补最后一轮；缓存已清理则空转
+            try:
+                sweep_thumbs()  # 部分成功/保留原图时补最后一轮
+            except Exception:
+                _LOG.exception("job %s final thumbnail sweep failed", job.id)
 
     def _register(self, job: Job, result: MangaResult | NovelResult) -> library.Book:
         return register_book(self.data_root, self.thumbs_root, job.id, job.spec, result)

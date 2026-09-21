@@ -123,41 +123,41 @@ class ChapterSink:
         self.job.emit("progress", {"done": done, "failed": 0, "total": total})
 
 
+def _read_counts(path: Path, started: str, current: str) -> tuple[tuple[int, int, int] | None, str]:
+    """Create, query and close the connection on the same worker thread."""
+    connection = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=0.1)
+    try:
+        return task_counts(connection, started, current)
+    finally:
+        connection.close()
+
+
 async def poll_job(job: Job, workdir: Path, thumbs: dict[str, Any], thumbs_root: Path) -> None:
     """轮询任务账本（只读）推送进度，漫画每完成一页补一张缩略图。"""
     started = datetime.now(UTC).isoformat()
     db_path = workdir / "ledger.db"
-    connection: sqlite3.Connection | None = None
-    try:
-        while True:
-            await asyncio.sleep(0.4)
-            if connection is None:
-                if not db_path.exists():
-                    continue
-                connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
-            try:
-                counts, thumbs["task_id"] = task_counts(connection, started, thumbs["task_id"])
-            except sqlite3.Error:
-                continue
-            if counts is not None:
-                done, failed, total = counts
-                if (done, failed, total) != (job.done, job.failed_pages, job.total):
-                    with job.condition:
-                        job.done, job.failed_pages, job.total = done, failed, total
-                    job.emit("progress", {"done": done, "failed": failed, "total": total})
-            task_id = thumbs["task_id"]
-            if job.spec.kind == "manga" and task_id:
-                pages = await asyncio.to_thread(
-                    make_thumbs,
-                    workdir / "cache" / task_id,
-                    thumbs_root / job.id,
-                    thumbs["done"],
-                    task_id,
-                )
-                for page in pages:
-                    job.emit(
-                        "thumb", thumb_event(workdir / "cache" / task_id, job.id, task_id, page)
-                    )
-    finally:
-        if connection is not None:
-            connection.close()
+    while True:
+        await asyncio.sleep(0.4)
+        try:
+            counts, thumbs["task_id"] = await asyncio.to_thread(
+                _read_counts, db_path, started, thumbs["task_id"]
+            )
+        except sqlite3.Error:
+            continue
+        if counts is not None:
+            done, failed, total = counts
+            if (done, failed, total) != (job.done, job.failed_pages, job.total):
+                with job.condition:
+                    job.done, job.failed_pages, job.total = done, failed, total
+                job.emit("progress", {"done": done, "failed": failed, "total": total})
+        task_id = thumbs["task_id"]
+        if job.spec.kind == "manga" and task_id:
+            pages = await asyncio.to_thread(
+                make_thumbs,
+                workdir / "cache" / task_id,
+                thumbs_root / job.id,
+                thumbs["done"],
+                task_id,
+            )
+            for page in pages:
+                job.emit("thumb", thumb_event(workdir / "cache" / task_id, job.id, task_id, page))
