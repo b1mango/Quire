@@ -7,6 +7,7 @@ import math
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from ..errors import BlockedError, ConfigError, FetchError, QuireError, UnsupportedError
 from ..utils.urls import is_usable_url
@@ -47,12 +48,21 @@ class RenderOptions:
     timeout: float = 30
     max_scrolls: int = 100
     settle: float = 1.0
+    referer: str = ""
 
     def __post_init__(self) -> None:
         if type(self.native) is not bool or not isinstance(self.cdp_endpoint, str):
             raise ConfigError("浏览器模式参数类型错误")
         if self.cdp_endpoint:
             validate_endpoint(self.cdp_endpoint)
+        if self.referer:
+            parts = urlsplit(self.referer)
+            if (
+                parts.scheme not in {"http", "https"}
+                or not parts.hostname
+                or not is_usable_url(self.referer)
+            ):
+                raise ConfigError("渲染 Referer 须为无凭据 HTTP(S) 地址")
         if (
             not math.isfinite(self.timeout)
             or not 0 < self.timeout <= 300
@@ -72,6 +82,14 @@ async def _evaluate(cdp: Cdp, session: str, expression: str) -> Any:
     if "exceptionDetails" in reply:
         raise FetchError("动态页面脚本执行失败")
     return reply.get("result", {}).get("value")
+
+
+def _navigate_params(url: str, options: RenderOptions) -> dict[str, str]:
+    # Referer 门控的站点（如正文域校验来源页）需要把 --referer 带进浏览器导航。
+    params = {"url": url}
+    if options.referer:
+        params["referrer"] = options.referer
+    return params
 
 
 def _challenge_dom(html: str) -> bool:
@@ -202,7 +220,7 @@ async def render_page(
                     snapshot: Any = None
                     for retried in (False, True):
                         navigation = await cdp.call(
-                            "Page.navigate", {"url": page.url}, session_id=session
+                            "Page.navigate", _navigate_params(page.url, options), session_id=session
                         )
                         network.check()
                         if navigation.get("errorText"):
@@ -278,7 +296,9 @@ async def _render_native(
                 cdp, session, tree["frameTree"]["frame"]["id"], page, client.max_bytes
             ) as network:
                 network.catalogue_script = catalogue_script(page.url)
-                navigation = await cdp.call("Page.navigate", {"url": page.url}, session_id=session)
+                navigation = await cdp.call(
+                    "Page.navigate", _navigate_params(page.url, options), session_id=session
+                )
                 if navigation.get("errorText"):
                     raise FetchError("真实浏览器导航失败")
                 await _scroll(cdp, session, network, options, content)
@@ -286,7 +306,6 @@ async def _render_native(
                 network.check()
                 if not isinstance(snapshot, dict) or not is_usable_url(snapshot.get("url", "")):
                     raise FetchError("真实浏览器返回无效 DOM")
-                from urllib.parse import urlsplit
 
                 if urlsplit(snapshot["url"]).hostname not in network.hosts:
                     raise FetchError("真实浏览器导航超出站点范围")

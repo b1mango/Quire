@@ -277,3 +277,46 @@ def test_short_completed_request_restarts_stability_window(monkeypatch):
         assert now() - net.last_activity >= 0.2
 
     asyncio.run(run())
+
+
+def test_render_navigate_carries_referer(monkeypatch):
+    process = AsyncMock()
+    process.__aenter__.return_value = process
+    cdp = AsyncMock()
+    cdp.__aenter__.return_value = cdp
+    navigations = []
+
+    async def call(method, params=None, **kwargs):
+        if method == "Target.createTarget":
+            return {"targetId": "target"}
+        if method == "Target.attachToTarget":
+            return {"sessionId": "session"}
+        if method == "Page.getFrameTree":
+            return {"frameTree": {"frame": {"id": "frame"}}}
+        if method == "Page.navigate":
+            navigations.append(params)
+            return {}
+        if method == "Runtime.evaluate":
+            return {"result": {"value": {"url": "https://example.test/", "html": "x" * 20}}}
+        return {}
+
+    cdp.call.side_effect = call
+    monkeypatch.setattr(browser, "find_chrome", lambda _: "/fake")
+    monkeypatch.setattr(browser, "ChromeProcess", lambda _: process)
+    monkeypatch.setattr(browser, "Cdp", lambda _: cdp)
+    monkeypatch.setattr(browser, "_scroll", AsyncMock())
+    page = Response("https://example.test/", 200, {}, b"", 0)
+
+    asyncio.run(render_page(page, AsyncFetcher(), RenderOptions(referer="https://ref.test/start")))
+    assert navigations and navigations[0]["referrer"] == "https://ref.test/start"
+
+    navigations.clear()
+    asyncio.run(render_page(page, AsyncFetcher(), RenderOptions()))
+    assert navigations and "referrer" not in navigations[0]
+
+
+def test_render_options_referer_validate():
+    with pytest.raises(ConfigError):
+        RenderOptions(referer="not a url")
+    with pytest.raises(ConfigError):
+        RenderOptions(referer="https://user:pw@example.test/")

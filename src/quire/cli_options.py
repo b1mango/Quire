@@ -114,6 +114,7 @@ def render_options(
         timeout=30 if args.render_timeout is None else args.render_timeout,
         max_scrolls=100 if args.max_scrolls is None else args.max_scrolls,
         settle=1 if args.render_wait is None else args.render_wait,
+        referer=getattr(args, "referer", "") or "",
     )
 
 
