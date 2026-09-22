@@ -11,10 +11,12 @@ from quire.sites.cleanup import clean_document
 def test_ready_script_dispatch_by_page_kind():
     assert "quire-catalogue" in ready_script("https://8book.com/novelbooks/12345/")
     assert "#text" in ready_script("https://8book.com/read/12345/?2702643")
+    # 伪装域续页(分页渲染直接导航过去)也要就绪判定
+    assert "#text" in ready_script("https://finance.binaccount.com/read/12345/?2702643_2")
     assert ready_script("https://8book.com/read/12345/") is None  # 无章节 id 不干预
     assert ready_script("https://8book.com/novelbooks/12345/1/") is None
     assert ready_script("https://evil8book.com/novelbooks/12345/") is None
-    assert ready_script("https://finance.binaccount.com/read/12345/?2702643") is None
+    assert ready_script("https://finance.binaccount.com/books/12345/") is None
 
 
 def test_materialized_catalogue_discovers_same_origin_chapters_in_order():
@@ -36,10 +38,13 @@ def test_materialized_catalogue_discovers_same_origin_chapters_in_order():
 def test_allowed_hosts_admits_content_domain_only_for_8book():
     hosts = allowed_hosts("https://8book.com/novelbooks/12345/")
     assert "finance.binaccount.com" in hosts
-    assert "8book.com" in hosts
+    assert "www.8book.com" in hosts
     assert "evil.binaccount.com" not in hosts
     chapter = allowed_hosts("https://8book.com/read/12345/?2702643")
     assert "finance.binaccount.com" in chapter
+    # 伪装域续页:放行脚本来源域
+    mirror = allowed_hosts("https://finance.binaccount.com/read/12345/?2702643_2")
+    assert "8book.com" in mirror and "www.8book.com" in mirror
     other = allowed_hosts("https://example.test/")
     assert "finance.binaccount.com" not in other
 
@@ -102,6 +107,25 @@ def test_clean_document_leaves_other_sites_untouched():
     doc = parse(html)
     clean_document(doc, "https://example.test/read/1/?2")
     assert "上一篇" in doc.text and "8ВｏΟk·СΟm" in doc.text
+
+
+def test_navigation_referer_only_for_content_mirror_pages():
+    assert (
+        eightbook.navigation_referer("https://finance.binaccount.com/read/98986/?2702787_2")
+        == "https://8book.com/"
+    )
+    assert eightbook.navigation_referer("https://8book.com/read/98986/?2702787") is None
+    assert eightbook.navigation_referer("https://finance.binaccount.com/other/") is None
+    assert eightbook.navigation_referer("https://example.test/read/1/?2") is None
+
+
+def test_decoy_marker_catches_tax_blog_only_on_mirror_reads():
+    url = "https://finance.binaccount.com/read/98986/?2702787_2"
+    assert eightbook.decoy_marker(url, "<html><title>稅美人</title></html>") is not None
+    assert eightbook.decoy_marker(url, '<div id="text" class="text"></div>') is None
+    # 非阅读页地址不判定
+    assert eightbook.decoy_marker("https://finance.binaccount.com/", "稅美人") is None
+    assert eightbook.decoy_marker("https://example.test/read/1/?2", "稅美人") is None
 
 
 def test_no_plain_http_rewrite():

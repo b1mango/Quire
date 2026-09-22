@@ -31,6 +31,7 @@ from ..parse.minidom import Document
 
 _HOST = "8book.com"
 _CONTENT_HOST = "finance.binaccount.com"
+_REFERER = "https://8book.com/"
 _BOOK_PATH = re.compile(r"^/novelbooks/(\d+)/?$")
 
 #: 目录物化脚本:把指向伪装域的章节链接重建为同源 /read/ 锚点容器。
@@ -81,25 +82,33 @@ CHAPTER_READY_SCRIPT = r"""(() => {
 
 
 def ready_script(url: str) -> str | None:
-    """目录页返回物化脚本,章节页返回就绪脚本;其他页面不干预。"""
+    """目录页返回物化脚本,章节页(含伪装域续页)返回就绪脚本;其他页面不干预。"""
     parts = urlsplit(url)
-    if (parts.hostname or "").lower() != _HOST:
-        return None
-    if _BOOK_PATH.match(parts.path) is not None:
+    host = (parts.hostname or "").lower()
+    if host == _HOST and _BOOK_PATH.match(parts.path) is not None:
         return CATALOGUE_SCRIPT
-    if _CHAPTER_PATH.match(parts.path) is not None and parts.query:
+    if (
+        host in {_HOST, _CONTENT_HOST}
+        and _CHAPTER_PATH.match(parts.path) is not None
+        and parts.query
+    ):
         return CHAPTER_READY_SCRIPT
     return None
 
 
 def allowed_hosts(url: str) -> frozenset[str]:
-    """真实浏览器渲染 8book 页面时放行的额外主机。
+    """真实浏览器渲染时放行的额外主机。
 
-    ``www.8book.com``:阅读页的 jQuery/bootstrap 从该域加载,缺了它页内
-    取正文的脚本根本不会执行;``finance.binaccount.com``:正文伪装域。
+    8book.com 页面:``www.8book.com``(阅读页 jQuery/bootstrap 来源,缺了它
+    页内取正文的脚本根本不会执行)与 ``finance.binaccount.com``(正文伪装域)。
+    伪装域阅读页(分页续页会被直接导航到这里):脚本反指 8book.com/www,
+    缺一页内脚本同样不执行。
     """
-    if (urlsplit(url).hostname or "").lower() == _HOST:
+    host = (urlsplit(url).hostname or "").lower()
+    if host == _HOST:
         return frozenset({_CONTENT_HOST, "www.8book.com"})
+    if host == _CONTENT_HOST and _CHAPTER_PATH.match(urlsplit(url).path) is not None:
+        return frozenset({_HOST, "www.8book.com"})
     return frozenset()
 
 
@@ -122,8 +131,34 @@ def is_content_mirror(source_url: str, final_url: str) -> bool:
     return paged is not None and paged.group(1) == source.query
 
 
-#: 阅读页里的导航块(章節列表/上一篇/下一篇),在内容容器内重复出现。
-_NAV_SELECTORS = (".prev", ".next", ".chmenus", "#subtitle")
+def navigation_referer(url: str) -> str | None:
+    """伪装域阅读页的 Referer 门控:直接导航(无来源)会拿到税务博客诱饵页,
+    必须带 ``Referer: https://8book.com/``(2026-09-22 实测:续页渲染直航
+    伪装域拿到诱饵并被静默拼接进正文)。
+    """
+    parts = urlsplit(url)
+    if (parts.hostname or "").lower() == _CONTENT_HOST and _CHAPTER_PATH.match(parts.path):
+        return _REFERER
+    return None
+
+
+def decoy_marker(url: str, html: str) -> str | None:
+    """伪装域阅读页拿到的是诱饵页时返回原因;否则 None。
+
+    诱饵是 WordPress 税务博客(catch-all),没有阅读页的 ``#text`` 正文容器,
+    标题/正文带「稅美人」标记。宁可误报也不把诱饵当正文。
+    """
+    parts = urlsplit(url)
+    if (parts.hostname or "").lower() != _CONTENT_HOST or _CHAPTER_PATH.match(parts.path) is None:
+        return None
+    if 'id="text"' not in html or "稅美人" in html or "稅務行事曆" in html:
+        return "正文伪装域返回了诱饵页(可能缺少 Referer 或页面已改版)"
+    return None
+
+
+#: 阅读页里的噪声块:导航(章節列表/上一篇/下一篇,在内容容器内重复出现)、
+#: 与章节标题重复的 #subtitle、顶栏日期装饰(续页抽取会误入正文)。
+_NAV_SELECTORS = (".prev", ".next", ".chmenus", "#subtitle", ".topbar-date")
 
 #: 站点水印是同形异符拼出的 "8book.com" 变体(⒏ьoОｋ·Ｃом / 8ВｏΟk·СΟm …),
 #: 每次出现字符组合都不同,且与正文共用 span.read_spans,只能按文本形态识别:

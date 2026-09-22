@@ -10,6 +10,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from ..errors import BlockedError, ConfigError, FetchError, QuireError, UnsupportedError
+from ..sites import eightbook
 from ..utils.urls import is_usable_url
 from .browser_catalogue import ready_script
 from .browser_cdp import Cdp
@@ -87,8 +88,9 @@ async def _evaluate(cdp: Cdp, session: str, expression: str) -> Any:
 def _navigate_params(url: str, options: RenderOptions) -> dict[str, str]:
     # Referer 门控的站点（如正文域校验来源页）需要把 --referer 带进浏览器导航。
     params = {"url": url}
-    if options.referer:
-        params["referrer"] = options.referer
+    referer = options.referer or eightbook.navigation_referer(url)
+    if referer:
+        params["referrer"] = referer
     return params
 
 
@@ -313,6 +315,9 @@ async def _render_native(
                 html = snapshot["html"]
                 if _challenge_dom(html):
                     raise BlockedError("Cloudflare 验证尚未完成；请在 Chrome 完成验证后重试")
+                decoy = eightbook.decoy_marker(snapshot["url"], html)
+                if decoy is not None:
+                    raise BlockedError(decoy)
                 await _harvest_clearance(cdp, session, snapshot["url"], client, network.warnings)
                 encoded = html.encode("utf-8")
                 if len(encoded) > client.max_bytes:

@@ -247,6 +247,9 @@ async def _capture_one(
             with _directory(html_dir):
                 write_bytes(html_dir / f"{chapter:05d}-{pages + 1:03d}.html", page.content)
         doc = parse_html(page.text, base_url=page.url)
+        # 分页发现要在站点清理之前:清理会删掉导航块,8book 等站点的
+        # 「下一頁」锚点就在导航块里,先清理就永远看不到续页。
+        following = find_next_page(doc, page.url, page.url, selector=opts.next_selector)
         clean_document(doc, page.url)
         page_number = chapter_number(page_title(doc))
         if pages and number is not None and page_number is not None and page_number != number:
@@ -312,7 +315,6 @@ async def _capture_one(
             )
         paragraphs.extend(extracted)
         pages += 1
-        following = find_next_page(doc, page.url, page.url, selector=opts.next_selector)
         if following and page_key(following) != first_key and page_key(following) in chapter_urls:
             stats.warnings.append(f"第{chapter}章分页指向其他章节，已停止拼接")
             following = None

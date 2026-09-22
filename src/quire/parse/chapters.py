@@ -229,6 +229,13 @@ def _looks_like_continuation(current_url: str, candidate: str) -> bool:
     after = parse_qs(target.query, keep_blank_values=True)
     if current.path == target.path:
         keys = {key for key in before.keys() | after.keys() if key.lower() in _PAGE_PARAMS}
+        # 裸 query 后缀分页:?2702787 → ?2702787_2(8book 实测),同根且页号递增一。
+        old_q = _PAGE_SUFFIX.fullmatch(current.query)
+        new_q = _PAGE_SUFFIX.fullmatch(target.query)
+        if not keys and new_q is not None:
+            if old_q is None:
+                return bool(current.query) and current.query == new_q[1] and int(new_q[3]) == 2
+            return old_q[1] == new_q[1] and int(old_q[3]) + 1 == int(new_q[3])
         if len(keys) != 1:
             return False
         key = keys.pop()
@@ -307,9 +314,10 @@ def _next_url(anchor: Node, base: str, current_url: str) -> str | None:
         return None
     before = parse_qs(urlsplit(current_url).query, keep_blank_values=True)
     after = parse_qs(urlsplit(url).query, keep_blank_values=True)
+    # 续页形态已在 _looks_like_continuation 严格校验过 query 关系,豁免全等检查。
     if {k: v for k, v in before.items() if k.lower() not in _PAGE_PARAMS} != {
         k: v for k, v in after.items() if k.lower() not in _PAGE_PARAMS
-    }:
+    } and not _looks_like_continuation(current_url, url):
         return None
     return url
 
