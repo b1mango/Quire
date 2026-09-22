@@ -17,6 +17,7 @@ from ..parse.minidom import parse as parse_html
 from ..parse.packed import extract_script_images
 from ..parse.series import Volume, plan_volumes
 from ..sites import quanben
+from ..sites.kind_guard import check_placement
 from ..sites.rules import SiteRule, resolve_rule
 from ..utils.urls import is_usable_url, route_fragment
 
@@ -73,6 +74,7 @@ async def probe_url(
 ) -> ProbeResult:
     url = validate_task_url(url)
     validate_capture_mode(kind, capture_mode)
+    check_placement(url, kind)
     rule = resolve_rule(data_root, url) if data_root else None
     chosen_kind = kind or (rule.kind if rule else None)
     async with AsyncFetcher(
@@ -89,7 +91,7 @@ async def probe_url(
                     raise
             else:
                 estimate = await _estimate_bytes(client, result)
-                return replace(result, estimate_bytes=estimate)
+                return _confirm_placement(replace(result, estimate_bytes=estimate), kind)
         page, _ = await render_page(
             page,
             client,
@@ -98,7 +100,22 @@ async def probe_url(
         )
         result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
         estimate = await _estimate_bytes(client, result)
-        return replace(result, render=True, estimate_bytes=estimate)
+        return _confirm_placement(replace(result, render=True, estimate_bytes=estimate), kind)
+
+
+def _confirm_placement(result: ProbeResult, kind: str | None) -> ProbeResult:
+    """实测内容形态与用户所选模块冲突时提示切换,而不是静默纠正(误放检测)。"""
+    if kind is None or result.kind == kind:
+        return result
+    if result.kind == "manga":
+        raise ConfigError(
+            "这个链接识别出的是漫画内容,小说模块解析不出正文",
+            hint="请切换到「漫画」标签,用目录或单章模式提交。",
+        )
+    raise ConfigError(
+        "这个链接识别出的是小说内容,漫画模块解析不出图片",
+        hint="请切换到「小说」标签,用目录或单章模式提交。",
+    )
 
 
 async def _sample_page_bytes(

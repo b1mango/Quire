@@ -15,6 +15,7 @@ from .. import __version__
 from ..assemble.models import clean_metadata_text
 from ..cli_console import data_home, find_chrome, module_available
 from ..errors import ConfigError
+from ..sites.kind_guard import check_placement
 from ..store import library
 from ..store.models import JsonValue
 from . import settings as settings_mod
@@ -123,11 +124,13 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
     ranges = payload.get("chapter_ranges") or ""
     if not isinstance(ranges, str):
         raise ConfigError("章节范围表达式须为字符串")
+    url = validate_task_url(str(payload.get("url") or ""))
+    check_placement(url, kind)
     if kind == "novel" and "pdf" in formats and find_chrome() is None:
         raise ConfigError("转 PDF 需要 Chrome，这台机器上没找到", hint="安装 Chrome 后再试。")
     spec = JobSpec(
         kind=kind,
-        url=validate_task_url(str(payload.get("url") or "")),
+        url=url,
         title=clean_metadata_text(title) or "book",
         formats=tuple(str(item) for item in formats),
         compress=str(payload.get("compress") or "balanced"),
