@@ -131,6 +131,15 @@ def test_native_network_blocks_foreign_credentials_and_reports_403():
     asyncio.run(run())
 
 
+def test_shuqi_whitelist_includes_app_cdn_hosts():
+    """书旗 SPA 的应用资源在阿里/书旗 CDN 上,缺了目录页停在「加载中」。"""
+    hosts = allowed_hosts("https://t.shuqi.com/catalog/9031364/")
+    assert "g.alicdn.com" in hosts
+    assert "render-resource.11222.cn" in hosts
+    assert "render.shuqireader.com" in hosts
+    assert "px.effirst.com" not in hosts  # 统计域仍按未授权阻止
+
+
 def test_real_cdp_reuses_login_and_keeps_existing_tab(tmp_path):
     chrome = find_chrome()
     if not chrome:

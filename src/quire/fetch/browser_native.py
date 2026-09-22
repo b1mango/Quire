@@ -28,6 +28,11 @@ def allowed_hosts(url: str) -> frozenset[str]:
                 "t.shuqi.com",
                 "ocean.shuqireader.com",
                 "c.shuqireader.com",
+                # SPA 应用资源:阿里 CDN 与书旗渲染资源域,缺了目录页停在
+                # 「加载中」,Vue 状态不存在,目录物化无从谈起(2026-09-22 实测)。
+                "g.alicdn.com",
+                "render-resource.11222.cn",
+                "render.shuqireader.com",
             }
         )
     hosts.update(eightbook.allowed_hosts(url))
