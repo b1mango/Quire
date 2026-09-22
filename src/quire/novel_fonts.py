@@ -51,7 +51,7 @@ async def deobfuscate_page(client: _FontFetcher, page: Response, cache: FontCach
     """页面含成规模 PUA 字符时尝试字体反混淆;否则原样返回。"""
     if not fontmap.needs_deobfuscation(page.text):
         return page
-    urls = fontmap.find_font_urls(page.text)
+    urls = fontmap.find_font_urls(page.text, page.url)
     if not urls:
         raise ParseError(
             "正文被自定义字体混淆,但页面没有引用字体文件",

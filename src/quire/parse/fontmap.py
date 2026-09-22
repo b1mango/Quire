@@ -7,7 +7,7 @@
 指纹库(``fontdb.bin``,与本模块同目录)由 ``scripts/build_font_db.py``
 用思源黑体生成:每个常用汉字一条「规范化轮廓哈希 → 字符」记录。番茄小说
 的混淆字体实测派生自思源黑体(字体 name 表自述 SourceHanSansSC),轮廓
-可以精确匹配。匹配只接受哈希一致或轮廓距离足够小的结果;认不出的码位
+可以精确匹配。匹配只接受哈希一致的结果;认不出的码位
 不猜,抛 ``ParseError``,由上层如实报失败而不是输出乱码书。
 """
 
@@ -21,6 +21,7 @@ import struct
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urljoin, urlsplit
 
 from ..errors import ParseError
 
@@ -56,19 +57,20 @@ def needs_deobfuscation(text: str) -> bool:
     return len(_PUA.findall(text)) >= MIN_PUA_CHARS
 
 
-def find_font_urls(html: str) -> list[str]:
-    """页面 @font-face 引用的字体文件地址,优先 fontTools 免额外依赖可读的格式。
-
-    woff2 需要 brotli 才能解码(未引入该依赖),所以 woff/otf 在前;
-    只剩 woff2 时也返回,让解析失败时的报错能指明原因。
-    """
+def find_font_urls(html: str, base_url: str = "") -> list[str]:
+    """提取内联字体声明，保留签名查询参数并解析相对地址。"""
     urls: dict[str, int] = {}
     for match in re.finditer(r"@font-face\s*\{([^}]*)\}", html, re.I):
-        for url in re.findall(
-            r"url\((https?://[^)\s]+\.(?:woff2?|otf|ttf))[^)]*\)", match[1], re.I
-        ):
-            priority = {"woff": 0, "otf": 1, "ttf": 2}.get(url.rsplit(".", 1)[-1].lower(), 3)
-            urls.setdefault(url, priority)
+        for raw in re.findall(r"url\(\s*([^)]*?)\s*\)", match[1], re.I):
+            url = urljoin(base_url, raw.strip().strip("\"'"))
+            parts = urlsplit(url)
+            extension = parts.path.rsplit(".", 1)[-1].lower()
+            if parts.scheme not in {"http", "https"} or not parts.hostname:
+                continue
+            if parts.username is not None or parts.password is not None:
+                continue
+            if extension in {"woff", "otf", "ttf", "woff2"}:
+                urls.setdefault(url, {"woff": 0, "otf": 1, "ttf": 2}.get(extension, 3))
     return sorted(urls, key=lambda u: urls[u])
 
 

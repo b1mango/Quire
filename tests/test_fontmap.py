@@ -233,3 +233,16 @@ def test_capture_chapter_fails_honestly_when_font_broken(tmp_path: Path) -> None
         assert result.snapshot.resources[0].status == "failed"
         assert result.snapshot.resources[0].error_code == "invalid_text"
         assert any("字体反混淆失败" in w for w in result.warnings)
+
+
+def test_font_urls_resolve_css_quotes_relative_paths_and_signed_queries():
+    html = """@font-face {src:url('/fonts/a.woff?token=x&v=2')}
+    @font-face {src:url( "//cdn.test/b.woff2?v=3" )}
+    @font-face {src:url(../c.ttf)}
+    @font-face {src:url(data:font/woff;base64,AAAA)}
+    @font-face {src:url(https://user:secret@cdn.test/a.woff)}"""
+    assert fontmap.find_font_urls(html, "https://novel.test/read/1") == [
+        "https://novel.test/fonts/a.woff?token=x&v=2",
+        "https://novel.test/c.ttf",
+        "https://cdn.test/b.woff2?v=3",
+    ]
