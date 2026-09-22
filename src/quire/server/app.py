@@ -37,6 +37,7 @@ _STATIC = {
     "capture.js": "text/javascript; charset=utf-8",
     "chapters.js": "text/javascript; charset=utf-8",
     "follows.js": "text/javascript; charset=utf-8",
+    "queue-status.js": "text/javascript; charset=utf-8",
 }
 
 
