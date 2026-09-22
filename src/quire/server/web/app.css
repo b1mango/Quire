@@ -475,3 +475,7 @@ html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--faint) 45%,tra
 .delete-book-dialog::backdrop{background:rgb(0 0 0 / .35)}
 .delete-book-dialog p{overflow-wrap:anywhere;line-height:1.6}
 .dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
+
+/* 采集队列：运行红色，全部成功后短暂绿色呼吸。 */
+.run-dot[data-status="active"]{background:#d94c50}
+.run-dot[data-status="done"]{background:var(--ok)}

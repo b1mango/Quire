@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
-from quire.errors import LedgerError
+from quire.errors import ConfigError, LedgerError
+from quire.server import endpoints
 from quire.store import groups, library
 
 
@@ -79,3 +82,47 @@ def test_membership_follows_book_deletion(tmp_path):
     # 残留归属行不算成员：分组仍可删除，删除时一并清掉
     groups.delete_group(tmp_path, "g1")
     assert groups.list_groups(tmp_path) == ()
+
+
+@pytest.mark.parametrize("action", ["move", "delete"])
+def test_batch_over_limit_rejected_without_side_effects(tmp_path, monkeypatch, action):
+    assign = Mock()
+    delete = Mock()
+    drop = Mock()
+    monkeypatch.setattr(groups, "assign", assign)
+    monkeypatch.setattr(library, "delete_book", delete)
+    monkeypatch.setattr(groups, "drop_book", drop)
+    with pytest.raises(ConfigError, match="最多 500 本书.*分批"):
+        endpoints.batch_books(
+            SimpleNamespace(data_root=tmp_path),
+            {"action": action, "ids": [f"b{i}" for i in range(501)], "group_id": "g1"},
+        )
+    assign.assert_not_called()
+    delete.assert_not_called()
+    drop.assert_not_called()
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("action", ["move", "delete"])
+def test_batch_exact_limit_processes_all_ids(tmp_path, monkeypatch, action):
+    assign = Mock(return_value=500)
+    delete = Mock(return_value=1)
+    drop = Mock()
+    monkeypatch.setattr(groups, "assign", assign)
+    monkeypatch.setattr(library, "delete_book", delete)
+    monkeypatch.setattr(groups, "drop_book", drop)
+    ids = [f"b{i}" for i in range(500)]
+    result = endpoints.batch_books(
+        SimpleNamespace(data_root=tmp_path),
+        {"action": action, "ids": ids, "group_id": "g1"},
+    )
+    if action == "move":
+        assert result == {"moved": 500}
+        assign.assert_called_once_with(tmp_path, ids, "g1")
+        delete.assert_not_called()
+        drop.assert_not_called()
+    else:
+        assert result == {"deleted": 500, "freed": 500, "failures": []}
+        assert [call.args[1] for call in delete.call_args_list] == ids
+        assert [call.args[1] for call in drop.call_args_list] == ids
+        assign.assert_not_called()

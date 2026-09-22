@@ -257,6 +257,12 @@ quire manga URL --core --site example.com</pre>
           <section class="set-group">
             <h2>网络</h2>
             <div class="field">
+              <label for="setBrowserNative"><input type="checkbox" id="setBrowserNative"> 使用真实浏览器网络</label>
+              <label for="setCdpEndpoint">已登录 Chrome 的 CDP 地址（可选）</label>
+              <input class="input" id="setCdpEndpoint" placeholder="http://127.0.0.1:9222" autocomplete="off">
+              <div class="hint">仅连接本机回环端点。Chrome 须已开启远程调试，并已登录目标站点；填写后任务直接使用该浏览器。仅采集网页版已有访问权限的内容，验证或付费限制仍会生效。留空时使用隔离 Chrome。</div>
+            </div>
+            <div class="field">
               <label>并发与限速</label>
               <div class="hint">
                 并发 <input class="input sm nofx" id="setConcurrency" inputmode="numeric">
@@ -330,6 +336,7 @@ quire manga URL --core --site example.com</pre>
 <script src="/static/capture.js"></script>
 <script src="/static/run-events.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/queue-status.js"></script>
 <script src="/static/library.js"></script>
 <script src="/static/chapters.js"></script>
 <script src="/static/follows.js"></script>

@@ -139,7 +139,7 @@ function attachJob(job) {
   state.lastSeq = 0;
   state.startedAt = Date.now();
   resetRunView(job);
-  $("runDot").hidden = !(job.status === "running" || job.status === "pending");
+  if (typeof updateQueueJob === "function") updateQueueJob(job);
   appendChapters(job.chapters || []);
   if (job.status === "pending" || job.status === "running") {
     if (job.status === "pending") $("runSub").textContent = "排队中，等前面的任务完成……";
@@ -161,7 +161,7 @@ function finishRunView(status, data) {
   if (state.job) state.job.status = status;
   if (state.events) { state.events.close(); state.events = null; }
   if (state.timer) { clearInterval(state.timer); state.timer = null; }
-  $("runDot").hidden = true;
+  if (typeof updateQueueJob === "function") updateQueueJob(state.job);
   $("cancelBtn").hidden = true;
   $("pauseBtn").hidden = true;
   $("runDoneActions").hidden = false;
@@ -244,6 +244,8 @@ function loadSettingsView() {
     $("setRate").value = settings.rate;
     $("setAutoCheck").checked = !!settings.auto_check_updates;
     $("setRobots").checked = !!settings.obey_robots;
+    $("setBrowserNative").checked = !!settings.browser_native;
+    $("setCdpEndpoint").value = settings.cdp_endpoint || "";
   }).catch((err) => { $("settingsMeta").textContent = err.message; });
   api("/api/capabilities").then((caps) => {
     state.caps = caps;
@@ -278,6 +280,8 @@ function saveSettings() {
     rate: parseFloat($("setRate").value),
     auto_check_updates: $("setAutoCheck").checked,
     obey_robots: $("setRobots").checked,
+    browser_native: $("setBrowserNative").checked,
+    cdp_endpoint: $("setCdpEndpoint").value.trim(),
   };
   api("/api/settings", { method: "PUT", body: payload }).then((settings) => {
     state.settings = settings;

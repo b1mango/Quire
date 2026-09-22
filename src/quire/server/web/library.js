@@ -258,9 +258,11 @@ $("deleteBookConfirm").addEventListener("click", async () => {
         method: "POST", body: { action: "delete", ids: pendingBatchIds },
       });
       if (result.failures && result.failures.length) {
+        pendingBatchIds = result.failures.map((failure) => failure.id);
+        state.selected = new Set(pendingBatchIds);
+        $("deleteBookMessage").textContent = `重试删除剩余的 ${pendingBatchIds.length} 本书？`;
         $("deleteBookError").textContent =
           `${result.failures.length} 本没删掉：${result.failures[0].error}`;
-        pendingBatchIds = null;
         loadBooks();
         return;
       }

@@ -252,7 +252,9 @@ def batch_books(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
     """批量书籍操作：move（入组/出组）整单校验；delete 逐本执行、汇报每本结果。"""
     if not isinstance(payload, dict) or not isinstance(payload.get("ids"), list):
         raise ConfigError("缺少书籍列表")
-    ids = [str(item) for item in payload["ids"]][:500]
+    if len(payload["ids"]) > 500:
+        raise ConfigError("每次批量操作最多 500 本书，请分批操作")
+    ids = [str(item) for item in payload["ids"]]
     if not ids:
         raise ConfigError("没有选中任何书")
     action = payload.get("action")

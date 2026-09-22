@@ -17,6 +17,7 @@ from ..parse.images import collect, prefilter
 from ..parse.minidom import parse as parse_html
 from ..parse.packed import extract_script_images
 from ..parse.series import Volume, plan_volumes
+from ..sites import bilibili
 from ..sites.cleanup import clean_document
 from ..sites.expand import expand_catalogue
 from ..sites.kind_guard import check_placement
@@ -101,7 +102,7 @@ async def probe_url(
         stage("fetch")
         page = await client.get(url)
         page = await expand_catalogue(client, page)
-        dynamic = bool(route_fragment(url))
+        dynamic = bool(route_fragment(url)) or bilibili.is_reader_page(page.url)
         if not dynamic:
             stage("parse")
             try:
@@ -114,14 +115,24 @@ async def probe_url(
                 estimate = await _estimate_bytes(client, result)
                 return _confirm_placement(replace(result, estimate_bytes=estimate), kind)
         stage("render")
-        page, _ = await render_page(
-            page,
-            client,
-            RenderOptions(timeout=60, max_scrolls=1000),
-            content="images" if chosen_kind == "manga" and capture_mode == "single" else "text",
-        )
-        stage("parse")
-        result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
+        if bilibili.is_reader_page(page.url):
+            # B站阅读页:旁观式捕获首屏图片作样本,总页数读阅读器 UI。
+            page, total = await bilibili.capture_reader_page(
+                page.url, RenderOptions(timeout=60), full=False
+            )
+            stage("parse")
+            result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
+            if total > result.count:
+                result = replace(result, count=total)
+        else:
+            page, _ = await render_page(
+                page,
+                client,
+                RenderOptions(timeout=60, max_scrolls=1000),
+                content="images" if chosen_kind == "manga" and capture_mode == "single" else "text",
+            )
+            stage("parse")
+            result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
         estimate_stage(result)
         estimate = await _estimate_bytes(client, result)
         return _confirm_placement(replace(result, render=True, estimate_bytes=estimate), kind)

@@ -4,6 +4,24 @@
 
 /* ------------------------------------------------------------ 章节范围 */
 
+/* 四个采集标签各自记住显示顺序，不进入任务参数或改动目录数据。 */
+const rangeOrders = new Map();
+let rangeOrderKey = "";
+let rangeOrderButton = null;
+
+function applyRangeOrder() {
+  const descending = rangeOrders.get(rangeOrderKey) === "desc";
+  for (const id of ["rangeFirst", "rangeLast"]) {
+    const select = $(id), selected = select.value;
+    const options = [...select.children].sort((a, b) =>
+      descending ? Number(b.value) - Number(a.value) : Number(a.value) - Number(b.value));
+    options.forEach((option) => select.appendChild(option));
+    select.value = selected;
+  }
+  rangeOrderButton.textContent = descending ? "目录倒序" : "目录正序";
+  rangeOrderButton.setAttribute("aria-pressed", String(descending));
+}
+
 function renderRange(result) {
   const chapters = result.chapters || [];
   if (state.captureMode === "single" || chapters.length < 2) {
@@ -11,6 +29,20 @@ function renderRange(result) {
     return;
   }
   $("rangeField").hidden = false;
+  rangeOrderKey = `${result.kind || state.kind}:${state.captureMode}`;
+  if (!rangeOrderButton) {
+    rangeOrderButton = document.createElement("button");
+    rangeOrderButton.id = "rangeOrderBtn";
+    rangeOrderButton.type = "button";
+    rangeOrderButton.className = "chapter-order";
+    rangeOrderButton.setAttribute("aria-label", "倒序显示目录章节");
+    rangeOrderButton.setAttribute("aria-controls", "rangeFirst rangeLast");
+    rangeOrderButton.addEventListener("click", () => {
+      rangeOrders.set(rangeOrderKey, rangeOrders.get(rangeOrderKey) === "desc" ? "asc" : "desc");
+      applyRangeOrder();
+    });
+    $("rangeField").appendChild(rangeOrderButton);
+  }
   const first = $("rangeFirst"), last = $("rangeLast");
   first.textContent = ""; last.textContent = "";
   chapters.forEach((chapter, index) => {
@@ -22,6 +54,7 @@ function renderRange(result) {
   });
   first.value = "1";
   last.value = String(chapters.length);
+  applyRangeOrder();
   $("rangeExpr").value = "";
   updateRangeSummary();
 }

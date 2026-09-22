@@ -1,0 +1,21 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const vm=require('node:vm');
+const fs=require('node:fs');
+const path=require('node:path');
+test('queue indicator stays red until every job succeeds, errors never turn green', async()=>{
+ const dot={dataset:{},setAttribute(k,v){this[k]=v}};
+ const timers=[];
+ const context=vm.createContext({$:()=>dot,api:()=>new Promise(()=>{}),setTimeout:fn=>{timers.push(fn);return timers.length},clearTimeout(){},setInterval(){}});
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/quire/server/web/queue-status.js'),'utf8'),context);
+ context.updateQueueJob({id:'a',status:'running'});
+ context.updateQueueJob({id:'b',status:'pending'});
+ assert.equal(dot.dataset.status,'active');assert.equal(dot.hidden,false);
+ context.updateQueueJob({id:'a',status:'done'});
+ assert.equal(dot.dataset.status,'active');
+ context.updateQueueJob({id:'b',status:'done'});
+ assert.equal(dot.dataset.status,'done');assert.equal(dot.hidden,false);
+ timers.at(-1)();assert.equal(dot.hidden,true);
+ context.updateQueueJob({id:'c',status:'running'});assert.equal(dot.hidden,false);
+ context.updateQueueJob({id:'c',status:'failed'});assert.equal(dot.dataset.status,'idle');assert.equal(dot.hidden,true);
+});
