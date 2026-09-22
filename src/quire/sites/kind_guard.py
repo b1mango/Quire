@@ -20,7 +20,7 @@ _MANGA_HOSTS: tuple[tuple[str, re.Pattern[str] | None], ...] = (
 )
 
 #: 已知小说站:整站都是小说。
-_NOVEL_HOSTS = ("quanben.io", "hetushu.com", "t.shuqi.com", "qidian.com")
+_NOVEL_HOSTS = ("quanben.io", "hetushu.com", "t.shuqi.com", "qidian.com", "fanqienovel.com")
 
 
 def expected_kind(url: str) -> str | None:

@@ -14,7 +14,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from ..assemble.models import NovelChapter
-from ..core_chapters import FAILURE_TEXT, decode_chapter
+from ..core_chapter_cache import decode_chapter
+from ..core_chapters import FAILURE_TEXT
 from ..core_novel import export_chapters
 from ..core_reassemble import export_cached
 from ..errors import QuireError

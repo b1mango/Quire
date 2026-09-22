@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from quire.core_chapters import capture_chapters, decode_chapter
+from quire.core_chapter_cache import decode_chapter
+from quire.core_chapters import capture_chapters
 from quire.errors import BlockedError, FetchError, LedgerError
 from quire.fetch.simple import Response
 from quire.models import NovelOptions

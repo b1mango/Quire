@@ -38,9 +38,7 @@ def test_engines_reject_size_before_load(
 
     monkeypatch.setattr(PngImagePlugin.PngImageFile, "load", unexpected)
     monkeypatch.setattr(subprocess, "run", unexpected)
-    engine = (
-        object.__new__(OnnxEngine) if kind == "onnx" else TesseractEngine("tesseract")
-    )
+    engine = object.__new__(OnnxEngine) if kind == "onnx" else TesseractEngine("tesseract")
     with pytest.raises(OcrEngineError, match="dimensions or pixel count"):
         engine.recognize(data)
 
@@ -67,9 +65,11 @@ def test_upscale_caps_both_allocation_budgets(
 def test_tesseract_receives_only_first_frame_without_orientation_change(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    with Image.new("RGB", (30, 20), "white") as first, Image.new(
-        "RGB", (30, 20), "black"
-    ) as second, BytesIO() as buffer:
+    with (
+        Image.new("RGB", (30, 20), "white") as first,
+        Image.new("RGB", (30, 20), "black") as second,
+        BytesIO() as buffer,
+    ):
         first.save(buffer, format="TIFF", save_all=True, append_images=[second])
         data = buffer.getvalue()
 

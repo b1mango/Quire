@@ -21,9 +21,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from urllib.parse import urlsplit
 
-from .errors import BlockedError, FetchError, LedgerError, ParseError
+from .core_chapter_cache import CACHE_SCHEMA
+from .errors import BlockedError, FetchError, ParseError
 from .fetch.simple import Response
 from .models import NovelOptions
+from .novel_fonts import FontCache, deobfuscate_page
 from .ocr.postprocess import collect_review
 from .ocr.tesseract import OcrEngineError
 from .ocr.trigger import should_ocr
@@ -44,9 +46,6 @@ from .workspace import write_bytes
 
 if TYPE_CHECKING:
     from .ocr.capture import OcrRunner
-
-#: 章节缓存格式版本。改结构必须同时改 ``NovelOptions.clean_version``。
-CACHE_SCHEMA = 2
 
 #: 分页超限时写入成品的说明：宁可读者看到"可能不完整"，也不能静默截断。
 TRUNCATION_NOTE = "［本章内容可能不完整：分页超过设定上限］"
@@ -78,18 +77,6 @@ class _Stats:
     pages: int = 0
     completed: int = 0
     warnings: list[str] = field(default_factory=list)
-
-
-@dataclass(frozen=True, slots=True)
-class CachedChapter:
-    """一章缓存的正文与元信息。``review`` 是 OCR 低置信行 ``(文本, 置信度)``。"""
-
-    title: str
-    paragraphs: tuple[str, ...]
-    pages: int = 1
-    truncated: bool = False
-    source: str = "html"
-    review: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +112,7 @@ async def capture_chapters(
     stats = _Stats()
     stats.completed = reused
     seed = preloaded or {}
+    fonts = FontCache()  # 一本书共用一份混淆字体,映射只解析一次
     total = len(links)
     chapter_urls = frozenset(page_key(link.url) for link in links)
     pending = iter(
@@ -153,6 +141,7 @@ async def capture_chapters(
                     stats,
                     html_dir,
                     chapter_urls,
+                    fonts,
                 )
             except asyncio.CancelledError:
                 ledger.fail(task_id, spec.chapter, spec.page, "cancelled")
@@ -191,6 +180,7 @@ async def _capture_one(
     stats: _Stats,
     html_dir: Path | None,
     chapter_urls: frozenset[PageKey],
+    fonts: FontCache,
 ) -> None:
     chapter = record.spec.chapter
     failure: FailureCode | None = None
@@ -240,6 +230,13 @@ async def _capture_one(
         if pages and page_key(page.url) != first_key and page_key(page.url) in chapter_urls:
             stats.warnings.append(f"第{chapter}章分页跳转到其他章节，已停止拼接")
             following = None
+            break
+        try:
+            page = await deobfuscate_page(client, page, fonts)
+        except ParseError as exc:
+            # 字体混淆还原失败：如实记失败，不把乱码缓存成正文。
+            failure = "invalid_text"
+            stats.warnings.append(f"第{chapter}章：{exc.message}")
             break
         if html_dir is not None:
             with _directory(html_dir):
@@ -354,45 +351,3 @@ async def _capture_one(
     ).encode("utf-8")
     relative = publish_bytes(ledger.root, task_id, f"{chapter:05d}.json", payload)
     ledger.complete(task_id, chapter, 1, relative)
-
-
-def decode_chapter(data: bytes) -> CachedChapter:
-    """读取章节缓存。结构不符时明确报错，不把坏数据当正文。"""
-    try:
-        payload = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError) as exc:
-        raise LedgerError("章节缓存不是合法 JSON") from exc
-    if not isinstance(payload, dict) or payload.get("schema") != CACHE_SCHEMA:
-        raise LedgerError("章节缓存版本不匹配")
-    title = payload.get("title")
-    paragraphs = payload.get("paragraphs")
-    pages = payload.get("pages", 1)
-    truncated = payload.get("truncated", False)
-    source = payload.get("source", "html")
-    review = payload.get("review", [])
-    if (
-        not isinstance(title, str)
-        or not isinstance(paragraphs, list)
-        or not all(isinstance(item, str) for item in paragraphs)
-        or not isinstance(pages, int)
-        or pages < 1
-        or not isinstance(truncated, bool)
-        or source not in {"html", "ocr"}
-        or not isinstance(review, list)
-        or not all(
-            isinstance(item, list)
-            and len(item) == 2
-            and isinstance(item[0], str)
-            and isinstance(item[1], int | float)
-            for item in review
-        )
-    ):
-        raise LedgerError("章节缓存字段不合法")
-    return CachedChapter(
-        title,
-        tuple(paragraphs),
-        pages,
-        truncated,
-        source,
-        tuple((item[0], float(item[1])) for item in review),
-    )

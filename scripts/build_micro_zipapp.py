@@ -49,6 +49,8 @@ def build(destination: Path) -> int:
             "quire/cli_novel.py",
             "quire/text/clean.py",
             "quire/parse/article.py",
+            "quire/parse/fontmap.py",
+            "quire/novel_fonts.py",
             "quire/parse/chapters.py",
             "quire/assemble/txt.py",
             "quire/assemble/epub.py",

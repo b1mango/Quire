@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..assemble.models import NovelChapter
-from ..core_chapters import decode_chapter
+from ..core_chapter_cache import decode_chapter
 from ..errors import ConfigError, LedgerError, QuireError
 from ..models import NovelResult
 from ..store import library

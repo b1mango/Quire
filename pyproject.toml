@@ -10,7 +10,13 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
-core = ["httpx>=0.28,<0.29", "Pillow>=10.4,<13", "pypdf>=6.18,<7", "websockets>=15,<16"]
+core = [
+    "fonttools>=4.50,<5",
+    "httpx>=0.28,<0.29",
+    "Pillow>=10.4,<13",
+    "pypdf>=6.18,<7",
+    "websockets>=15,<16",
+]
 ocr = ["onnxruntime>=1.20,<2"]
 dev = ["pytest>=8,<10", "pytest-cov>=5,<8", "ruff>=0.6,<1", "mypy>=1.11,<2", "Pillow>=10.4,<13", "pypdf>=5,<7", "lxml>=5,<7"]
 
@@ -22,6 +28,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "quire.server" = ["web/*.html", "web/*.css", "web/*.js"]
+"quire.parse" = ["fontdb.bin"]
 
 [tool.ruff]
 line-length = 100
@@ -36,6 +43,10 @@ files = ["src/quire"]
 
 [[tool.mypy.overrides]]
 module = "onnxruntime"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "fontTools.*"
 ignore_missing_imports = true
 
 [tool.coverage.run]

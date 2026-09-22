@@ -13,12 +13,12 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .assemble.models import NovelChapter, clean_metadata_text
+from .core_chapter_cache import decode_chapter
 from .core_chapters import (
     FAILURE_TEXT,
     TRUNCATION_NOTE,
     Renderer,
     capture_chapters,
-    decode_chapter,
 )
 from .errors import NoChaptersError, NoTextError, PausedError, UnsupportedError
 from .fetch.async_policy import HostPace
@@ -41,7 +41,7 @@ from .parse.chapter_range import parse_ranges, select_range, select_ranges
 from .parse.chapters import ChapterLink, discover_chapters, looks_like_catalogue
 from .parse.minidom import Document
 from .parse.minidom import parse as parse_html
-from .sites import quanben
+from .sites.expand import expand_catalogue
 from .store.cache import read_cached
 from .store.ledger import Ledger
 from .store.models import JsonValue, ResourceSpec, task_identity
@@ -265,7 +265,7 @@ async def run_core_novel(
     )
     async with client:
         page = await client.get(url, referer=opts.referer)
-        page = await quanben.expand_listing(client, page)
+        page = await expand_catalogue(client, page)
         render_warnings: tuple[str, ...] = ()
         renderer: Renderer | None = None
         if render is not None:

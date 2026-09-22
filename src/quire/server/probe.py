@@ -16,7 +16,7 @@ from ..parse.images import collect, prefilter
 from ..parse.minidom import parse as parse_html
 from ..parse.packed import extract_script_images
 from ..parse.series import Volume, plan_volumes
-from ..sites import quanben
+from ..sites.expand import expand_catalogue
 from ..sites.kind_guard import check_placement
 from ..sites.rules import SiteRule, resolve_rule
 from ..utils.urls import is_usable_url, route_fragment
@@ -81,7 +81,7 @@ async def probe_url(
         timeout=timeout, retries=1, concurrency=2, rate=rate, respect_robots=obey_robots
     ) as client:
         page = await client.get(url)
-        page = await quanben.expand_listing(client, page)
+        page = await expand_catalogue(client, page)
         dynamic = bool(route_fragment(url))
         if not dynamic:
             try:

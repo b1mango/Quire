@@ -104,7 +104,14 @@ CONTAINER_TAGS = frozenset({"article", "main", "div", "section", "td", "body"})
 
 #: 明确的正文标记优先于页面级 article/main，完整保留其子树。
 CONTENT_NAMES = frozenset(
-    {"content", "chapter-content", "chapter_content", "read-content", "read_content"}
+    {
+        "content",
+        "chapter-content",
+        "chapter_content",
+        "read-content",
+        "read_content",
+        "muye-reader-content",  # 番茄小说网页版正文容器(外层的字数/更新时间不算正文)
+    }
 )
 _COMMENT_NAME = re.compile(r"(?:^|[\s_-])(?:comments?|replies|reply)(?:$|[\s_-])", re.I)
 
