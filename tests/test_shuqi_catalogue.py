@@ -23,9 +23,9 @@ def test_materialized_catalogue_preserves_prologue_order_and_all_2202_entries():
         + "</section>"
     )
     links = discover_chapters(parse(html), "https://t.shuqi.com/catalog/4994468/", limit=20001)
-    from quire.core_novel import plan_chapters
     from quire.fetch.simple import Response
     from quire.models import NovelOptions
+    from quire.novel_plan import plan_chapters
 
     plan = plan_chapters(
         Response("https://t.shuqi.com/catalog/4994468/", 200, {}, html.encode(), 0),

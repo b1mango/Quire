@@ -17,6 +17,7 @@ from .models import MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate
 from .parse.minidom import parse
 from .parse.series import Volume, plan_volumes, split_spec
+from .sites.registry import cookie_hosts_for
 from .sites.rules import SiteRule
 from .store.models import ResourceSpec
 
@@ -95,6 +96,7 @@ async def run_series(
         max_bytes=opts.max_bytes,
         pace=pace,
         respect_robots=opts.obey_robots,
+        cookie_hosts=cookie_hosts_for(url),
     )
     results: list[MangaResult] = []
     async with client:

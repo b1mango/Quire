@@ -25,6 +25,7 @@ from .image.options import CompressionOptions
 from .models import MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate
 from .parse.minidom import parse as parse_html
+from .sites.registry import cookie_hosts_for
 from .store.ledger import Ledger
 from .store.models import JsonValue, ResourceSpec, task_identity
 
@@ -81,6 +82,7 @@ async def run_core_manga(
         max_bytes=opts.max_bytes,
         pace=pace,
         respect_robots=opts.obey_robots,
+        cookie_hosts=cookie_hosts_for(url),
     )
     async with nullcontext(client) if shared_fetcher else client:
         if plan is None:

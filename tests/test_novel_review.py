@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from quire.core_novel import plan_chapters
 from quire.fetch.simple import Response
 from quire.models import NovelOptions
+from quire.novel_plan import plan_chapters
 from quire.parse.chapters import ChapterLink, find_next_page
 from quire.parse.minidom import parse
 from tests.test_novel_capture import (

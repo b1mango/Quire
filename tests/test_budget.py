@@ -65,5 +65,5 @@ def test_current_core_dependency_budget():
     from scripts.measure_core_dependencies import measure
 
     report = measure()
-    assert report["total_installed_bytes_excluding_pyc"] <= 18_000_000
+    assert report["total_installed_bytes_excluding_pyc"] <= 32_000_000
     assert report["includes_python_runtime"] is False

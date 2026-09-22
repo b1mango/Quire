@@ -10,11 +10,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from quire.core_novel import plan_chapters
 from quire.errors import ConfigError, NoChaptersError, ParseError
 from quire.fetch.browser_process import find_chrome
 from quire.fetch.simple import Response
 from quire.models import NovelOptions
+from quire.novel_plan import plan_chapters
 from quire.parse.chapters import discover_chapters, page_key
 from quire.parse.minidom import parse
 from quire.server import probe as probing

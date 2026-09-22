@@ -37,6 +37,7 @@ from .parse.article import (
 )
 from .parse.chapters import ChapterLink, PageKey, find_next_page, page_key
 from .parse.minidom import parse as parse_html
+from .sites.cleanup import clean_document
 from .store.cache import publish_bytes
 from .store.export_files import _directory
 from .store.ledger import Ledger
@@ -242,6 +243,7 @@ async def _capture_one(
             with _directory(html_dir):
                 write_bytes(html_dir / f"{chapter:05d}-{pages + 1:03d}.html", page.content)
         doc = parse_html(page.text, base_url=page.url)
+        clean_document(doc, page.url)
         page_number = chapter_number(page_title(doc))
         if pages and number is not None and page_number is not None and page_number != number:
             stats.warnings.append(f"第{chapter}章续页章号发生变化，已停止拼接")

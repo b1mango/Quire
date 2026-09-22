@@ -16,8 +16,10 @@ from ..parse.images import collect, prefilter
 from ..parse.minidom import parse as parse_html
 from ..parse.packed import extract_script_images
 from ..parse.series import Volume, plan_volumes
+from ..sites.cleanup import clean_document
 from ..sites.expand import expand_catalogue
 from ..sites.kind_guard import check_placement
+from ..sites.registry import cookie_hosts_for
 from ..sites.rules import SiteRule, resolve_rule
 from ..utils.urls import is_usable_url, route_fragment
 
@@ -78,7 +80,12 @@ async def probe_url(
     rule = resolve_rule(data_root, url) if data_root else None
     chosen_kind = kind or (rule.kind if rule else None)
     async with AsyncFetcher(
-        timeout=timeout, retries=1, concurrency=2, rate=rate, respect_robots=obey_robots
+        timeout=timeout,
+        retries=1,
+        concurrency=2,
+        rate=rate,
+        respect_robots=obey_robots,
+        cookie_hosts=cookie_hosts_for(url),
     ) as client:
         page = await client.get(url)
         page = await expand_catalogue(client, page)
@@ -179,6 +186,7 @@ def _inspect(
     page: Response, kind: str | None, mode: str, split_by: str, rule: SiteRule | None
 ) -> ProbeResult:
     doc = parse_html(page.text, base_url=page.url)
+    clean_document(doc, page.url)
     title_node = doc.select_one("h1") or doc.select_one("title")
     title = clean_metadata_text(title_node.text if title_node else "") or "未命名"
     links = discover_chapters(

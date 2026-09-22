@@ -14,6 +14,7 @@ import httpx
 from ..errors import BlockedError, ConfigError, FetchError, HttpStatusError, NetworkError
 from ..utils.urls import is_usable_url, redact, route_fragment
 from .async_policy import AsyncRateLimiter, AsyncRobotsPolicy, HostPace
+from .challenge import challenge_target
 from .decoding import decode_body
 from .simple import (
     CONNECTION_HINT,
@@ -81,6 +82,7 @@ class AsyncFetcher:
         rng: random.Random | None = None,
         pace: HostPace | None = None,
         respect_robots: bool = True,
+        cookie_hosts: frozenset[str] = frozenset(),
     ) -> None:
         if (
             not math.isfinite(timeout)
@@ -97,6 +99,7 @@ class AsyncFetcher:
             raise ConfigError("Invalid core HTTP timeout, rate, concurrency, retry or size limit")
         self.timeout, self.retries, self.max_bytes = timeout, retries, max_bytes
         self.respect_robots = respect_robots
+        self.cookie_hosts = {h.lower() for h in cookie_hosts}
         self.limiter = AsyncRateLimiter(rate, pace)
         self._slots = asyncio.Semaphore(concurrency)
         self._transport, self._concurrency = transport, concurrency
@@ -137,6 +140,10 @@ class AsyncFetcher:
             await self._client.aclose()
             self._client = None
 
+    def _uses_cookies(self, url: httpx.URL) -> bool:
+        host = url.host.lower()
+        return any(host == h or host.endswith("." + h) for h in self.cookie_hosts)
+
     async def get(
         self,
         url: str,
@@ -154,6 +161,16 @@ class AsyncFetcher:
         started = time.monotonic()
         try:
             response = await self._fetch(request_url, request_headers, policy=False, robots=robots)
+            if self._uses_cookies(request_url):
+                # JS 令牌质询(ixdzs8 等):带会话 Cookie 重访一次;仍是质询就如实返回。
+                target = challenge_target(response.text, response.url, len(response.content))
+                if target is not None:
+                    response = await self._fetch(
+                        _url(target),
+                        {**request_headers, "referer": response.url},
+                        policy=False,
+                        robots=robots,
+                    )
             fragment = route_fragment(url)
             return Response(
                 response.url + ("#" + fragment if fragment else ""),
@@ -310,8 +327,11 @@ class AsyncFetcher:
         content: bytes | None = None,
     ) -> tuple[Response, str, float]:
         assert self._client is not None
-        # Direct Request bypasses the client's cookie jar and default auth headers.
-        request = httpx.Request(method, url, headers=headers, content=content)
+        # 默认直连 Request:绕过 Cookie 罐与默认认证头;仅登记的站点保留会话 Cookie。
+        if self._uses_cookies(url):
+            request = self._client.build_request(method, url, headers=headers, content=content)
+        else:
+            request = httpx.Request(method, url, headers=headers, content=content)
         response = await self._client.send(request, stream=True)
         try:
             location = response.headers.get("location", "")
@@ -335,7 +355,8 @@ class AsyncFetcher:
             return result, location, delay
         finally:
             await response.aclose()
-            self._client.cookies.clear()
+            if not self._uses_cookies(url):
+                self._client.cookies.clear()
 
     async def _sniff(self, response: httpx.Response) -> bytes:
         # 403 页面只取前 64 KiB 识别防护来源，不占用正常的大小预算。
