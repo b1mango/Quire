@@ -40,26 +40,7 @@ function probeUrl(url) {
   $("probeHint").textContent = "正在识别链接，动态页面可能需要稍等……";
   api("/api/probe", { method: "POST", body: { url, kind: state.kind, capture_mode: state.captureMode, split_by: $("splitMode").value } }).then((result) => {
     if (state.probeRequest !== request) return;
-    $("probeHint").classList.remove("is-loading");
-    $("probeHint").hidden = true;
-    state.probe = result;
-    renderVolumes(result);
-    renderRange(result);
-    syncSeriesAvailability();
-    state.kind = result.kind;
-    setSeg($("kindSeg"), "kind", result.kind);
-    renderFormatChips();
-    const status = $("wsStatus");
-    status.hidden = false;
-    status.dataset.kind = result.kind;
-    status.textContent =
-      `${result.kind === "manga" ? "漫画" : "小说"} · ${result.title} · 约 ${result.count} ` +
-      (result.kind === "manga" && !result.series ? "页" : "章") + (result.render ? " · 动态页面已就绪" : "");
-    updateSizeEstimate();
-    $("formatField").hidden = false;
-    updateKindFields();
-    $("startBtn").disabled = false;
-    $("startMeta").textContent = "";
+    renderProbeResult(result);
   }).catch((err) => {
     if (state.probeRequest !== request) return;
     $("probeHint").classList.remove("is-loading");
@@ -67,6 +48,30 @@ function probeUrl(url) {
     $("wsStatus").hidden = true;
     $("startBtn").disabled = true;
   });
+}
+
+/* 识别结果渲染:probe 成功与标签页状态恢复共用同一条路径 */
+function renderProbeResult(result) {
+  $("probeHint").classList.remove("is-loading");
+  $("probeHint").hidden = true;
+  state.probe = result;
+  renderVolumes(result);
+  renderRange(result);
+  syncSeriesAvailability();
+  state.kind = result.kind;
+  setSeg($("kindSeg"), "kind", result.kind);
+  renderFormatChips();
+  const status = $("wsStatus");
+  status.hidden = false;
+  status.dataset.kind = result.kind;
+  status.textContent =
+    `${result.kind === "manga" ? "漫画" : "小说"} · ${result.title} · 约 ${result.count} ` +
+    (result.kind === "manga" && !result.series ? "页" : "章") + (result.render ? " · 动态页面已就绪" : "");
+  updateSizeEstimate();
+  $("formatField").hidden = false;
+  updateKindFields();
+  $("startBtn").disabled = false;
+  $("startMeta").textContent = "";
 }
 
 function updateKindFields() {

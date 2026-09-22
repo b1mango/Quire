@@ -153,16 +153,19 @@ $("rangeLast").addEventListener("change", () => {
   if (parseInt(first.value, 10) > parseInt(last.value, 10)) first.value = last.value;
   syncExprFromSelects();
 });
-$("rangeExpr").addEventListener("input", () => {
-  /* 单段闭区间时回显到下拉，多段/开放尾保持下拉不动 */
+/* 表达式 → 下拉回显:单段闭区间时同步,多段/开放尾保持下拉不动 */
+function syncSelectsFromExpr() {
   try {
     const sel = rangeState();
-    const total = sel.total;
     if (sel.segments.length === 1 && sel.segments[0][1] !== null) {
       const [first, last] = sel.segments[0];
-      if (last <= total) { $("rangeFirst").value = String(first); $("rangeLast").value = String(last); }
+      if (last <= sel.total) { $("rangeFirst").value = String(first); $("rangeLast").value = String(last); }
     }
   } catch (err) { /* 输入中途，等完整表达式 */ }
+}
+
+$("rangeExpr").addEventListener("input", () => {
+  syncSelectsFromExpr();
   updateRangeSummary(); syncSeriesAvailability();
 });
 

@@ -13,6 +13,49 @@ const state = {
   bookId: null, books: [], selectedBook: null, lastSpec: null,
 };
 
+/* ------------------------------------------------------------ 标签页状态
+   采集台四个标签(小说/漫画 × 目录/单章)各自独立保留 URL 输入、识别结果
+   与章节选择;切走再切回看到原样。进行中的识别不后台继续,只保留已渲染结果。 */
+
+const tabStates = {};
+function tabKey() { return `${state.kind}:${state.captureMode}`; }
+
+function saveTabState(key) {
+  tabStates[key] = {
+    url: $("urlInput").value,
+    probe: state.probe,
+    rangeExpr: $("rangeExpr").value,
+    splitMode: $("splitMode").value,
+    volumes: [...$("volumeList").querySelectorAll("input")].map((x) => x.checked),
+  };
+}
+
+function switchTab() {
+  /* 调用方已更新 state.kind / state.captureMode;先作废旧标签在途的识别 */
+  state.probeRequest = Symbol();
+  clearTimeout(probeTimer);
+  const saved = tabStates[tabKey()];
+  resetProbe();
+  if (!saved) {
+    $("urlInput").value = "";
+    renderFormatChips(); updateKindFields();
+    return;
+  }
+  $("urlInput").value = saved.url;
+  $("splitMode").value = saved.splitMode;
+  if (saved.probe) {
+    renderProbeResult(saved.probe);
+    [...$("volumeList").querySelectorAll("input")].forEach((x, i) => {
+      if (i < saved.volumes.length) x.checked = saved.volumes[i];
+    });
+    $("rangeExpr").value = saved.rangeExpr;
+    syncSelectsFromExpr();
+    updateRangeSummary(); syncSeriesAvailability();
+  } else {
+    renderFormatChips(); updateKindFields();
+  }
+}
+
 /* ------------------------------------------------------------ 基础 */
 
 function api(path, options = {}) {
@@ -249,10 +292,12 @@ function saveSettings() {
 document.querySelectorAll("[data-view-btn]").forEach((b) =>
   b.addEventListener("click", () => showView(b.dataset.viewBtn)));
 bindSeg($("kindSeg"), "kind", (kind) => {
-  state.kind = kind; renderFormatChips(); updateKindFields(); recheckUrl();
+  saveTabState(tabKey());
+  state.kind = kind; switchTab();
 });
 bindSeg($("captureSeg"), "capture", (mode) => {
-  state.captureMode = mode; updateKindFields(); recheckUrl();
+  saveTabState(tabKey());
+  state.captureMode = mode; switchTab();
 });
 $("splitMode").addEventListener("change", recheckUrl);
 document.querySelectorAll("[data-command]").forEach(button => button.addEventListener("click", () => {
