@@ -33,8 +33,14 @@ merge_trees() { # <arm64 dir> <x86_64 dir> <out dir>
     cp -R "$1" "$3"
     (cd "$2" && find . -type f ! -name '.DS_Store') | while read -r rel; do
         if file -b "$2/$rel" | grep -q "Mach-O"; then
-            lipo -create "$3/$rel" "$2/$rel" -output "$3/$rel.merged"
-            mv "$3/$rel.merged" "$3/$rel"
+            if lipo -create "$3/$rel" "$2/$rel" -output "$3/$rel.merged" 2>/dev/null; then
+                mv "$3/$rel.merged" "$3/$rel"
+            elif [ "$(lipo -archs "$3/$rel" 2>/dev/null)" = "x86_64 arm64" ]; then
+                : # arm64 侧已是 universal 二进制(如 fontTools 的 universal2 wheel),直接可用
+            else
+                echo "错误：无法合并两架构二进制：$rel" >&2
+                exit 1
+            fi
         elif ! cmp -s "$3/$rel" "$2/$rel"; then
             case "$rel" in
             *.dist-info/RECORD | *.dist-info/WHEEL) ;; # 记录 .so 哈希与 wheel 标签，两架构本就不同
