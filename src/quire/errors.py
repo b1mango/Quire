@@ -59,6 +59,8 @@ class BlockedError(FetchError):
     """站点拒绝或 robots 禁止访问；停止对应请求。"""
 
     exit_code = 5
+    #: 是否识别为 Cloudflare 等盾的拦截（可由 fetch/cloudflare 自动升级处置）。
+    cloudflare: bool = False
 
 
 # ---------------------------------------------------------------- 退出码 3

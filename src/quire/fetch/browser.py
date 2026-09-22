@@ -8,7 +8,7 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from ..errors import ConfigError, FetchError, UnsupportedError
+from ..errors import BlockedError, ConfigError, FetchError, QuireError, UnsupportedError
 from ..utils.urls import is_usable_url
 from .browser_catalogue import catalogue_script
 from .browser_cdp import Cdp
@@ -72,6 +72,43 @@ async def _evaluate(cdp: Cdp, session: str, expression: str) -> Any:
     if "exceptionDetails" in reply:
         raise FetchError("动态页面脚本执行失败")
     return reply.get("result", {}).get("value")
+
+
+def _challenge_dom(html: str) -> bool:
+    """渲染结果仍是 Cloudflare 质询页（不能当正文交付）。"""
+    lowered = html.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            'id="challenge-running"',
+            'id="cf-challenge-running"',
+            "<title>just a moment",
+            "<title>attention required",
+        )
+    )
+
+
+async def _harvest_clearance(
+    cdp: Cdp, session: str, url: str, client: AsyncFetcher, warnings: set[str]
+) -> None:
+    """原生渲染通过后回收 cf_clearance 与一致的 UA，同站后续请求走快速 HTTP 通道。
+
+    回收失败不拖垮已成功的渲染，但会在报告警告里如实可见；Cookie 只进内存会话。
+    """
+    try:
+        cookies = await cdp.call("Network.getCookies", {"urls": [url]}, session_id=session)
+        clearance = next(
+            (c["value"] for c in cookies.get("cookies", []) if c.get("name") == "cf_clearance"),
+            None,
+        )
+        if not clearance:
+            return
+        agent = await _evaluate(cdp, session, "navigator.userAgent")
+        if not isinstance(agent, str) or not agent:
+            raise FetchError("无法读取真实浏览器的 User-Agent")
+        client.set_clearance(url, cookie=clearance, user_agent=agent)
+    except QuireError:
+        warnings.add("cf_clearance 回收失败；同站后续请求仍走浏览器通道")
 
 
 async def _scroll(
@@ -162,17 +199,32 @@ async def render_page(
                     cdp, session, tree["frameTree"]["frame"]["id"], client, page
                 ) as network:
                     network.catalogue_script = catalogue_script(page.url)
-                    navigation = await cdp.call(
-                        "Page.navigate", {"url": page.url}, session_id=session
-                    )
-                    network.check()
-                    if navigation.get("errorText"):
-                        raise FetchError("动态页面导航失败")
-                    await _scroll(cdp, session, network, options, content)
-                    snapshot = await _evaluate(cdp, session, _DOM)
-                    network.check()
-                    if not isinstance(snapshot, dict) or not is_usable_url(snapshot.get("url", "")):
-                        raise FetchError("动态页面返回了无效DOM")
+                    snapshot: Any = None
+                    for retried in (False, True):
+                        navigation = await cdp.call(
+                            "Page.navigate", {"url": page.url}, session_id=session
+                        )
+                        network.check()
+                        if navigation.get("errorText"):
+                            raise FetchError("动态页面导航失败")
+                        await _scroll(cdp, session, network, options, content)
+                        snapshot = await _evaluate(cdp, session, _DOM)
+                        network.check()
+                        if not isinstance(snapshot, dict) or not is_usable_url(
+                            snapshot.get("url", "")
+                        ):
+                            raise FetchError("动态页面返回了无效DOM")
+                        if not _challenge_dom(snapshot["html"]):
+                            break
+                        # Cloudflare 质询页：走真实 Chrome 升级通道过质询并回注
+                        # cf_clearance，然后带凭据重渲染一次；没有升级通道或重试
+                        # 仍不过就如实失败，绝不拿质询页冒充正文。
+                        if retried or client.escalation is None:
+                            raise BlockedError(
+                                "Cloudflare 验证未通过；隔离 Chrome 无法完成质询",
+                                hint="本机有可用 Chrome 时会自动升级；也可配置 --cdp-endpoint 后重试",
+                            )
+                        await client.escalation(page.url)
                     encoded = snapshot["html"].encode("utf-8")
                     if len(encoded) > client.max_bytes:
                         raise FetchError("动态页面DOM超过大小限制")
@@ -240,18 +292,9 @@ async def _render_native(
                     raise FetchError("真实浏览器导航超出站点范围")
                 network.validate_status(snapshot["url"])
                 html = snapshot["html"]
-                if any(
-                    marker in html.lower()
-                    for marker in (
-                        'id="challenge-running"',
-                        'id="cf-challenge-running"',
-                        "<title>just a moment",
-                        "<title>attention required",
-                    )
-                ):
-                    from ..errors import BlockedError
-
+                if _challenge_dom(html):
                     raise BlockedError("Cloudflare 验证尚未完成；请在 Chrome 完成验证后重试")
+                await _harvest_clearance(cdp, session, snapshot["url"], client, network.warnings)
                 encoded = html.encode("utf-8")
                 if len(encoded) > client.max_bytes:
                     raise FetchError("动态页面DOM超过大小限制")

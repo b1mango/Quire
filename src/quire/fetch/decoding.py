@@ -10,11 +10,43 @@ from __future__ import annotations
 
 import zlib
 
+import httpx
+
 from ..errors import FetchError
 
 _CHUNK_SIZE = 64 * 1024
 _MAX_GZIP_MEMBERS = 1024
 _GZIP_WBITS = zlib.MAX_WBITS | 16
+
+
+async def sniff_body(response: httpx.Response) -> bytes:
+    """403 页面只取前 64 KiB 识别防护来源，不占用正常的大小预算。"""
+    raw = bytearray()
+    async for block in response.aiter_raw():
+        raw.extend(block[: 65536 - len(raw)])
+        if len(raw) >= 65536:
+            break
+    try:
+        return decode_body(bytes(raw), response.headers.get("content-encoding", "").lower(), 65536)
+    except FetchError:
+        return bytes(raw)
+
+
+async def read_body(response: httpx.Response, max_bytes: int) -> bytes:
+    """读取完整响应体，声明或实际体积超限、截断都如实报错。"""
+    declared = response.headers.get("content-length", "")
+    if declared and (len(declared) > 20 or not declared.isascii() or not declared.isdigit()):
+        raise FetchError("Invalid Content-Length")
+    if declared and int(declared) > max_bytes:
+        raise FetchError("Response exceeds configured size limit")
+    raw = bytearray()
+    async for block in response.aiter_raw():
+        if len(raw) + len(block) > max_bytes:
+            raise FetchError("Response exceeds configured size limit")
+        raw.extend(block)
+    if declared and len(raw) != int(declared):
+        raise FetchError("Incomplete response body")
+    return decode_body(bytes(raw), response.headers.get("content-encoding", "").lower(), max_bytes)
 
 
 def decode_body(raw: bytes, encoding: str, max_bytes: int) -> bytes:

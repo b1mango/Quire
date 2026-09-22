@@ -19,6 +19,7 @@ from .export_options import output_paths
 from .export_receipt import export_key, read_receipt
 from .fetch.async_policy import HostPace
 from .fetch.browser import RenderOptions
+from .fetch.cloudflare import ClearanceEscalation
 from .fetch.session import AsyncFetcher
 from .image.downloader import download_images
 from .image.options import CompressionOptions
@@ -84,6 +85,10 @@ async def run_core_manga(
         respect_robots=opts.obey_robots,
         cookie_hosts=cookie_hosts_for(url),
     )
+    if fetcher is None:
+        # Cloudflare 盾站点：HTTP 403 命中时自动升级真实 Chrome 过质询并回注
+        # cf_clearance；外部传入的 fetcher 由调用方自行决定是否启用。
+        client.escalation = ClearanceEscalation(client, render)
     async with nullcontext(client) if shared_fetcher else client:
         if plan is None:
             from .core_discovery import discover_manga

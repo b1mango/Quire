@@ -24,6 +24,7 @@ from .errors import NoTextError, PausedError, UnsupportedError
 from .fetch.async_policy import HostPace
 from .fetch.browser import RenderOptions, fetch_render_input, render_page
 from .fetch.browser_process import find_chrome
+from .fetch.cloudflare import ClearanceEscalation
 from .fetch.session import AsyncFetcher
 from .fetch.simple import Response
 from .models import (
@@ -210,6 +211,10 @@ async def run_core_novel(
         cookie_hosts=cookie_hosts_for(url),
     )
     async with client:
+        if fetcher is None:
+            # Cloudflare 盾站点：HTTP 403 命中时自动升级真实 Chrome 过质询并回注
+            # cf_clearance；外部传入的 fetcher 由调用方自行决定是否启用。
+            client.escalation = ClearanceEscalation(client, render)
         page = await fetch_render_input(client, url, render, referer=opts.referer)
         if not (render and (render.native or render.cdp_endpoint)):
             page = await expand_catalogue(client, page)

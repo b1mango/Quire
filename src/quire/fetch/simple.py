@@ -36,8 +36,8 @@ RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 
 BLOCKED_HINT = "站点拒绝了访问；该站可能限制当前网络环境，可在设置请求头后重试。"
 CLOUDFLARE_HINT = (
-    "站点启用了 Cloudflare 等安全防护，当前网络环境被拦截（真实浏览器访问同样被拒）；"
-    "可更换网络环境后重试。"
+    "站点启用了 Cloudflare 等安全防护，当前网络环境被拦截；"
+    "可在本机 Chrome 完成验证或更换网络环境后重试。"
 )
 CONNECTION_HINT = (
     "连接未能建立或被中途重置；站点可能对当前网络环境不可达"
@@ -54,8 +54,12 @@ def cloudflare_block(headers: Mapping[str, str], body: bytes) -> bool:
 
 
 def blocked_error(url: str, headers: Mapping[str, str], body: bytes) -> BlockedError:
-    hint = CLOUDFLARE_HINT if cloudflare_block(headers, body) else BLOCKED_HINT
-    return BlockedError(f"HTTP 403: {redact(url)}", hint=hint)
+    cloudflare = cloudflare_block(headers, body)
+    error = BlockedError(
+        f"HTTP 403: {redact(url)}", hint=CLOUDFLARE_HINT if cloudflare else BLOCKED_HINT
+    )
+    error.cloudflare = cloudflare
+    return error
 
 
 @dataclass(frozen=True, slots=True)

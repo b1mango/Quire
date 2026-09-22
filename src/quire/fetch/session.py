@@ -8,65 +8,32 @@ import random
 import time
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import Protocol
 
 import httpx
 
 from ..errors import BlockedError, ConfigError, FetchError, HttpStatusError, NetworkError
-from ..utils.urls import is_usable_url, redact, route_fragment
+from ..utils.urls import redact, route_fragment
 from .async_policy import AsyncRateLimiter, AsyncRobotsPolicy, HostPace
 from .challenge import challenge_target
-from .decoding import decode_body
-from .simple import (
-    CONNECTION_HINT,
-    DEFAULT_ACCEPT,
-    DEFAULT_LANGUAGE,
-    DEFAULT_UA,
-    RETRYABLE_STATUS,
-    Response,
-    blocked_error,
-    retry_after,
-)
+from .decoding import read_body, sniff_body
+from .request_shape import public_headers, redirect_target, valid_url
+from .simple import CONNECTION_HINT, RETRYABLE_STATUS, Response, blocked_error, retry_after
 
 _REDIRECTS = {301, 302, 303, 307, 308}
-_PUBLIC_HEADERS = {"accept", "accept-language", "referer"}
 
 
-def _url(value: str) -> httpx.URL:
-    if not is_usable_url(value) or any(ord(c) < 32 for c in value):
-        raise ConfigError("URL must be an absolute HTTP(S) address without credentials")
-    try:
-        url = httpx.URL(value)
-        if url.scheme not in {"http", "https"} or not url.host or url.userinfo:
-            raise ValueError
-        return url.copy_with(fragment=None)
-    except (httpx.InvalidURL, ValueError):
-        raise ConfigError("URL must be an absolute HTTP(S) address without credentials") from None
+class Escalation(Protocol):
+    """Cloudflare 盾拦截时的升级通道（fetch/cloudflare.ClearanceEscalation 实现）。
 
+    ``__call__`` 负责完成质询并把 cf_clearance 回注会话；无法自动通过时
+    如实抛出 BlockedError，绝不伪成功。``reject`` 在回注后仍被 403 拒绝时
+    调用，标记该站升级无效，避免逐章重复启动浏览器。
+    """
 
-def _headers(referer: str | None, custom: Mapping[str, str] | None) -> dict[str, str]:
-    result = {
-        "user-agent": DEFAULT_UA,
-        "accept": DEFAULT_ACCEPT,
-        "accept-language": DEFAULT_LANGUAGE,
-        "accept-encoding": "gzip, deflate",
-    }
-    for name, value in (custom or {}).items():
-        key = name.lower()
-        if key not in _PUBLIC_HEADERS or any(ord(c) < 32 or ord(c) > 126 for c in value):
-            raise ConfigError("Only public ASCII collection headers are supported")
-        result[key] = value
-    if referer is not None:
-        result["referer"] = str(_url(referer))
-    if result.get("referer"):
-        result["referer"] = str(_url(result["referer"]))
-    return result
+    async def __call__(self, url: str) -> None: ...
 
-
-def _redirect(url: httpx.URL, location: str) -> httpx.URL:
-    try:
-        return _url(str(url.join(location)))
-    except httpx.InvalidURL:
-        raise NetworkError("Invalid redirect Location") from None
+    def reject(self, url: str) -> None: ...
 
 
 class AsyncFetcher:
@@ -100,6 +67,8 @@ class AsyncFetcher:
         self.timeout, self.retries, self.max_bytes = timeout, retries, max_bytes
         self.respect_robots = respect_robots
         self.cookie_hosts = {h.lower() for h in cookie_hosts}
+        self.escalation: Escalation | None = None
+        self._host_agents: dict[str, str] = {}
         self.limiter = AsyncRateLimiter(rate, pace)
         self._slots = asyncio.Semaphore(concurrency)
         self._transport, self._concurrency = transport, concurrency
@@ -144,6 +113,26 @@ class AsyncFetcher:
         host = url.host.lower()
         return any(host == h or host.endswith("." + h) for h in self.cookie_hosts)
 
+    def set_clearance(self, url: str, *, cookie: str, user_agent: str) -> None:
+        """回注浏览器通道取得的 cf_clearance 与一致的 User-Agent（仅内存会话）。
+
+        cf_clearance 与 UA、出口 IP 绑定：登记后同站请求带该 Cookie 并固定 UA，
+        过期被拒时由升级通道重新处置。Cookie 只进内存 Cookie 罐，不写日志/报告。
+        """
+        host = valid_url(url).host.lower()
+        if (
+            not cookie
+            or not cookie.isascii()
+            or any(c in cookie for c in ";, \t\r\n")
+            or not user_agent
+            or any(ord(c) < 32 or ord(c) > 126 for c in user_agent)
+        ):
+            raise FetchError("浏览器通道返回了无效的 cf_clearance 或 User-Agent")
+        self.cookie_hosts.add(host)
+        self._host_agents[host] = user_agent
+        if self._client is not None:
+            self._client.cookies.set("cf_clearance", cookie, domain=host, path="/")
+
     async def get(
         self,
         url: str,
@@ -154,19 +143,40 @@ class AsyncFetcher:
     ) -> Response:
         if self._client is None or self._closing or self._loop is not asyncio.get_running_loop():
             raise ConfigError("AsyncFetcher must be used inside its owning async context")
-        request_url, request_headers = _url(url), _headers(referer, headers)
+        request_url, request_headers = valid_url(url), public_headers(referer, headers)
+        if agent := self._host_agents.get(request_url.host.lower()):
+            request_headers["user-agent"] = agent
         task = asyncio.current_task()
         assert task is not None
         self._active.add(task)
         started = time.monotonic()
         try:
-            response = await self._fetch(request_url, request_headers, policy=False, robots=robots)
+            try:
+                response = await self._fetch(
+                    request_url, request_headers, policy=False, robots=robots
+                )
+            except BlockedError as exc:
+                # Cloudflare 盾：交给升级通道（真实 Chrome 过质询并回注 cf_clearance），
+                # 然后带新凭据重试一次；升级失败或重试仍被拒就如实抛出，不伪成功。
+                if self.escalation is None or not exc.cloudflare:
+                    raise
+                await self.escalation(str(request_url))
+                if agent := self._host_agents.get(request_url.host.lower()):
+                    request_headers["user-agent"] = agent
+                try:
+                    response = await self._fetch(
+                        request_url, request_headers, policy=False, robots=robots
+                    )
+                except BlockedError as retried:
+                    if retried.cloudflare:
+                        self.escalation.reject(str(request_url))
+                    raise
             if self._uses_cookies(request_url):
                 # JS 令牌质询(ixdzs8 等):带会话 Cookie 重访一次;仍是质询就如实返回。
                 target = challenge_target(response.text, response.url, len(response.content))
                 if target is not None:
                     response = await self._fetch(
-                        _url(target),
+                        valid_url(target),
                         {**request_headers, "referer": response.url},
                         policy=False,
                         robots=robots,
@@ -188,7 +198,7 @@ class AsyncFetcher:
         """Preserve the isolated page's anonymous API token only on Shuqi's exact API host."""
         if body is not None and len(body) > 2 * 1024 * 1024:
             raise ConfigError("POST 请求体超过 2 MiB 限制")
-        target = _url(url)
+        target = valid_url(url)
         if (
             target.scheme != "https"
             or target.host != "ocean.shuqireader.com"
@@ -203,7 +213,11 @@ class AsyncFetcher:
         if any(any(ord(c) < 32 or ord(c) > 126 for c in v) for v in public.values()):
             raise ConfigError("Invalid page API headers")
         return await self._fetch(
-            target, {**_headers(None, None), **public}, policy=False, method=method, content=body
+            target,
+            {**public_headers(None, None), **public},
+            policy=False,
+            method=method,
+            content=body,
         )
 
     async def preflight(self, url: str, headers: Mapping[str, str]) -> Response:
@@ -213,7 +227,7 @@ class AsyncFetcher:
         if any(any(ord(c) < 32 or ord(c) > 126 for c in v) for v in public.values()):
             raise ConfigError("Invalid CORS preflight headers")
         return await self._fetch(
-            _url(url), {**_headers(None, None), **public}, policy=False, method="OPTIONS"
+            valid_url(url), {**public_headers(None, None), **public}, policy=False, method="OPTIONS"
         )
 
     async def post(
@@ -229,8 +243,8 @@ class AsyncFetcher:
             raise ConfigError("POST 请求体超过 2 MiB 限制")
         if self._client is None or self._closing or self._loop is not asyncio.get_running_loop():
             raise ConfigError("AsyncFetcher must be used inside its owning async context")
-        request_url = _url(url)
-        request_headers = {**_headers(referer, None), "content-type": content_type}
+        request_url = valid_url(url)
+        request_headers = {**public_headers(referer, None), "content-type": content_type}
         task = asyncio.current_task()
         assert task is not None
         self._active.add(task)
@@ -250,7 +264,7 @@ class AsyncFetcher:
             self._active.discard(task)
 
     async def _robots_text(self, url: str) -> str:
-        return (await self._fetch(_url(url), _headers(None, None), policy=True)).text
+        return (await self._fetch(valid_url(url), public_headers(None, None), policy=True)).text
 
     async def _fetch(
         self,
@@ -286,7 +300,7 @@ class AsyncFetcher:
                 if response.status in _REDIRECTS:
                     if method != "GET":
                         raise NetworkError("POST 请求不允许跟随重定向")
-                    target = _redirect(url, location)
+                    target = redirect_target(url, location)
                     if url.scheme == "https" and target.scheme != "https":
                         raise BlockedError("HTTPS redirect downgrade is not allowed")
                     if str(target) in seen or redirects >= 10:
@@ -339,11 +353,11 @@ class AsyncFetcher:
                 raise NetworkError("Redirect response is missing Location")
             body = b""
             if 200 <= response.status_code < 300:
-                body = await self._read(response)
+                body = await read_body(response, self.max_bytes)
             elif response.status_code == 403:
-                body = await self._sniff(response)
+                body = await sniff_body(response)
             elif response.status_code in _REDIRECTS:
-                _redirect(url, location)
+                redirect_target(url, location)
             result = Response(
                 str(response.url),
                 response.status_code,
@@ -357,34 +371,3 @@ class AsyncFetcher:
             await response.aclose()
             if not self._uses_cookies(url):
                 self._client.cookies.clear()
-
-    async def _sniff(self, response: httpx.Response) -> bytes:
-        # 403 页面只取前 64 KiB 识别防护来源，不占用正常的大小预算。
-        raw = bytearray()
-        async for block in response.aiter_raw():
-            raw.extend(block[: 65536 - len(raw)])
-            if len(raw) >= 65536:
-                break
-        try:
-            return decode_body(
-                bytes(raw), response.headers.get("content-encoding", "").lower(), 65536
-            )
-        except FetchError:
-            return bytes(raw)
-
-    async def _read(self, response: httpx.Response) -> bytes:
-        declared = response.headers.get("content-length", "")
-        if declared and (len(declared) > 20 or not declared.isascii() or not declared.isdigit()):
-            raise FetchError("Invalid Content-Length")
-        if declared and int(declared) > self.max_bytes:
-            raise FetchError("Response exceeds configured size limit")
-        raw = bytearray()
-        async for block in response.aiter_raw():
-            if len(raw) + len(block) > self.max_bytes:
-                raise FetchError("Response exceeds configured size limit")
-            raw.extend(block)
-        if declared and len(raw) != int(declared):
-            raise FetchError("Incomplete response body")
-        return decode_body(
-            bytes(raw), response.headers.get("content-encoding", "").lower(), self.max_bytes
-        )

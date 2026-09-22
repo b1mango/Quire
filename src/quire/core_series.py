@@ -11,6 +11,7 @@ from .core_manga import run_core_manga
 from .errors import ConfigError, FetchError, PausedError
 from .fetch.async_policy import HostPace
 from .fetch.browser import RenderOptions, render_page
+from .fetch.cloudflare import ClearanceEscalation
 from .fetch.session import AsyncFetcher
 from .image.options import CompressionOptions
 from .models import MangaOptions, MangaResult, ProgressSink
@@ -100,6 +101,9 @@ async def run_series(
     )
     results: list[MangaResult] = []
     async with client:
+        if fetcher is None:
+            # Cloudflare 盾站点：HTTP 403 命中时自动升级真实 Chrome 过质询。
+            client.escalation = ClearanceEscalation(client, render)
         page = await client.get(url)
         if render:
             page, _ = await render_page(page, client, render, content="text")
