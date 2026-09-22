@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 from ..text.clean import chapter_number, has_chapter_mark
 from ..utils.urls import is_usable_url, route_fragment
 from ..utils.urls import join_document_url as join_url
-from .catalog_links import is_linked_reader
+from .catalog_links import is_category_link, is_linked_reader, is_namespace_link
 from .minidom import Document, Node
 
 #: 明确不是章节的导航链接文本。
@@ -134,7 +134,7 @@ def discover_chapters(
         linked_reader = is_linked_reader(base_url, url or "")
         if not url or not is_usable_url(url) or not (_same_origin(base_url, url) or linked_reader):
             continue
-        if _namespace_link(url):
+        if is_namespace_link(url) or is_category_link(url):
             continue
         title = _WS.sub(" ", anchor.text).strip()
         if not title or len(title) > 60 or title in NAV_WORDS:
@@ -147,6 +147,10 @@ def discover_chapters(
         if number is not None or has_chapter_mark(title):
             strong.append(link)
         elif selector is not None or _in_list(anchor):
+            # 弱候选只凭容器入选,再要一条内容证据:URL 里带数字。
+            # 标题无章节号/章节标记且 URL 也没有数字的,是分类或导航链接。
+            if selector is None and not _DIGITS.search(urlsplit(url).path):
+                continue
             weak.append(link)
 
     # 截断放在排序之后：扫描阶段的"预算"会被侧栏链接吃掉，
@@ -356,13 +360,6 @@ def _in_list(anchor: Node) -> bool:
             return True
         node = node.parent
     return False
-
-
-def _namespace_link(url: str) -> bool:
-    """MediaWiki 风格的命名空间链接（``/wiki/Special:AllPages``）不是章节。"""
-    path = urlsplit(url).path.rstrip("/")
-    tail = path.rsplit("/", 1)[-1]
-    return ":" in tail
 
 
 def _modal_group(links: list[ChapterLink]) -> list[ChapterLink]:

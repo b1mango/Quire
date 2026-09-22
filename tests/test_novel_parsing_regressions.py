@@ -93,6 +93,37 @@ def test_rel_next_preserves_chapter_identity(current: str, target: str, follow: 
     assert find_next_page(doc, url, url) == (origin + target if follow else None)
 
 
+def test_category_and_nav_links_are_not_chapters() -> None:
+    """分类/导航链接(指向 /c/*.html 等路径)不进入章节范围下拉。
+
+    回归:quanben 等站的目录页把「现代言情/古代言情」等分类链接放在列表
+    容器里,之前会被当成章节。
+    """
+    url = "https://example.test/n/book/list.html"
+    doc = parse(
+        '<ul class="list3">'
+        '<li><a href="/n/book/1.html"><span>第1章 开始</span></a></li>'
+        '<li><a href="/n/book/2.html"><span>第2章 继续</span></a></li>'
+        '<li><a href="/n/book/3.html"><span>第3章 结束</span></a></li>'
+        "</ul>"
+        '<ul class="list3">'
+        '<li><a href="/c/xiandai.html">现代言情</a></li>'
+        '<li><a href="/c/gudai.html">古代言情</a></li>'
+        '<li><a href="/category/junshi.html">军事</a></li>'
+        '<li><a href="/rank/top.html">排行榜单</a></li>'
+        '<li><a href="/tag/wanben.html">完本</a></li>'
+        '<li><a href="/n/book/foreword.html">作品相关</a></li>'
+        "</ul>",
+        base_url=url,
+    )
+    links = discover_chapters(doc, url)
+    assert [link.url for link in links] == [
+        "https://example.test/n/book/1.html",
+        "https://example.test/n/book/2.html",
+        "https://example.test/n/book/3.html",
+    ]
+
+
 @pytest.mark.parametrize("selector", [None, "a"])
 @pytest.mark.parametrize(
     "foreign",
