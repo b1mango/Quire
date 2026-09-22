@@ -25,6 +25,23 @@ def test_gugu_reader_links_are_explicit_and_in_reading_order():
     assert not discover_chapters(parse(html), "http://unrelated.test/")
 
 
+def test_comicinfo_catalogue_yields_comicview_chapters():
+    """腾讯 ComicInfo 目录页:静态 HTML 直出 ComicView 章节链接,无需渲染。"""
+    from quire.parse.chapters import looks_like_catalogue
+
+    base = "https://ac.qq.com/Comic/ComicInfo/id/505430"
+    items = "".join(
+        f'<li><a href="/ComicView/index/id/505430/cid/{n}">第{n}话 标题{n}</a></li>'
+        for n in (1, 2, 3)
+    )
+    html = f"<html><body><ul class='chapter-page-list'>{items}</ul></body></html>"
+    links = discover_chapters(parse(html), base)
+    assert looks_like_catalogue(links)
+    assert [link.url for link in links] == [
+        f"https://ac.qq.com/ComicView/index/id/505430/cid/{n}" for n in (1, 2, 3)
+    ]
+
+
 def test_unknown_reader_envelope_does_not_export_decorations():
     import pytest
 

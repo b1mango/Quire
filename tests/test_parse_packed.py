@@ -119,6 +119,36 @@ def test_extracts_and_percent_encodes_non_ascii_paths():
     assert "%E6%96%97%E7%A0%B4%E8%8B%8D%E7%A9%B9" in url
 
 
+#: 测试侧 LZ 压缩器对部分字节流不能往返(结尾标记缺陷),这组词典实测可用。
+#: 索引:files=0, path=1, imgData=2, sl=3, SMH=6。
+_IMGDATA_WORDS = ["files", "path", "imgData", "sl", "qq", "b2", "SMH", "cb"]
+
+
+def test_extracts_desktop_imgdata_variant():
+    """桌面版章节页:SMH.imgData 的 files+path 拼在桌面 CDN 主机上。"""
+    payload = (
+        '6.2({"0":["seemh-001-aa11.JPG.webp","seemh-002-bb22.JPG.webp"],'
+        '"1":"/ps1/g/x/07/","3":{"e":111,"m":"sig"}});'
+    )
+    html = _pack_page(payload, _IMGDATA_WORDS)
+    assert extract_smh_reader_images(html) == [
+        "https://eu.hamreus.com/ps1/g/x/07/seemh-001-aa11.JPG.webp?e=111&m=sig",
+        "https://eu.hamreus.com/ps1/g/x/07/seemh-002-bb22.JPG.webp?e=111&m=sig",
+    ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '6.2({"0":["a.JPG.webp"],"1":"/ps1/"});',  # 缺 sl 签名
+        '6.2({"0":"a.JPG.webp","1":"/ps1/","3":{"e":111,"m":"sig"}});',  # files 不是数组
+        '6.2({"0":["a.JPG.webp"],"1":"ps1/","3":{"e":111,"m":"sig"}});',  # path 非 / 开头
+    ],
+)
+def test_desktop_imgdata_malformed_returns_empty(payload):
+    assert extract_smh_reader_images(_pack_page(payload, _IMGDATA_WORDS)) == []
+
+
 @pytest.mark.parametrize(
     "html",
     [

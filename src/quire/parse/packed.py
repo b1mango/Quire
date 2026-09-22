@@ -1,12 +1,15 @@
 """脚本内嵌的整章图片清单提取(DOM 收集的兜底/补充)。
 
-两种已知藏法:
+三种已知藏法:
 
-* 看漫画系(m.manhuagui.com)手机版:Dean Edwards packer 的 eval 脚本,字典串
+* 看漫画系手机版(m.manhuagui.com):Dean Edwards packer 的 eval 脚本,字典串
   先经 LZString.decompressFromBase64 再按 ``|`` 切分(站点自定义
   ``String.prototype.splic``),解包后得到
   ``SMH.reader({...,"images":[...],"sl":{"e":..,"m":".."}})``;
   图片地址 = CDN 主机 + 路径 + ``?e=..&m=..`` 签名(超时即换,必须现取现用)。
+* 同系桌面版(www.manhuagui.com):同款 packer,解包后是
+  ``SMH.imgData({...,"files":[文件名,...],"path":"/ps1/../","sl":{...}})``;
+  图片地址 = 桌面 CDN 主机 + path + 文件名 + 同款签名。
 * Nuxt 系 SPA(在漫画 zaimanhua 等):内联 ``page_url:["...","..."]`` 数组,
   DOM 只渲染当前页,``\\u002F`` 转义交给 json 解析。
 
@@ -26,8 +29,9 @@ _PACKER = re.compile(
     re.S,
 )
 
-#: 手机版阅读器的图片 CDN。桌面版(i.hamreus.com)是另一套页面,不在此列。
-_CDN_HOST = "https://us.hamreus.com"
+#: 手机版与桌面版阅读器各自的图片 CDN。
+_CDN_HOST_MOBILE = "https://us.hamreus.com"
+_CDN_HOST_DESKTOP = "https://eu.hamreus.com"
 
 _BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
 _BASE36 = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -142,10 +146,16 @@ def _unpack(payload: str, radix: int, count: int, words: list[str]) -> str:
     return unpacked if len(unpacked) <= _MAX_UNPACKED else ""
 
 
-def _reader_payload(unpacked: str) -> dict[str, object] | None:
-    start = unpacked.find("SMH.reader(")
-    if start < 0:
+def _smh_payload(unpacked: str) -> tuple[str, dict[str, object]] | None:
+    """在解包后的脚本里定位 ``SMH.reader(`` / ``SMH.imgData(`` 的 JSON 实参。"""
+    starts = [
+        (kind, unpacked.find(marker))
+        for kind, marker in (("reader", "SMH.reader("), ("imgData", "SMH.imgData("))
+    ]
+    starts = [(kind, pos) for kind, pos in starts if pos >= 0]
+    if not starts:
         return None
+    kind, start = min(starts, key=lambda item: item[1])
     brace = unpacked.find("{", start)
     if brace < 0:
         return None
@@ -161,12 +171,25 @@ def _reader_payload(unpacked: str) -> dict[str, object] | None:
                     data = json.loads(unpacked[brace : pos + 1])
                 except ValueError:
                     return None
-                return data if isinstance(data, dict) else None
+                return (kind, data) if isinstance(data, dict) else None
     return None
 
 
+def _sign(data: dict[str, object]) -> tuple[int, str] | None:
+    sign = data.get("sl")
+    if not isinstance(sign, dict) or not isinstance(sign.get("e"), int):
+        return None
+    m = sign.get("m")
+    return (sign["e"], m) if isinstance(m, str) else None
+
+
+def _signed_urls(host: str, paths: list[str], sign: tuple[int, str]) -> list[str]:
+    expire, token = sign
+    return [f"{host}{quote(path, safe='/')}?e={expire}&m={token}" for path in paths[:2000]]
+
+
 def extract_smh_reader_images(html: str) -> list[str]:
-    """从页面 HTML 提取看漫画手机版的整章图片地址,按页序返回。"""
+    """从页面 HTML 提取看漫画系(手机版/桌面版)的整章图片地址,按页序返回。"""
     for match in _PACKER.finditer(html):
         payload, radix, count, blob = (
             match.group(1),
@@ -180,26 +203,34 @@ def extract_smh_reader_images(html: str) -> list[str]:
         unpacked = _unpack(_unescape_js(payload), radix, count, dictionary.split("|"))
         if not unpacked:
             continue
-        data = _reader_payload(unpacked)
-        if data is None:
+        found = _smh_payload(unpacked)
+        if found is None:
             continue
-        images = data.get("images")
-        sign = data.get("sl")
+        kind, data = found
+        sign = _sign(data)
+        if sign is None:
+            continue
+        if kind == "reader":
+            images = data.get("images")
+            if not isinstance(images, list) or not images:
+                continue
+            paths = [item for item in images if isinstance(item, str) and item.startswith("/")]
+            if len(paths) != len(images):
+                continue
+            return _signed_urls(_CDN_HOST_MOBILE, paths, sign)
+        directory = data.get("path")
+        files = data.get("files")
         if (
-            not isinstance(images, list)
-            or not images
-            or not isinstance(sign, dict)
-            or not isinstance(sign.get("e"), int)
-            or not isinstance(sign.get("m"), str)
+            not isinstance(directory, str)
+            or not directory.startswith("/")
+            or not isinstance(files, list)
+            or not files
         ):
             continue
-        urls = []
-        for path in images[:2000]:
-            if not isinstance(path, str) or not path.startswith("/"):
-                break
-            urls.append(f"{_CDN_HOST}{quote(path, safe='/')}?e={sign['e']}&m={sign['m']}")
-        if urls:
-            return urls
+        names = [name for name in files if isinstance(name, str) and not name.startswith("/")]
+        if len(names) != len(files):
+            continue
+        return _signed_urls(_CDN_HOST_DESKTOP, [directory + name for name in names], sign)
     return []
 
 
