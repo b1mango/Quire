@@ -46,8 +46,7 @@ def _page() -> Response:
 
 def _jsonp(callback: str, numbers: range) -> str:
     items = "".join(
-        f'<li><a href="/n/testbook/{n}.html"><span>第{n}章 章节{n}</span></a></li>'
-        for n in numbers
+        f'<li><a href="/n/testbook/{n}.html"><span>第{n}章 章节{n}</span></a></li>' for n in numbers
     )
     payload = json.dumps({"id": "174634", "content": f'<ul class="list3">{items}</ul>'})
     return f"d{callback}({payload});"
@@ -65,7 +64,9 @@ class _Client:
         if self.error is not None:
             raise self.error
         assert self.body is not None
-        return Response(url, 200, {"content-type": "text/html; charset=utf-8"}, self.body.encode(), 0)
+        return Response(
+            url, 200, {"content-type": "text/html; charset=utf-8"}, self.body.encode(), 0
+        )
 
 
 def test_is_list_page() -> None:
@@ -105,9 +106,7 @@ def test_expand_listing_orders_by_url_despite_duplicate_titles() -> None:
     """站点存在标题重号的章节(实测第1156章出现两次):顺序以 URL 章号为准。"""
     client = _Client(_jsonp("a1b2", range(3, 9)))
     page = _page()
-    html = page.content.decode().replace(
-        "第9章 尾声上", "第8章 重号"
-    )  # 页面尾段与接口段标题撞号
+    html = page.content.decode().replace("第9章 尾声上", "第8章 重号")  # 页面尾段与接口段标题撞号
     page = Response(page.url, page.status, page.headers, html.encode(), page.elapsed_ms)
     merged = asyncio.run(quanben.expand_listing(client, page, rng=random.Random(1)))
     links = discover_chapters(parse_html(merged.text, base_url=merged.url), merged.url)

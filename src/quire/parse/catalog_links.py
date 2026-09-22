@@ -6,10 +6,10 @@ import re
 from urllib.parse import urlsplit
 
 #: 分类/导航路径：指向它们的链接不是章节（实测 quanben 等站的 /c/*.html
-#: 分类链接会混进章节下拉）。章节 URL 几乎不会落在这些段下。
+#: 分类链接会混进章节下拉）。必须是子路径或 .html 页面，裸的 "/c" 不算。
 _CATEGORY_PATH = re.compile(
     r"^/(?:c|cat|cats|category|categories|sort|sorts|fenlei|type|types|tag|tags|"
-    r"rank|paihang|search|author|zuozhe)(?:/|\.html?$|$)",
+    r"rank|paihang|search|author|zuozhe)(?:/|\.html?$)",
     re.I,
 )
 
