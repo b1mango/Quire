@@ -15,13 +15,16 @@ Transport size limits, retries and cancellation remain the fetcher's concern.
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import quote, unquote_to_bytes, urlsplit, urlunsplit
 
-from ..errors import BlockedError, HttpStatusError
+from ..errors import BlockedError, FetchError
+
+_LOG = logging.getLogger(__name__)
 
 _PERCENT = re.compile(r"%[0-9a-fA-F]{2}")
 _UNRESERVED = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
@@ -118,10 +121,10 @@ class RobotsPolicy:
             if origin not in self._policies:
                 try:
                     body = self._fetch_text(origin + "/robots.txt")
-                except HttpStatusError as exc:
-                    if exc.status >= 500:
-                        raise
-                    # 4xx(含 404/410/反爬 403):按 REP 惯例视为没有限制
+                except FetchError as exc:
+                    # 获取失败(连接错误/4xx/5xx/反爬拦截):一律视为没有限制,
+                    # 记一条日志后继续抓取,不再以 robots 不可达为由终止任务。
+                    _LOG.info("robots.txt 获取失败,按不限制继续:%s", exc.message)
                     body = ""
                 self._policies[origin] = _parse(body)
             rules = self._policies[origin]

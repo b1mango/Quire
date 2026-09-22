@@ -102,6 +102,7 @@ def run_manga(
         rate=opts.rate,
         max_bytes=opts.max_bytes,
         cancel=cancel,
+        respect_robots=opts.obey_robots,
     )
     candidates, result = _discover(url, opts, client)
     root = Path(workdir) if workdir else output.parent / ".quire-work"

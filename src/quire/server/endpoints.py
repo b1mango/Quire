@@ -70,6 +70,7 @@ def put_settings(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
 def probe(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
     if not isinstance(payload, dict) or not isinstance(payload.get("url"), str):
         raise ConfigError("缺少链接")
+    settings = settings_mod.load(ctx.settings_path, ctx.data_root)
     result = asyncio.run(
         probe_url(
             payload["url"],
@@ -77,6 +78,7 @@ def probe(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
             kind=payload.get("kind"),
             split_by=str(payload.get("split_by", "volume")),
             capture_mode=payload.get("capture_mode", "auto"),
+            obey_robots=settings.obey_robots,
         )
     )
     return {

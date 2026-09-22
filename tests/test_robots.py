@@ -199,24 +199,18 @@ def test_client_error_policy_cached_as_unrestricted(status: int) -> None:
         NetworkError("connection lost"),
     ],
 )
-def test_failed_lookup_blocks_and_is_not_cached(error: Exception) -> None:
-    calls = 0
+def test_failed_lookup_is_unrestricted_and_cached(error: Exception) -> None:
+    """robots.txt 获取失败(连接错误/5xx/反爬)一律视为不限制,且按 origin 缓存。"""
+    requested: list[str] = []
 
     def fetch(url: str) -> str:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            raise error
-        return "User-agent: *\nDisallow: /private"
+        requested.append(url)
+        raise error
 
     policy = RobotsPolicy(fetch)
-    with pytest.raises(type(error)) as raised:
-        policy.check("https://example.test/private")
-    assert raised.value is error
-    for _ in range(2):
-        with pytest.raises(BlockedError, match="robots.txt"):
-            policy.check("https://example.test/private")
-    assert calls == 2
+    policy.check("https://example.test/private")
+    policy.check("https://example.test/other")
+    assert requested == ["https://example.test/robots.txt"]
 
 
 def test_concurrent_checks_fetch_policy_once() -> None:
@@ -252,6 +246,20 @@ def test_fetcher_never_requests_denied_paths(monkeypatch: pytest.MonkeyPatch) ->
             client.get("https://example.test" + path)
     assert client.get("https://example.test/open").content == b"ok"
     assert requested == ["https://example.test/robots.txt", "https://example.test/open"]
+
+
+def test_fetcher_respect_robots_toggle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """respect_robots=False 时完全不请求 robots.txt,Disallow 路径也直接抓取。"""
+    requested: list[str] = []
+
+    def request(self: Fetcher, url: str, headers: object) -> Response:
+        requested.append(url)
+        return Response(url, 200, {}, b"ok", 0)
+
+    monkeypatch.setattr(Fetcher, "_request", request)
+    client = Fetcher(rate=1000000, retries=0, respect_robots=False)
+    assert client.get("https://example.test/private/page").content == b"ok"
+    assert requested == ["https://example.test/private/page"]
 
 
 def test_fetcher_image_requests_skip_robots(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -98,6 +98,8 @@ def test_async_response_charset_and_robots_single_lookup():
 
 @pytest.mark.parametrize("status", [404, 410, 403, 500])
 def test_robots_absence_or_errors(status):
+    """robots.txt 不可用(4xx/5xx)一律视为不限制,正文请求照常继续。"""
+
     async def run():
         seen = []
 
@@ -108,12 +110,8 @@ def test_robots_absence_or_errors(status):
         async with AsyncFetcher(
             transport=httpx.MockTransport(handler), retries=0, rate=10000
         ) as client:
-            if status in (404, 410):
-                assert (await client.get("https://example.test/page")).content == b"ok"
-            else:
-                with pytest.raises(BlockedError if status == 403 else HttpStatusError):
-                    await client.get("https://example.test/page")
-                assert seen == ["/robots.txt"]
+            assert (await client.get("https://example.test/page")).content == b"ok"
+            assert seen == ["/robots.txt", "/page"]
 
     asyncio.run(run())
 
@@ -139,16 +137,17 @@ def test_redirected_robots_and_single_connection_do_not_deadlock():
 
 
 @pytest.mark.parametrize("status", [403, 500])
-def test_concurrent_robots_failures_are_shared_and_later_call_can_retry(status):
+def test_concurrent_robots_failures_shared_as_unrestricted(status):
+    """并发的 robots 查询共享一次失败结果:按不限制放行,且不重复请求。"""
+
     async def run():
         seen = []
-        current_status = status
 
         async def handler(request):
             seen.append(request.url.path)
             if request.url.path == "/robots.txt":
                 await asyncio.sleep(0.01)
-                return answer(request, current_status)
+                return answer(request, status)
             return answer(request)
 
         async with AsyncFetcher(
@@ -158,12 +157,31 @@ def test_concurrent_robots_failures_are_shared_and_later_call_can_retry(status):
                 *(client.get("https://example.test/page") for _ in range(5)),
                 return_exceptions=True,
             )
-            error = BlockedError if status == 403 else HttpStatusError
-            assert all(isinstance(reply, error) for reply in replies)
-            assert seen == ["/robots.txt"]
-            current_status = 404
-            assert (await client.get("https://example.test/page")).status == 200
-            assert seen == ["/robots.txt", "/robots.txt", "/page"]
+            assert all(not isinstance(reply, Exception) for reply in replies)
+            assert seen == ["/robots.txt"] + ["/page"] * 5
+            assert (await client.get("https://example.test/other")).status == 200
+            assert "/robots.txt" not in seen[6:]
+
+    asyncio.run(run())
+
+
+def test_async_respect_robots_toggle():
+    """respect_robots=False:不请求 robots.txt,Disallow 路径直接抓取。"""
+
+    async def run():
+        seen = []
+
+        def handler(request):
+            seen.append(request.url.path)
+            if request.url.path == "/robots.txt":
+                return answer(request, data=b"User-agent: *\nDisallow: /")
+            return answer(request)
+
+        async with AsyncFetcher(
+            transport=httpx.MockTransport(handler), retries=0, rate=1e9, respect_robots=False
+        ) as client:
+            assert (await client.get("https://example.test/private")).content == b"ok"
+            assert seen == ["/private"]
 
     asyncio.run(run())
 

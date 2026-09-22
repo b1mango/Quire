@@ -202,6 +202,7 @@ function loadSettingsView() {
     $("setConcurrency").value = settings.concurrency;
     $("setRate").value = settings.rate;
     $("setAutoCheck").checked = !!settings.auto_check_updates;
+    $("setRobots").checked = !!settings.obey_robots;
   }).catch((err) => { $("settingsMeta").textContent = err.message; });
   api("/api/capabilities").then((caps) => {
     state.caps = caps;
@@ -235,6 +236,7 @@ function saveSettings() {
     concurrency: parseInt($("setConcurrency").value, 10),
     rate: parseFloat($("setRate").value),
     auto_check_updates: $("setAutoCheck").checked,
+    obey_robots: $("setRobots").checked,
   };
   api("/api/settings", { method: "PUT", body: payload }).then((settings) => {
     state.settings = settings;

@@ -261,6 +261,7 @@ async def run_core_novel(
         rate=opts.rate,
         max_bytes=opts.max_bytes,
         pace=pace,
+        respect_robots=opts.obey_robots,
     )
     async with client:
         page = await client.get(url, referer=opts.referer)

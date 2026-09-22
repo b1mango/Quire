@@ -80,6 +80,7 @@ async def run_core_manga(
         rate=opts.rate,
         max_bytes=opts.max_bytes,
         pace=pace,
+        respect_robots=opts.obey_robots,
     )
     async with nullcontext(client) if shared_fetcher else client:
         if plan is None:

@@ -290,7 +290,10 @@ class JobManager:
             chapters.register(task_id)
 
         manga_options = MangaOptions(
-            concurrency=settings.concurrency, rate=settings.rate, follow_pages=True
+            concurrency=settings.concurrency,
+            rate=settings.rate,
+            follow_pages=True,
+            obey_robots=settings.obey_robots,
         )
         novel_options = NovelOptions(
             concurrency=settings.concurrency,
@@ -302,6 +305,7 @@ class JobManager:
             chapter_first=spec.chapter_first,
             chapter_last=spec.chapter_last,
             chapter_ranges=spec.chapter_ranges,
+            obey_robots=settings.obey_robots,
         )
         render = RenderOptions(timeout=60, max_scrolls=1000) if spec.render else None
         if rule:

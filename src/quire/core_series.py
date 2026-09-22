@@ -94,6 +94,7 @@ async def run_series(
         rate=opts.rate,
         max_bytes=opts.max_bytes,
         pace=pace,
+        respect_robots=opts.obey_robots,
     )
     results: list[MangaResult] = []
     async with client:

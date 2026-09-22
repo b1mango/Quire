@@ -69,12 +69,15 @@ async def probe_url(
     kind: str | None = None,
     split_by: str = "volume",
     capture_mode: str = "auto",
+    obey_robots: bool = True,
 ) -> ProbeResult:
     url = validate_task_url(url)
     validate_capture_mode(kind, capture_mode)
     rule = resolve_rule(data_root, url) if data_root else None
     chosen_kind = kind or (rule.kind if rule else None)
-    async with AsyncFetcher(timeout=timeout, retries=1, concurrency=2, rate=rate) as client:
+    async with AsyncFetcher(
+        timeout=timeout, retries=1, concurrency=2, rate=rate, respect_robots=obey_robots
+    ) as client:
         page = await client.get(url)
         page = await quanben.expand_listing(client, page)
         dynamic = bool(route_fragment(url))

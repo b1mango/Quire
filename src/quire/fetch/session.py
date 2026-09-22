@@ -80,6 +80,7 @@ class AsyncFetcher:
         transport: httpx.AsyncBaseTransport | None = None,
         rng: random.Random | None = None,
         pace: HostPace | None = None,
+        respect_robots: bool = True,
     ) -> None:
         if (
             not math.isfinite(timeout)
@@ -95,6 +96,7 @@ class AsyncFetcher:
         ):
             raise ConfigError("Invalid core HTTP timeout, rate, concurrency, retry or size limit")
         self.timeout, self.retries, self.max_bytes = timeout, retries, max_bytes
+        self.respect_robots = respect_robots
         self.limiter = AsyncRateLimiter(rate, pace)
         self._slots = asyncio.Semaphore(concurrency)
         self._transport, self._concurrency = transport, concurrency
@@ -247,7 +249,7 @@ class AsyncFetcher:
         attempt = 0
         seen = {str(url)}
         while True:
-            if not policy and robots:
+            if not policy and robots and self.respect_robots:
                 await self.robots.check(str(url))
             try:
                 async with self.limiter.admit(str(url), self._slots, self.timeout) as remaining:

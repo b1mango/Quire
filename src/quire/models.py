@@ -31,9 +31,12 @@ class MangaOptions:
     last: int = 0
     max_bytes: int = 32 * 1024 * 1024
     overwrite: bool = False
+    obey_robots: bool = True
     policy: FilterPolicy = field(default_factory=FilterPolicy)
 
     def __post_init__(self) -> None:
+        if type(self.obey_robots) is not bool:
+            raise ConfigError("robots 开关须为布尔值")
         if not 1 <= self.concurrency <= 16 or not 0 <= self.retries <= 10:
             raise ConfigError("并发须为 1-16，重试须为 0-10")
         if any(not math.isfinite(v) or v <= 0 for v in (self.rate, self.timeout, self.dpi)):
@@ -135,9 +138,13 @@ class NovelOptions:
     chapter_first: int = 1
     chapter_last: int = 0
     chapter_ranges: str = ""  # 多段范围表达式（如 "1-10,15-20"）；非空时取代起止两章
+    obey_robots: bool = True
 
     def __post_init__(self) -> None:
         from .parse.chapter_range import parse_ranges, validate_range
+
+        if type(self.obey_robots) is not bool:
+            raise ConfigError("robots 开关须为布尔值")
 
         validate_range(self.chapter_first, self.chapter_last)
         if self.chapter_ranges:

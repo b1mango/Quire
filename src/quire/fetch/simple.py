@@ -146,6 +146,7 @@ class Fetcher:
         max_bytes: int = 32 * 1024 * 1024,
         cancel: threading.Event | None = None,
         rng: random.Random | None = None,
+        respect_robots: bool = True,
     ) -> None:
         if (
             not math.isfinite(timeout)
@@ -164,6 +165,7 @@ class Fetcher:
         self.limiter = HostRateLimiter(rate, sleep=self._sleep)
         self.rng = rng or random.Random()
         self._local = threading.local()
+        self.respect_robots = respect_robots
         self.robots = RobotsPolicy(self._robots_text)
 
     def _robots_text(self, url: str) -> str:
@@ -174,8 +176,10 @@ class Fetcher:
             self._local.fetching_policy = False
 
     def _redirect_check(self, url: str) -> None:
-        skip = getattr(self._local, "fetching_policy", False) or getattr(
-            self._local, "skip_robots", False
+        skip = (
+            not self.respect_robots
+            or getattr(self._local, "fetching_policy", False)
+            or getattr(self._local, "skip_robots", False)
         )
         if not skip:
             self.robots.check(url)
@@ -196,9 +200,10 @@ class Fetcher:
         if not is_usable_url(url) or urlsplit(url).scheme not in {"http", "https"}:
             raise ConfigError("URL must be an absolute HTTP(S) address without credentials")
         self._sleep(0)
-        if robots:
+        check = robots and self.respect_robots
+        if check:
             self.robots.check(url)
-        self._local.skip_robots = not robots  # 图片等二进制请求的重定向也不再查 robots
+        self._local.skip_robots = not check  # 图片等二进制请求的重定向也不再查 robots
         try:
             return self._get(url, referer=referer, headers=headers)
         finally:

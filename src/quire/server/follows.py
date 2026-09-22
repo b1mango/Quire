@@ -67,6 +67,7 @@ def check_update(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
             data_root=ctx.data_root,
             kind="novel",
             capture_mode=follow.capture_mode,
+            obey_robots=settings_mod.load(ctx.settings_path, ctx.data_root).obey_robots,
         )
     )
     titles = result.chapters

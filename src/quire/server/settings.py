@@ -31,6 +31,7 @@ class UiSettings:
     ocr: str = "auto"
     theme: str = "paper:light"
     auto_check_updates: bool = False
+    obey_robots: bool = False
 
     def __post_init__(self) -> None:
         output = Path(self.output_dir).expanduser()
@@ -56,6 +57,8 @@ class UiSettings:
             raise ConfigError("未知主题")
         if type(self.auto_check_updates) is not bool:
             raise ConfigError("自动检查追更开关须为布尔值")
+        if type(self.obey_robots) is not bool:
+            raise ConfigError("robots.txt 开关须为布尔值")
 
     @property
     def output_path(self) -> Path:
@@ -82,6 +85,7 @@ def parse(payload: Any) -> UiSettings:
         "ocr",
         "theme",
         "auto_check_updates",
+        "obey_robots",
     }
     unknown = set(payload) - known
     if unknown:
