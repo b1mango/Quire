@@ -27,6 +27,8 @@ from __future__ import annotations
 import re
 from urllib.parse import urlsplit
 
+from ..parse.minidom import Document
+
 _HOST = "8book.com"
 _CONTENT_HOST = "finance.binaccount.com"
 _BOOK_PATH = re.compile(r"^/novelbooks/(\d+)/?$")
@@ -118,3 +120,31 @@ def is_content_mirror(source_url: str, final_url: str) -> bool:
         return True
     paged = re.fullmatch(r"(\d+)_\d+", target.query)
     return paged is not None and paged.group(1) == source.query
+
+
+#: 阅读页里的导航块(章節列表/上一篇/下一篇),在内容容器内重复出现。
+_NAV_SELECTORS = (".prev", ".next", ".chmenus", "#subtitle")
+
+#: 站点水印是同形异符拼出的 "8book.com" 变体(⒏ьoОｋ·Ｃом / 8ВｏΟk·СΟm …),
+#: 每次出现字符组合都不同,且与正文共用 span.read_spans,只能按文本形态识别:
+#: 短、无汉字、带 8 系字符与分隔符。中文小说正文段不会满足这个形态。
+_WATERMARK = re.compile(r"^[^\u4e00-\u9fff]{5,20}$")
+_WATERMARK_MARKS = frozenset("8⑧⒏⑻８")
+_WATERMARK_SEPS = frozenset("·.．。｡•・")
+
+
+def clean_document(doc: Document) -> None:
+    """移除 8book 阅读页的导航块与同形异符水印(在正文抽取前调用)。"""
+    for selector in _NAV_SELECTORS:
+        for node in doc.select(selector):
+            if node.parent is not None:
+                node.parent.children.remove(node)
+    for node in doc.select("span.read_spans"):
+        text = node.text.strip()
+        if (
+            node.parent is not None
+            and _WATERMARK.match(text)
+            and any(c in _WATERMARK_MARKS for c in text)
+            and any(c in _WATERMARK_SEPS for c in text)
+        ):
+            node.parent.children.remove(node)

@@ -8,9 +8,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from urllib.parse import urlsplit
 
 from ..parse.minidom import Document
+from . import eightbook
 
 #: 域名后缀 → 要整棵移除的噪声容器选择器。
 _JUNK: dict[str, tuple[str, ...]] = {
@@ -26,6 +28,16 @@ _JUNK: dict[str, tuple[str, ...]] = {
 }
 
 
+#: 域名后缀 → 需要文本判定的站点级清理函数(选择器删不掉的噪声,如
+#: 与正文共用类名的同形异符水印)。
+_JUNK_FN: dict[str, Callable[[Document], None]] = {
+    # 8book.com 及其正文伪装域:阅读页导航块 + "8book.com" 同形异符水印
+    # (实测 2026-09-22:水印每次字符组合不同,只能按文本形态识别)。
+    "8book.com": eightbook.clean_document,
+    "binaccount.com": eightbook.clean_document,
+}
+
+
 def clean_document(doc: Document, url: str) -> None:
     """移除命中站点的已知噪声容器;未登记的站点不动。"""
     host = (urlsplit(url).hostname or "").lower()
@@ -37,3 +49,9 @@ def clean_document(doc: Document, url: str) -> None:
         for node in doc.select(selector):
             if node.parent is not None:
                 node.parent.children.remove(node)
+    clean_fn = next(
+        (fn for suffix, fn in _JUNK_FN.items() if host == suffix or host.endswith("." + suffix)),
+        None,
+    )
+    if clean_fn is not None:
+        clean_fn(doc)

@@ -5,6 +5,7 @@ from quire.fetch.browser_native import allowed_hosts
 from quire.parse.chapters import discover_chapters
 from quire.parse.minidom import parse
 from quire.sites import eightbook
+from quire.sites.cleanup import clean_document
 
 
 def test_ready_script_dispatch_by_page_kind():
@@ -65,6 +66,42 @@ def test_content_mirror_accepts_only_measured_redirect():
         "https://example.test/read/98986/?2702643",
         "https://finance.binaccount.com/read/98986/?2702643",
     )
+
+
+def test_clean_document_removes_nav_and_watermark_keeps_prose():
+    html = (
+        '<div id="content">'
+        '<div id="subtitle">第一卷 第一章 時空機器</div>'
+        '<span class="prev"><a href="?2702642">上一篇</a></span>'
+        '<span class="chmenus"><a href="/novelbooks/98986">章節列表</a></span>'
+        '<span class="next"><a href="?2702644">下一篇</a></span>'
+        '<div id="text"><p>'
+        '<span class="read_spans">項少龍抬頭看見遠山如黛,風從林間穿過,心裡忽然安靜下來.</span><br>'
+        '<span class="read_spans">8ВｏΟk·СΟm</span><br>'
+        '<span class="read_spans">他繼續往前走去,直到天色將晚才停下腳步.</span><br>'
+        '<span class="read_spans">⒏ьoОｋ·Ｃом</span><br>'
+        '<span class="read_spans">８ｂＯＯK。сοm</span><br>'
+        "</p></div></div>"
+    )
+    for url in (
+        "https://8book.com/read/98986/?2702643",
+        "https://finance.binaccount.com/read/98986/?2702643",
+    ):
+        doc = parse(html)
+        clean_document(doc, url)
+        text = doc.text
+        assert "章節列表" not in text and "上一篇" not in text and "下一篇" not in text
+        assert (
+            "8ВｏΟk·СΟm" not in text and "⒏ьoОｋ·Ｃом" not in text and "８ｂＯＯK。сοm" not in text
+        )
+        assert "項少龍抬頭看見遠山如黛" in text and "他繼續往前走去" in text
+
+
+def test_clean_document_leaves_other_sites_untouched():
+    html = '<div><span class="prev">上一篇</span><p>8ВｏΟk·СΟm</p></div>'
+    doc = parse(html)
+    clean_document(doc, "https://example.test/read/1/?2")
+    assert "上一篇" in doc.text and "8ВｏΟk·СΟm" in doc.text
 
 
 def test_no_plain_http_rewrite():
