@@ -30,7 +30,6 @@ function renderLibrary(search) {
   const grid = $("grid");
   grid.textContent = "";
   const books = visibleBooks();
-  $("libEmpty").hidden = state.books.length > 0;
   const total = state.books.reduce((sum, b) => sum + b.bytes, 0);
   const group = (state.groups || []).find((g) => g.id === state.filterGroup);
   $("libSub").textContent = search
@@ -38,8 +37,39 @@ function renderLibrary(search) {
     : group
       ? `${group.name} · ${books.length} 部`
       : `${state.books.length} 部作品 · 共 ${humanSize(total)}`;
+  syncLibraryEmpty(search, books, group);
   books.forEach((book) => grid.appendChild(bookCard(book)));
   if (state.managing) syncBatchBar();
+}
+
+/* 空态分三种：初次空库（引导去采集台）、搜索无结果（可清除搜索）、
+   空分组（可查看全部）；搜索与分组叠加时文案与动作一并说明。 */
+function syncLibraryEmpty(search, books, group) {
+  const empty = $("libEmpty");
+  const text = $("libEmptyText");
+  const clear = $("emptyClearBtn");
+  if (state.books.length === 0 && search) {
+    empty.hidden = false;
+    text.textContent = group
+      ? `没有找到与“${search}”匹配的书（当前在「${group.name}」分组）`
+      : `没有找到与“${search}”匹配的书`;
+    $("emptyNewBtn").hidden = true;
+    clear.hidden = false;
+    clear.textContent = state.filterGroup ? "清除搜索并查看全部" : "清除搜索";
+  } else if (state.books.length === 0) {
+    empty.hidden = false;
+    text.textContent = "还没有书。贴一个链接试试。";
+    $("emptyNewBtn").hidden = false;
+    clear.hidden = true;
+  } else if (books.length === 0 && group) {
+    empty.hidden = false;
+    text.textContent = `分组「${group.name}」里还没有书`;
+    $("emptyNewBtn").hidden = true;
+    clear.hidden = false;
+    clear.textContent = "查看全部";
+  } else {
+    empty.hidden = true;
+  }
 }
 
 function renderGroupBar() {
@@ -49,6 +79,8 @@ function renderGroupBar() {
   const wrap = $("groupChips");
   wrap.textContent = "";
   groups.forEach((group) => {
+    const pair = document.createElement("span");
+    pair.className = "group-pair";
     const chip = document.createElement("button");
     chip.className = "group-chip";
     chip.type = "button";
@@ -67,35 +99,56 @@ function renderGroupBar() {
       const id = e.dataTransfer.getData("text/plain");
       if (id) moveBooks([id], group.id);
     });
+    pair.append(chip);
+    /* 空组删除是独立的同级按钮：键盘可单独到达，不与筛选混在一起 */
     if (!group.members) {
-      const remove = document.createElement("span");
-      remove.className = "gx";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "group-del";
       remove.textContent = "×";
-      remove.title = `删除空分组「${group.name}」`;
-      remove.addEventListener("click", (e) => {
-        e.stopPropagation();
+      remove.setAttribute("aria-label", `删除空分组「${group.name}」`);
+      remove.addEventListener("click", () => {
         api(`/api/groups/${group.id}`, { method: "DELETE" })
-          .then(loadBooks)
+          .then(() => { loadBooks(); $("groupAll").focus(); })
           .catch((err) => { $("libSub").textContent = err.message; });
       });
-      chip.append(remove);
+      pair.append(remove);
     }
-    wrap.appendChild(chip);
+    wrap.appendChild(pair);
   });
 }
 
 function moveBooks(ids, groupId) {
   api("/api/books/batch", { method: "POST", body: { action: "move", ids, group_id: groupId } })
-    .then(() => {
+    .then((result) => {
       if (state.managing) { state.selected = new Set(); }
-      loadBooks();
+      const group = (state.groups || []).find((g) => g.id === groupId);
+      const count = result && Number.isFinite(result.moved) ? result.moved : ids.length;
+      const message = groupId
+        ? `已把 ${count} 本移到「${group ? group.name : "分组"}」`
+        : `已把 ${count} 本移出分组`;
+      /* 列表重载会重写 libSub，反馈在重载落定后给出 */
+      loadBooks().then(() => { $("libSub").textContent = message; });
     })
     .catch((err) => { $("libSub").textContent = err.message; });
 }
 
 let groupMenuIds = [];
+let groupMenuTrigger = null;
+function closeGroupMenu(focus = true) {
+  const menu = $("groupMenu");
+  if (menu.matches(":popover-open")) menu.hidePopover();
+  if (groupMenuTrigger) {
+    groupMenuTrigger.setAttribute("aria-expanded", "false");
+    if (focus && groupMenuTrigger.isConnected) {
+      const trigger = groupMenuTrigger;
+      setTimeout(() => trigger.focus({ preventScroll: true }), 0);
+    }
+  }
+}
 function openGroupMenu(ids, anchor) {
   groupMenuIds = ids;
+  groupMenuTrigger = anchor || null;
   const menu = $("groupMenu");
   menu.querySelectorAll("button").forEach((b) => b.remove());
   (state.groups || []).forEach((group) => {
@@ -111,10 +164,29 @@ function openGroupMenu(ids, anchor) {
   out.addEventListener("click", () => { menu.hidePopover(); moveBooks(groupMenuIds, null); });
   menu.appendChild(out);
   menu.showPopover();
+  if (groupMenuTrigger) groupMenuTrigger.setAttribute("aria-expanded", "true");
   const rect = anchor.getBoundingClientRect();
   menu.style.left = `${Math.max(8, Math.min(rect.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8))}px`;
   menu.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 8))}px`;
+  const first = menu.querySelector("button");
+  if (first) first.focus();
 }
+$("groupMenu").addEventListener("toggle", (event) => {
+  if (event.newState === "closed" && groupMenuTrigger) {
+    groupMenuTrigger.setAttribute("aria-expanded", "false");
+    if (document.activeElement === document.body && groupMenuTrigger.isConnected)
+      groupMenuTrigger.focus({ preventScroll: true });
+  }
+});
+$("groupMenu").addEventListener("keydown", (event) => {
+  const buttons = [...event.currentTarget.querySelectorAll("button")];
+  if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeGroupMenu(); }
+  if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+    event.preventDefault(); const index = buttons.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next]?.focus();
+  }
+});
 
 function setManaging(on) {
   state.managing = on;
@@ -125,17 +197,22 @@ function setManaging(on) {
 }
 
 function syncBatchBar() {
-  $("batchMeta").textContent = `已选 ${state.selected.size} 本`;
   const books = visibleBooks();
+  const visibleSelected = books.filter((b) => state.selected.has(b.id)).length;
+  const hiddenSelected = state.selected.size - visibleSelected;
+  /* 切组/搜索不清选择；看不到的已选要明确报数，删除确认以总数为准 */
+  $("batchMeta").textContent = `已选 ${state.selected.size} 本` +
+    (hiddenSelected > 0 ? `，其中 ${hiddenSelected} 本不在当前结果中` : "");
   const all = books.length > 0 && books.every((b) => state.selected.has(b.id));
-  $("selectAllBtn").textContent = all ? "全不选" : "全选";
+  $("selectAllBtn").textContent = all ? "全不选" : "全选当前结果";
   $("batchMoveBtn").disabled = !state.selected.size;
   $("batchDeleteBtn").disabled = !state.selected.size;
 }
 
-function togglePick(id, dot) {
+function togglePick(id, dot, btn) {
   if (state.selected.has(id)) { state.selected.delete(id); dot.classList.remove("on"); }
   else { state.selected.add(id); dot.classList.add("on"); }
+  if (btn) btn.setAttribute("aria-pressed", String(state.selected.has(id)));
   syncBatchBar();
 }
 
@@ -162,7 +239,8 @@ function bookCard(book) {
     dot.className = "pick" + (state.selected.has(book.id) ? " on" : "");
     cover.append(dot);
     open.setAttribute("aria-label", `选择《${book.title}》`);
-    open.addEventListener("click", () => togglePick(book.id, dot));
+    open.setAttribute("aria-pressed", String(state.selected.has(book.id)));
+    open.addEventListener("click", () => togglePick(book.id, dot, open));
   } else {
     open.addEventListener("click", () => openLibraryBook(book));
     card.draggable = true;
@@ -230,24 +308,27 @@ $("bookMoveBtn").addEventListener("click", () => {
 
 let pendingDeleteBook = null;
 let pendingBatchIds = null;
+function openDeleteDialog(message) {
+  /* 复用同一对话框：每次打开先恢复默认按钮文案，部分失败态会被改成「仅重试失败项/关闭」 */
+  $("deleteBookConfirm").textContent = "删除";
+  $("deleteBookCancel").textContent = "保留";
+  $("deleteBookMessage").textContent = message;
+  $("deleteBookError").textContent = "";
+  $("deleteBookDialog").showModal();
+  $("deleteBookCancel").focus();
+}
 $("bookDeleteBtn").addEventListener("click", () => {
   if (!state.selectedBook) return;
   pendingDeleteBook = state.selectedBook;
   pendingBatchIds = null;
   closeBookMenu(false);
-  $("deleteBookMessage").textContent = `删除《${pendingDeleteBook.title}》？`;
-  $("deleteBookError").textContent = "";
-  $("deleteBookDialog").showModal();
-  $("deleteBookCancel").focus();
+  openDeleteDialog(`删除《${pendingDeleteBook.title}》？`);
 });
 $("batchDeleteBtn").addEventListener("click", () => {
   if (!state.selected.size) return;
   pendingBatchIds = [...state.selected];
   pendingDeleteBook = null;
-  $("deleteBookMessage").textContent = `删除选中的 ${pendingBatchIds.length} 本书？`;
-  $("deleteBookError").textContent = "";
-  $("deleteBookDialog").showModal();
-  $("deleteBookCancel").focus();
+  openDeleteDialog(`删除选中的 ${pendingBatchIds.length} 本书？`);
 });
 $("deleteBookCancel").addEventListener("click", () => $("deleteBookDialog").close());
 $("deleteBookConfirm").addEventListener("click", async () => {
@@ -258,11 +339,20 @@ $("deleteBookConfirm").addEventListener("click", async () => {
         method: "POST", body: { action: "delete", ids: pendingBatchIds },
       });
       if (result.failures && result.failures.length) {
+        /* 部分失败：只保留实际失败项，列出每本原因；成功的不重删 */
         pendingBatchIds = result.failures.map((failure) => failure.id);
         state.selected = new Set(pendingBatchIds);
-        $("deleteBookMessage").textContent = `重试删除剩余的 ${pendingBatchIds.length} 本书？`;
-        $("deleteBookError").textContent =
-          `${result.failures.length} 本没删掉：${result.failures[0].error}`;
+        const titles = new Map((state.books || []).map((b) => [b.id, b.title]));
+        const deleted = Number.isFinite(result.deleted)
+          ? result.deleted
+          : result.failures.length - pendingBatchIds.length;
+        $("deleteBookMessage").textContent =
+          `已删除 ${deleted} 本，还有 ${pendingBatchIds.length} 本没删掉`;
+        $("deleteBookError").textContent = result.failures
+          .map((failure) => `《${titles.get(failure.id) || failure.id}》${failure.error}`)
+          .join("；");
+        $("deleteBookConfirm").textContent = "仅重试失败项";
+        $("deleteBookCancel").textContent = "关闭";
         loadBooks();
         return;
       }

@@ -12,6 +12,7 @@ const state = {
   job: null, events: null, lastSeq: 0, startedAt: 0, timer: null,
   bookId: null, books: [], selectedBook: null, lastSpec: null,
   groups: [], filterGroup: null, managing: false, selected: new Set(),
+  booksSeq: 0, booksError: false,
 };
 
 /* ------------------------------------------------------------ 标签页状态
@@ -220,7 +221,11 @@ function coverPlaceholder(title, seedText) {
 
 function loadBooks() {
   const search = $("searchInput").value.trim();
-  api("/api/books" + (search ? `?search=${encodeURIComponent(search)}` : "")).then((data) => {
+  const seq = ++state.booksSeq;
+  state.booksError = false;
+  syncLibRetry();
+  return api("/api/books" + (search ? `?search=${encodeURIComponent(search)}` : "")).then((data) => {
+    if (seq !== state.booksSeq) return;
     state.books = data.books;
     state.groups = data.groups || [];
     state.selectedBook = null;
@@ -228,7 +233,16 @@ function loadBooks() {
     closeBookMenu(false);
     $("checkAllBtn").hidden = !data.books.some((b) => b.follow);
     renderLibrary(search);
-  }).catch(() => {});
+  }).catch((err) => {
+    if (seq !== state.booksSeq) return;
+    state.booksError = true;
+    syncLibRetry();
+    $("libSub").textContent = `书库加载失败：${err.message || "网络错误"}，请重试`;
+  });
+}
+
+function syncLibRetry() {
+  $("libRetryBtn").hidden = !state.booksError;
 }
 
 /* ------------------------------------------------------------ 设置 */
@@ -272,22 +286,51 @@ function loadSettingsView() {
 }
 
 function saveSettings() {
+  const concurrency = parseInt($("setConcurrency").value, 10);
+  const rate = parseFloat($("setRate").value);
+  const fieldError = $("setFieldError");
+  if (!Number.isFinite(concurrency) || concurrency < 1 || concurrency > 16) {
+    fieldError.textContent = "并发须为 1–16 的整数";
+    fieldError.hidden = false;
+    $("setConcurrency").focus();
+    return;
+  }
+  if (!Number.isFinite(rate) || rate <= 0 || rate > 5) {
+    fieldError.textContent = "每站限速须为 0–5 之间的数值";
+    fieldError.hidden = false;
+    $("setRate").focus();
+    return;
+  }
+  fieldError.hidden = true;
   const payload = {
     output_dir: $("setOutput").value.trim(),
     compress: segValue($("setCompressSeg"), "compress"),
     ocr: segValue($("setOcrSeg"), "ocr"),
-    concurrency: parseInt($("setConcurrency").value, 10),
-    rate: parseFloat($("setRate").value),
+    concurrency,
+    rate,
     auto_check_updates: $("setAutoCheck").checked,
     obey_robots: $("setRobots").checked,
     browser_native: $("setBrowserNative").checked,
     cdp_endpoint: $("setCdpEndpoint").value.trim(),
   };
+  const btn = $("saveSettingsBtn");
+  btn.disabled = true;
+  $("settingsMeta").textContent = "保存中…";
   api("/api/settings", { method: "PUT", body: payload }).then((settings) => {
     state.settings = settings;
     $("settingsMeta").textContent = "已保存";
-  }).catch((err) => { $("settingsMeta").textContent = err.message; });
+  }).catch((err) => {
+    $("settingsMeta").textContent = `保存失败：${err.message}`;
+  }).finally(() => { btn.disabled = false; });
 }
+
+/* 重新编辑任一设置字段后，撤去旧的“已保存/保存失败”状态 */
+["setOutput", "setConcurrency", "setRate", "setCdpEndpoint"].forEach((id) => {
+  $(id).addEventListener("input", () => { $("settingsMeta").textContent = ""; });
+});
+["setRobots", "setAutoCheck", "setBrowserNative"].forEach((id) => {
+  $(id).addEventListener("change", () => { $("settingsMeta").textContent = ""; });
+});
 
 /* ------------------------------------------------------------ 事件绑定 */
 
@@ -361,6 +404,12 @@ let searchTimer = null;
 $("searchInput").addEventListener("input", () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(loadBooks, 250);
+});
+$("libRetryBtn").addEventListener("click", loadBooks);
+$("emptyClearBtn").addEventListener("click", () => {
+  $("searchInput").value = "";
+  state.filterGroup = null;
+  loadBooks();
 });
 $("saveSettingsBtn").addEventListener("click", saveSettings);
 document.addEventListener("keydown", (e) => {

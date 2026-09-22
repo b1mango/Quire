@@ -60,7 +60,7 @@
               </div>
 
               <div class="ws-url">
-                <input class="input" id="urlInput" placeholder="粘贴作品目录或章节链接，如 https://" spellcheck="false" autocomplete="off">
+                <input class="input" id="urlInput" placeholder="粘贴作品目录或章节链接，如 https://" aria-label="作品目录或章节链接" spellcheck="false" autocomplete="off">
                 <button class="btn ghost ws-paste" id="pasteBtn" type="button">粘贴</button>
               </div>
               <div class="hint" id="probeHint" role="status" aria-live="polite" hidden></div>
@@ -85,7 +85,7 @@
                   <div class="hint" id="compressDesc">日常阅读推荐</div>
                   <div class="hint" id="sizeEstimate">识别后可估</div>
                   <div class="hint">
-                    目标体积 <input class="input sm nofx" id="targetInput" value="50" inputmode="numeric"> MB
+                    <label>目标体积 <input class="input sm nofx" id="targetInput" value="50" inputmode="numeric" aria-label="目标体积（MB）"> MB</label>
                   </div>
                 </div>
 
@@ -190,7 +190,8 @@
               <button class="btn ghost" id="checkAllBtn" hidden>全部检查</button>
               <button class="btn ghost" id="newGroupBtn">+ 分组</button>
               <button class="btn ghost" id="manageBtn">管理</button>
-              <input class="input nofx" id="searchInput" placeholder="搜索书名或作者">
+              <input class="input nofx" id="searchInput" placeholder="搜索书名或作者" aria-label="搜索书名或作者">
+              <button class="btn ghost" id="libRetryBtn" hidden>重试加载</button>
             </div>
           </div>
           <div class="group-bar" id="groupBar" hidden>
@@ -198,9 +199,9 @@
             <span class="group-chips" id="groupChips"></span>
           </div>
           <div class="batch-bar" id="batchBar" hidden>
-            <span class="meta" id="batchMeta">已选 0 本</span>
-            <button class="btn ghost" id="selectAllBtn">全选</button>
-            <button class="btn ghost" id="batchMoveBtn">移动到分组</button>
+            <span class="meta" id="batchMeta" role="status" aria-live="polite">已选 0 本</span>
+            <button class="btn ghost" id="selectAllBtn">全选当前结果</button>
+            <button class="btn ghost" id="batchMoveBtn" aria-expanded="false" aria-controls="groupMenu">移动到分组</button>
             <button class="btn danger" id="batchDeleteBtn">删除</button>
             <button class="btn primary" id="manageDoneBtn">完成</button>
           </div>
@@ -218,8 +219,9 @@
           </div>
           <div class="grid" id="grid"></div>
           <div class="empty-state" id="libEmpty" hidden>
-            <p>还没有书。贴一个链接试试。</p>
+            <p id="libEmptyText">还没有书。贴一个链接试试。</p>
             <button class="btn primary" id="emptyNewBtn">采集台</button>
+            <button class="btn ghost" id="emptyClearBtn" hidden>清除搜索</button>
           </div>
         </div>
 
@@ -263,17 +265,18 @@ quire manga URL --core --site example.com</pre>
               <div class="hint">仅连接本机回环端点。Chrome 须已开启远程调试，并已登录目标站点；填写后任务直接使用该浏览器。仅采集网页版已有访问权限的内容，验证或付费限制仍会生效。留空时使用隔离 Chrome。</div>
             </div>
             <div class="field">
-              <label>并发与限速</label>
-              <div class="hint">
-                并发 <input class="input sm nofx" id="setConcurrency" inputmode="numeric">
-                每站限速 <input class="input sm nofx" id="setRate" inputmode="decimal"> req/s
+              <label id="netLimitLabel">并发与限速</label>
+              <div class="hint" role="group" aria-labelledby="netLimitLabel">
+                <label>并发 <input class="input sm nofx" id="setConcurrency" inputmode="numeric"></label>
+                <label>每站限速 <input class="input sm nofx" id="setRate" inputmode="decimal"> req/s</label>
                 <div>默认并发 12（上限 16 的 80%）；每站默认 4 次/秒（应用上限 5 的 80%），非站点承载测量值；遇限流请调低。</div>
+                <div class="hint invalid" id="setFieldError" role="alert" hidden></div>
               </div>
             </div>
             <div class="field">
               <label>robots.txt</label>
               <div class="hint">
-                <input type="checkbox" id="setRobots"> 遵守站点的 robots.txt 协议（默认不校验；站点 robots 无法获取时始终按不限制继续）
+                <label><input type="checkbox" id="setRobots"> 遵守站点的 robots.txt 协议（默认不校验；站点 robots 无法获取时始终按不限制继续）</label>
               </div>
             </div>
           </section>
@@ -293,20 +296,20 @@ quire manga URL --core --site example.com</pre>
             <div class="field">
               <label>启动检查</label>
               <div class="hint">
-                <input type="checkbox" id="setAutoCheck"> 启动时自动检查可追更的书籍
+                <label><input type="checkbox" id="setAutoCheck"> 启动时自动检查可追更的书籍</label>
               </div>
             </div>
           </section>
-          <div class="actions">
-            <button class="btn primary" id="saveSettingsBtn">保存设置</button>
-            <span class="meta" id="settingsMeta"></span>
-          </div>
           <section class="set-group">
             <h2>运行环境</h2>
             <div class="field">
               <dl class="doctor" id="doctorList"></dl>
             </div>
           </section>
+          <div class="actions">
+            <button class="btn primary" id="saveSettingsBtn">保存设置</button>
+            <span class="meta" id="settingsMeta" aria-live="polite"></span>
+          </div>
         </div>
 
       </section>
@@ -322,7 +325,7 @@ quire manga URL --core --site example.com</pre>
 </dialog>
 <dialog id="groupDialog" class="delete-book-dialog" aria-labelledby="groupDialogTitle">
   <h2 id="groupDialogTitle">新建分组</h2>
-  <input class="input" id="groupNameInput" maxlength="50" placeholder="分组名" spellcheck="false">
+  <input class="input" id="groupNameInput" maxlength="50" placeholder="分组名" aria-label="分组名" spellcheck="false">
   <p id="groupDialogError" role="alert"></p>
   <div class="dialog-actions"><button class="btn" id="groupDialogCancel">取消</button><button class="btn primary" id="groupDialogConfirm">创建</button></div>
 </dialog>

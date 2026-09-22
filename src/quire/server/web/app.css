@@ -170,7 +170,7 @@ h1{font-family:var(--fd);font-size:28px;line-height:1.2;margin:0;letter-spacing:
   padding:9px 16px;border-radius:999px;
   background:var(--surface-2);color:var(--muted);
   border:1px solid var(--border);
-  transition:all .16s var(--ease);
+  transition:color .16s var(--ease),background-color .16s var(--ease),border-color .16s var(--ease);
 }
 [data-theme="swiss"] .chip{border-radius:0;text-transform:uppercase;font-size:11px;letter-spacing:.1em;font-weight:600}
 .chip:hover{color:var(--text);border-color:var(--border-strong)}
@@ -182,7 +182,7 @@ h1{font-family:var(--fd);font-size:28px;line-height:1.2;margin:0;letter-spacing:
   appearance:none;font:inherit;font-size:12.5px;cursor:pointer;
   padding:8px 14px;background:var(--surface-2);color:var(--muted);
   border:1px solid var(--border);border-radius:var(--radius-sm);
-  transition:all .16s var(--ease);
+  transition:color .16s var(--ease),background-color .16s var(--ease),border-color .16s var(--ease);
 }
 .segmented button:hover{color:var(--text)}
 .segmented button[aria-pressed="true"]{background:var(--text);color:var(--surface);border-color:var(--text)}
@@ -196,7 +196,7 @@ h1{font-family:var(--fd);font-size:28px;line-height:1.2;margin:0;letter-spacing:
   appearance:none;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;
   padding:11px 22px;border-radius:var(--radius-sm);white-space:nowrap;
   border:1px solid var(--border);background:var(--surface-2);color:var(--text);
-  transition:all .16s var(--ease);
+  transition:background-color .16s var(--ease),border-color .16s var(--ease),filter .16s var(--ease),transform .16s var(--ease);
 }
 .btn:hover{background:var(--surface-3)}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -257,13 +257,19 @@ h1{font-family:var(--fd);font-size:28px;line-height:1.2;margin:0;letter-spacing:
   appearance:none;font:inherit;font-size:12.5px;cursor:pointer;
   padding:7px 14px;border-radius:999px;
   background:var(--surface-2);color:var(--muted);border:1px solid var(--border);
-  transition:all .16s var(--ease);
+  transition:color .16s var(--ease),background-color .16s var(--ease),border-color .16s var(--ease),transform .16s var(--ease);
 }
 .group-chip:hover{color:var(--text);border-color:var(--border-strong)}
 .group-chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:600}
 .group-chip.over{border-color:var(--accent);background:var(--accent-soft);transform:scale(1.05)}
-.group-chip .gx{margin-left:7px;color:var(--faint)}
-.group-chip .gx:hover{color:var(--warn)}
+.group-pair{display:inline-flex;align-items:center;gap:2px}
+.group-del{
+  appearance:none;font:inherit;font-size:13px;line-height:1;cursor:pointer;
+  width:24px;height:24px;border-radius:50%;border:1px solid transparent;
+  background:transparent;color:var(--faint);
+}
+.group-del:hover{color:var(--warn);border-color:var(--warn)}
+.group-del:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 [data-theme="swiss"] .group-chip{border-radius:0;text-transform:uppercase;font-size:11px;letter-spacing:.08em;font-weight:600}
 .batch-bar{
   display:flex;align-items:center;gap:12px;flex-wrap:wrap;
@@ -276,7 +282,7 @@ h1{font-family:var(--fd);font-size:28px;line-height:1.2;margin:0;letter-spacing:
   position:absolute;top:8px;left:8px;width:20px;height:20px;z-index:2;
   border-radius:50%;border:1.5px solid var(--border-strong);
   background:color-mix(in srgb,var(--surface) 82%, transparent);
-  transition:all .16s var(--ease);
+  transition:background-color .16s var(--ease),border-color .16s var(--ease);
 }
 .cover .pick.on{background:var(--accent);border-color:var(--accent);
   background-image:radial-gradient(circle at center, var(--accent-fg) 2.5px, transparent 3px)}
