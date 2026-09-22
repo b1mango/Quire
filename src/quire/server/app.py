@@ -193,7 +193,7 @@ class _Handler(BaseHTTPRequestHandler):
             if method == "PUT":
                 return self._reply_json(200, endpoints.put_settings(self.server, self._body()))
         if method == "POST" and path == "/api/probe":
-            return self._reply_json(200, endpoints.probe(self.server, self._body()))
+            return self._probe()
         if path == "/api/jobs":
             if method == "GET":
                 return self._reply_json(200, endpoints.list_jobs(self.server))
@@ -273,6 +273,29 @@ class _Handler(BaseHTTPRequestHandler):
             return json.loads(raw)
         except json.JSONDecodeError:
             raise ConfigError("请求体不是有效的 JSON") from None
+
+    def _probe(self) -> None:
+        """流式识别：首帧才发响应头（之前的校验失败仍走普通 JSON 错误码）。
+
+        阶段帧让前端能显示「请求目录 → 识别章节 → 估算体积」的进度文案；
+        识别中途的失败以 ``{"error": …}`` 帧收尾（项目设计.md §3.3）。
+        """
+        started = False
+
+        def send_frame(obj: dict[str, JsonValue]) -> None:
+            nonlocal started
+            if not started:
+                started = True
+                self.send_response(200)
+                self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.close_connection = True
+            self.wfile.write(_json_bytes(obj) + b"\n")
+            self.wfile.flush()
+
+        endpoints.probe_stream(self.server, self._body(), send_frame)
 
     def _job(self, job_id: str) -> None:
         job = self.server.manager.get(job_id)

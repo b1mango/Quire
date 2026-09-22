@@ -171,7 +171,7 @@ $("rangeExpr").addEventListener("input", () => {
 
 /* ------------------------------------------------------------ 已落定章节 */
 
-const chapterState = { seen: new Set(), done: 0, failed: 0 };
+const chapterState = { seen: new Set(), done: 0, failed: 0, order: "asc" };
 const thumbnailGroups = new Map();
 function thumbnailGroup(id = "single") {
   if (!thumbnailGroups.has(id)) {
@@ -195,10 +195,25 @@ function resetChapters() {
   chapterState.seen = new Set();
   chapterState.done = 0;
   chapterState.failed = 0;
+  chapterState.order = "asc";
+  syncChapterOrderBtn();
   $("chapterPanel").hidden = true;
   $("chapterList").textContent = "";
   $("chapterMeta").textContent = "";
 }
+
+function syncChapterOrderBtn() {
+  $("chapterOrderBtn").textContent = chapterState.order === "asc" ? "正序" : "倒序";
+}
+
+$("chapterOrderBtn").addEventListener("click", () => {
+  chapterState.order = chapterState.order === "asc" ? "desc" : "asc";
+  syncChapterOrderBtn();
+  const list = $("chapterList");
+  const rows = [...list.children];
+  list.textContent = "";
+  rows.reverse().forEach((row) => list.appendChild(row));
+});
 
 function chapterRow(chapter) {
   const row = document.createElement("div");
@@ -239,10 +254,16 @@ function appendChapters(chapters) {
   const list = $("chapterList");
   let index = 0;
   const flush = () => {
-    const fragment = document.createDocumentFragment();
-    const end = Math.min(index + 300, fresh.length);
-    for (; index < end; index += 1) fragment.appendChild(chapterRow(fresh[index]));
-    list.appendChild(fragment);
+    if (chapterState.order === "desc") {
+      /* 倒序逐条前插：批次内保持 新→旧，且整批排在已有行之前 */
+      const end = Math.min(index + 300, fresh.length);
+      for (; index < end; index += 1) list.prepend(chapterRow(fresh[index]));
+    } else {
+      const fragment = document.createDocumentFragment();
+      const end = Math.min(index + 300, fresh.length);
+      for (; index < end; index += 1) fragment.appendChild(chapterRow(fresh[index]));
+      list.appendChild(fragment);
+    }
     if (index < fresh.length) setTimeout(flush, 0);
   };
   flush();

@@ -29,6 +29,15 @@ function updateChromeHint() {
   $("chromeHint").hidden = !(needChrome && state.caps && !state.caps.chrome);
 }
 
+const PROBE_STAGES = {
+  fetch: "正在请求目录页面……",
+  render: "页面需要浏览器渲染，正在等待……",
+  parse: "正在识别章节……",
+  estimate: "正在抽样估算体积……",
+};
+
+/* probe 走 NDJSON 流（fetch + ReadableStream，EventSource 不支持 POST）：
+   每个阶段一帧 {"stage": …}，收尾是 {"result": …} 或 {"error": …}。 */
 function probeUrl(url) {
   clearTimeout(probeTimer);
   const request = Symbol(); state.probeRequest = request;
@@ -37,8 +46,48 @@ function probeUrl(url) {
   $("probeHint").hidden = false;
   $("seriesField").hidden = true;
   $("probeHint").classList.add("is-loading");
-  $("probeHint").textContent = "正在识别链接，动态页面可能需要稍等……";
-  api("/api/probe", { method: "POST", body: { url, kind: state.kind, capture_mode: state.captureMode, split_by: $("splitMode").value } }).then((result) => {
+  $("probeHint").textContent = PROBE_STAGES.fetch;
+  fetch("/api/probe", {
+    method: "POST",
+    headers: { "X-Quire-Token": TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify({ url, kind: state.kind, capture_mode: state.captureMode, split_by: $("splitMode").value }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const err = new Error(data.error || `请求失败（${res.status}）`);
+      err.hint = data.hint;
+      throw err;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "", result = null, failure = null;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const frame = JSON.parse(line);
+        if (frame.stage) {
+          if (state.probeRequest === request)
+            $("probeHint").textContent = PROBE_STAGES[frame.stage] || frame.stage;
+        } else if (frame.error) {
+          failure = frame;
+        } else if (frame.result) {
+          result = frame.result;
+        }
+      }
+    }
+    if (failure) {
+      const err = new Error(failure.error);
+      err.hint = failure.hint;
+      throw err;
+    }
+    if (!result) throw new Error("识别没有返回结果，请再试一次");
+    return result;
+  }).then((result) => {
     if (state.probeRequest !== request) return;
     renderProbeResult(result);
   }).catch((err) => {
@@ -76,9 +125,6 @@ function renderProbeResult(result) {
 
 function updateKindFields() {
   syncOcrAvailability();
-  $("captureHint").textContent = state.captureMode === "single"
-    ? "仅抓取当前章节，保留本章分页，不跟随其他章节。"
-    : state.kind === "novel" ? "识别小说目录，按阅读顺序合为一本书。" : "识别漫画目录，批量抓取章节，可选择分卷。";
   $("compressField").hidden = state.kind !== "manga";
   $("ocrField").hidden = state.kind !== "novel";
   updateChromeHint();
@@ -175,9 +221,9 @@ function updateSizeEstimate() {
   }
   if (bytes && result.count) bytes *= selected / result.count;
   $("sizeEstimate").textContent = bytes
-    ? `图像体积约 ${humanSize(bytes * .7)}–${humanSize(bytes * 1.3)} · 抽样试压估算，不含封装；目标体积会影响结果`
+    ? `约 ${humanSize(bytes * .7)}–${humanSize(bytes * 1.3)}`
     : result && result.estimate_bytes
-      ? `原图总量约 ${humanSize(result.estimate_bytes)} · 当前档位暂无法估算成品`
+      ? `原图约 ${humanSize(result.estimate_bytes)}`
       : "暂无法估算体积";
 }
 

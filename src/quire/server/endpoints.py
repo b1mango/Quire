@@ -8,13 +8,14 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .. import __version__
 from ..assemble.models import clean_metadata_text
 from ..cli_console import data_home, find_chrome, module_available
-from ..errors import ConfigError
+from ..errors import ConfigError, QuireError
 from ..sites.kind_guard import check_placement
 from ..store import library
 from ..store.models import JsonValue
@@ -68,7 +69,9 @@ def put_settings(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
     return get_settings(ctx)
 
 
-def probe(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
+def probe(
+    ctx: QuireServer, payload: Any, on_stage: Callable[[str], None] | None = None
+) -> dict[str, JsonValue]:
     if not isinstance(payload, dict) or not isinstance(payload.get("url"), str):
         raise ConfigError("缺少链接")
     settings = settings_mod.load(ctx.settings_path, ctx.data_root)
@@ -80,6 +83,7 @@ def probe(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
             split_by=str(payload.get("split_by", "volume")),
             capture_mode=payload.get("capture_mode", "auto"),
             obey_robots=settings.obey_robots,
+            on_stage=on_stage,
         )
     )
     return {
@@ -104,6 +108,31 @@ def probe(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
             for v in result.volumes
         ],
     }
+
+
+def probe_stream(
+    ctx: QuireServer, payload: Any, send_frame: Callable[[dict[str, JsonValue]], None]
+) -> None:
+    """NDJSON 流式识别：阶段帧先行，结果或错误帧收尾（项目设计.md §3.3）。
+
+    识别中途的失败（如目录解析不到章节）以错误帧收尾，此时响应行已是 200；
+    流尚未开始时的失败（链接不合法等）照常抛出，由 HTTP 层回对应状态码。
+    """
+    streamed = False
+
+    def frame(obj: dict[str, JsonValue]) -> None:
+        nonlocal streamed
+        streamed = True
+        send_frame(obj)
+
+    try:
+        result = probe(ctx, payload, on_stage=lambda name: frame({"stage": name}))
+    except QuireError as exc:
+        if not streamed:
+            raise
+        frame({"error": exc.message, "hint": exc.hint})
+        return
+    frame({"result": result})
 
 
 def _volumes(value: Any) -> tuple[int, ...]:

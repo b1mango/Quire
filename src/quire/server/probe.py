@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -73,12 +74,22 @@ async def probe_url(
     split_by: str = "volume",
     capture_mode: str = "auto",
     obey_robots: bool = True,
+    on_stage: Callable[[str], None] | None = None,
 ) -> ProbeResult:
     url = validate_task_url(url)
     validate_capture_mode(kind, capture_mode)
     check_placement(url, kind)
     rule = resolve_rule(data_root, url) if data_root else None
     chosen_kind = kind or (rule.kind if rule else None)
+
+    def stage(name: str) -> None:
+        if on_stage is not None:
+            on_stage(name)
+
+    def estimate_stage(result: ProbeResult) -> None:
+        if result.kind == "manga":
+            stage("estimate")
+
     async with AsyncFetcher(
         timeout=timeout,
         retries=1,
@@ -87,25 +98,31 @@ async def probe_url(
         respect_robots=obey_robots,
         cookie_hosts=cookie_hosts_for(url),
     ) as client:
+        stage("fetch")
         page = await client.get(url)
         page = await expand_catalogue(client, page)
         dynamic = bool(route_fragment(url))
         if not dynamic:
+            stage("parse")
             try:
                 result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
             except ParseError:
                 if not parse_html(page.text).select("script[src],script[type=module]"):
                     raise
             else:
+                estimate_stage(result)
                 estimate = await _estimate_bytes(client, result)
                 return _confirm_placement(replace(result, estimate_bytes=estimate), kind)
+        stage("render")
         page, _ = await render_page(
             page,
             client,
             RenderOptions(timeout=60, max_scrolls=1000),
             content="images" if chosen_kind == "manga" and capture_mode == "single" else "text",
         )
+        stage("parse")
         result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
+        estimate_stage(result)
         estimate = await _estimate_bytes(client, result)
         return _confirm_placement(replace(result, render=True, estimate_bytes=estimate), kind)
 

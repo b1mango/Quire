@@ -138,6 +138,7 @@ function attachJob(job) {
   state.lastSeq = 0;
   state.startedAt = Date.now();
   resetRunView(job);
+  $("runDot").hidden = !(job.status === "running" || job.status === "pending");
   appendChapters(job.chapters || []);
   if (job.status === "pending" || job.status === "running") {
     if (job.status === "pending") $("runSub").textContent = "排队中，等前面的任务完成……";
@@ -159,6 +160,7 @@ function finishRunView(status, data) {
   if (state.job) state.job.status = status;
   if (state.events) { state.events.close(); state.events = null; }
   if (state.timer) { clearInterval(state.timer); state.timer = null; }
+  $("runDot").hidden = true;
   $("cancelBtn").hidden = true;
   $("pauseBtn").hidden = true;
   $("runDoneActions").hidden = false;

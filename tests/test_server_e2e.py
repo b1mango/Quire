@@ -40,8 +40,38 @@ def _request(server, method: str, path: str, body: Any = None):
     conn.request(method, path, payload, headers)
     response = conn.getresponse()
     data = response.read()
+    content_type = response.getheader("Content-Type") or ""
     conn.close()
+    if content_type.startswith("application/x-ndjson"):
+        # 流式识别：阶段帧 + 收尾 result/error 帧，收敛为单次响应语义
+        frames = [json.loads(line) for line in data.decode().splitlines() if line.strip()]
+        result = next((frame["result"] for frame in frames if "result" in frame), None)
+        failure = next((frame for frame in frames if "error" in frame), None)
+        if result is not None:
+            return response.status, result
+        if failure is not None:
+            return response.status, {"error": failure["error"], "hint": failure.get("hint")}
+        return response.status, {}
     return response.status, json.loads(data) if data else {}
+
+
+def _request_frames(server, method: str, path: str, body: Any = None) -> tuple[int, list[dict]]:
+    """与 _request 同路，但返回全部 NDJSON 帧（断流式识别的阶段文案用）。"""
+    host, port = server.server_address[:2]
+    conn = http.client.HTTPConnection(host, port, timeout=15)
+    payload = json.dumps(body) if body is not None else None
+    headers = {"X-Quire-Token": server.token}
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+    conn.request(method, path, payload, headers)
+    response = conn.getresponse()
+    data = response.read()
+    conn.close()
+    if not (response.getheader("Content-Type") or "").startswith("application/x-ndjson"):
+        return response.status, [json.loads(data)] if data else []
+    return response.status, [
+        json.loads(line) for line in data.decode().splitlines() if line.strip()
+    ]
 
 
 def _wait_job(server, job_id: str, timeout: float = 60) -> dict:
@@ -453,5 +483,24 @@ def test_probe_rejects_page_without_content(ui):
     server, _ = ui
     with novel_site() as site:
         status, error = _request(server, "POST", "/api/probe", {"url": f"{site.url}/rank"})
-        assert status == 422
+        # 识别中途的失败以 NDJSON 错误帧收尾，响应行已是 200（流式语义）
+        assert status == 200
         assert "章节列表" in error["error"] or "图片" in error["error"]
+
+
+def test_probe_streams_stage_frames(ui):
+    server, _ = ui
+    with novel_site() as site:
+        status, frames = _request_frames(server, "POST", "/api/probe", {"url": f"{site.url}/book/"})
+        assert status == 200
+        stages = [frame["stage"] for frame in frames if "stage" in frame]
+        assert stages[:2] == ["fetch", "parse"]
+        assert "result" in frames[-1]
+        assert frames[-1]["result"]["count"] > 0
+
+
+def test_probe_pre_stream_error_keeps_status(ui):
+    server, _ = ui
+    status, error = _request(server, "POST", "/api/probe", {"url": "not-a-url"})
+    assert status == 422
+    assert "error" in error

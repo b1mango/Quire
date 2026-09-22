@@ -2,10 +2,10 @@
 
 const COMPRESS_DESC = {
   lossless: "保留画质；色彩归一化、长图切分可能改变文件",
-  archive: "JPEG 质量 95 · 保留尺寸；仍会重新编码，并非无损原图",
+  archive: "接近原图，仍会重新编码",
   high: "高画质，体积偏大",
-  balanced: "JPEG 质量 80 · 最长边 2000px，日常阅读推荐",
-  small: "JPEG 质量 70 · 最长边 1600px，优先节省空间",
+  balanced: "日常阅读推荐",
+  small: "优先节省空间",
   tiny: "极限体积，画质损失明显",
 };
 function syncCompressDesc(seg, descId) {
