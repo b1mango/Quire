@@ -12,6 +12,11 @@ from websockets.exceptions import WebSocketException
 from ..errors import ConfigError, FetchError, NetworkError
 
 
+class _NoRedirectConnect(connect):
+    def process_redirect(self, exc: Exception) -> Exception:
+        return exc
+
+
 def _invalid_constant(value: str) -> NoReturn:
     raise ValueError("Invalid JSON constant")
 
@@ -71,7 +76,7 @@ class Cdp:
             raise ConfigError("Cdp cannot be entered more than once")
         self._entered = True
         try:
-            self._connection = await connect(
+            self._connection = await _NoRedirectConnect(
                 self.endpoint,
                 proxy=None,
                 max_size=40 * 1024 * 1024,

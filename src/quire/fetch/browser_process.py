@@ -51,8 +51,23 @@ def find_chrome(path: str | None = None) -> str | None:
 
 
 class ChromeProcess:
-    def __init__(self, executable: str) -> None:
+    def __init__(
+        self,
+        executable: str,
+        *,
+        extra_args: tuple[str, ...] = (),
+        proxy_bypass: str = "",
+    ) -> None:
+        """隔离 Chrome 进程。
+
+        默认所有浏览器流量打进黑洞代理由 Fetch 拦截层代发;
+        ``proxy_bypass``(分号分隔的域名单)是站点适配的显式例外——
+        仅当页面接口绑定浏览器自身 TLS/指纹上下文、代理重放必败时
+        (实测:B 站漫画 twirp 接口)才放行这些域名直连,其余流量照旧。
+        """
         self.executable = executable
+        self.extra_args = extra_args
+        self.proxy_bypass = proxy_bypass
         self.endpoint = ""
         self.profile: Path | None = None
         self.pid: int | None = None
@@ -71,6 +86,7 @@ class ChromeProcess:
             self._temporary = tempfile.TemporaryDirectory(prefix="quire-chrome-")
             self.profile = Path(self._temporary.name)
             # Synchronous spawn records ownership before cancellation can be delivered.
+            bypass = "<-loopback>" + (f";{self.proxy_bypass}" if self.proxy_bypass else "")
             self._process = subprocess.Popen(
                 [
                     self.executable,
@@ -80,6 +96,9 @@ class ChromeProcess:
                     "--remote-debugging-address=127.0.0.1",
                     "--no-first-run",
                     "--no-default-browser-check",
+                    # 沙箱/无钥匙串环境下启动会弹系统钥匙串告警框,永久卡住进程;
+                    # 配置目录本就一次性隔离,内存 mock 钥匙串即可。
+                    "--use-mock-keychain",
                     "--disable-background-networking",
                     "--disable-sync",
                     "--disable-extensions",
@@ -88,7 +107,8 @@ class ChromeProcess:
                     "--disable-quic",
                     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
                     "--proxy-server=http://127.0.0.1:9",
-                    "--proxy-bypass-list=<-loopback>",
+                    f"--proxy-bypass-list={bypass}",
+                    *self.extra_args,
                     "about:blank",
                 ],
                 stdin=subprocess.DEVNULL,

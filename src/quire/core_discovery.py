@@ -13,11 +13,17 @@ from .models import MangaOptions, MangaResult
 from .parse.chapters import find_next_page
 from .parse.images import Candidate
 from .parse.minidom import parse
+from .sites import bilibili
 
 
 async def discover_manga(
     client: AsyncFetcher, url: str, opts: MangaOptions, render: RenderOptions | None = None
 ) -> tuple[list[Candidate], MangaResult]:
+    if render is not None and bilibili.is_reader_page(url):
+        # B站阅读页:旁观式捕获(通用代理渲染拿不到 canvas 正文)。
+        page, _ = await bilibili.capture_reader_page(url, render)
+        found, direct = discover_page(url, opts, page)
+        return found, replace(direct, title=clean_metadata_text(direct.title))
     candidates: list[Candidate] = []
     visited: set[str] = set()
     seen: set[str] = set()

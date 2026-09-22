@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -11,6 +12,8 @@ from ..errors import ConfigError, FetchError, UnsupportedError
 from ..utils.urls import is_usable_url
 from .browser_catalogue import catalogue_script
 from .browser_cdp import Cdp
+from .browser_endpoint import resolve_endpoint, validate_endpoint
+from .browser_native import NativeNetwork, owned_tab
 from .browser_network import BrowserNetwork
 from .browser_process import ChromeProcess, find_chrome
 from .session import AsyncFetcher
@@ -19,6 +22,8 @@ from .simple import DEFAULT_UA, Response
 _STATE = """(() => {
  const root = document.scrollingElement;
  return {url: location.href, ready: document.readyState, y: scrollY,
+ challenge: !!document.querySelector("#challenge-running,#cf-challenge-running") ||
+ /^(Just a moment|Attention Required)/i.test(document.title),
  height: root ? root.scrollHeight : 0, viewport: innerHeight,
  text: document.body ? document.body.innerText.trim() : '',
  images: [...document.images].map(i => i.currentSrc || i.src || i.dataset.src || '').join('|')};
@@ -37,11 +42,17 @@ _DOM = """(() => {
 @dataclass(frozen=True)
 class RenderOptions:
     executable: str | None = None
+    cdp_endpoint: str = ""
+    native: bool = False
     timeout: float = 30
     max_scrolls: int = 100
     settle: float = 1.0
 
     def __post_init__(self) -> None:
+        if type(self.native) is not bool or not isinstance(self.cdp_endpoint, str):
+            raise ConfigError("浏览器模式参数类型错误")
+        if self.cdp_endpoint:
+            validate_endpoint(self.cdp_endpoint)
         if (
             not math.isfinite(self.timeout)
             or not 0 < self.timeout <= 300
@@ -66,12 +77,13 @@ async def _evaluate(cdp: Cdp, session: str, expression: str) -> Any:
 async def _scroll(
     cdp: Cdp,
     session: str,
-    network: BrowserNetwork,
+    network: BrowserNetwork | NativeNetwork,
     opts: RenderOptions,
     content: Literal["images", "text"] = "images",
 ) -> None:
     previous: tuple[object, ...] | None = None
     stable = asyncio.get_running_loop().time()
+    started = stable
     scrolls = 0
     while True:
         network.check()
@@ -81,6 +93,9 @@ async def _scroll(
         state = await _evaluate(cdp, session, _STATE)
         if not isinstance(state, dict) or not is_usable_url(state.get("url", "")):
             raise FetchError("动态页面导航到了不支持的地址")
+        if isinstance(network, NativeNetwork) and state.get("challenge"):
+            await asyncio.sleep(0.2)
+            continue
         visible = state.get(content, "")
         marker = (state["url"], state["height"], state["y"], visible)
         now = asyncio.get_running_loop().time()
@@ -98,7 +113,12 @@ async def _scroll(
             await _evaluate(cdp, session, scroll)
             scrolls += 1
             stable = now
-        elif bottom and visible and now - max(stable, network.last_activity) >= opts.settle:
+        elif (
+            bottom
+            and visible
+            and now - max(stable, network.last_activity) >= opts.settle
+            and (not isinstance(network, NativeNetwork) or now - started >= 2)
+        ):
             return
         await asyncio.sleep(0.2)
 
@@ -110,6 +130,8 @@ async def render_page(
     *,
     content: Literal["images", "text"] = "images",
 ) -> tuple[Response, tuple[str, ...]]:
+    if options.native or options.cdp_endpoint:
+        return await _render_native(page, client, options, content=content)
     executable = find_chrome(options.executable)
     if executable is None:
         raise UnsupportedError(
@@ -164,3 +186,96 @@ async def render_page(
                     return response, tuple(sorted(network.warnings))
     except TimeoutError:
         raise FetchError("动态渲染超时，未确认内容完整；可增大--render-timeout后重试") from None
+
+
+async def _render_native(
+    page: Response,
+    client: AsyncFetcher,
+    options: RenderOptions,
+    *,
+    content: Literal["images", "text"],
+) -> tuple[Response, tuple[str, ...]]:
+    if not is_usable_url(page.url):
+        raise ConfigError("真实浏览器仅接受无凭据 HTTP(S) 地址")
+    try:
+        async with asyncio.timeout(options.timeout), AsyncExitStack() as stack:
+            if client.respect_robots:
+                await client.robots.check(page.url)
+            async with client.limiter.admit(page.url, asyncio.Semaphore(1), options.timeout):
+                pass
+            if options.cdp_endpoint:
+                endpoint = await resolve_endpoint(options.cdp_endpoint)
+            else:
+                executable = find_chrome(options.executable)
+                if executable is None:
+                    raise UnsupportedError("真实浏览器渲染需要系统 Chrome")
+                chrome = await stack.enter_async_context(
+                    ChromeProcess(
+                        executable,
+                        extra_args=("--no-proxy-server",),
+                    )
+                )
+                endpoint = chrome.endpoint
+            cdp = await stack.enter_async_context(Cdp(endpoint))
+            session = await stack.enter_async_context(owned_tab(cdp))
+            await cdp.call("Page.enable", session_id=session)
+            await cdp.call("Network.enable", session_id=session)
+            await cdp.call("Network.setBypassServiceWorker", {"bypass": True}, session_id=session)
+            tree = await cdp.call("Page.getFrameTree", session_id=session)
+            async with NativeNetwork(
+                cdp, session, tree["frameTree"]["frame"]["id"], page, client.max_bytes
+            ) as network:
+                network.catalogue_script = catalogue_script(page.url)
+                navigation = await cdp.call("Page.navigate", {"url": page.url}, session_id=session)
+                if navigation.get("errorText"):
+                    raise FetchError("真实浏览器导航失败")
+                await _scroll(cdp, session, network, options, content)
+                snapshot = await _evaluate(cdp, session, _DOM)
+                network.check()
+                if not isinstance(snapshot, dict) or not is_usable_url(snapshot.get("url", "")):
+                    raise FetchError("真实浏览器返回无效 DOM")
+                from urllib.parse import urlsplit
+
+                if urlsplit(snapshot["url"]).hostname not in network.hosts:
+                    raise FetchError("真实浏览器导航超出站点范围")
+                network.validate_status(snapshot["url"])
+                html = snapshot["html"]
+                if any(
+                    marker in html.lower()
+                    for marker in (
+                        'id="challenge-running"',
+                        'id="cf-challenge-running"',
+                        "<title>just a moment",
+                        "<title>attention required",
+                    )
+                ):
+                    from ..errors import BlockedError
+
+                    raise BlockedError("Cloudflare 验证尚未完成；请在 Chrome 完成验证后重试")
+                encoded = html.encode("utf-8")
+                if len(encoded) > client.max_bytes:
+                    raise FetchError("动态页面DOM超过大小限制")
+                return Response(
+                    snapshot["url"],
+                    network.status,
+                    {"content-type": "text/html; charset=utf-8"},
+                    encoded,
+                    0,
+                ), tuple(sorted(network.warnings))
+    except TimeoutError:
+        raise FetchError("真实浏览器渲染超时；登录或人工验证可能尚未完成") from None
+
+
+async def fetch_render_input(
+    client: AsyncFetcher,
+    url: str,
+    options: RenderOptions | None,
+    *,
+    referer: str | None = None,
+) -> Response:
+    """Native mode must reach Chrome even when an HTTP client would get a 403."""
+    if options and (options.native or options.cdp_endpoint):
+        if not is_usable_url(url):
+            raise ConfigError("浏览器仅接受无凭据 HTTP(S) 地址")
+        return Response(url, 200, {}, b"", 0)
+    return await client.get(url, referer=referer)

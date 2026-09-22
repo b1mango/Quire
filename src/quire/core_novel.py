@@ -22,7 +22,7 @@ from .core_chapters import (
 )
 from .errors import NoTextError, PausedError, UnsupportedError
 from .fetch.async_policy import HostPace
-from .fetch.browser import RenderOptions, render_page
+from .fetch.browser import RenderOptions, fetch_render_input, render_page
 from .fetch.browser_process import find_chrome
 from .fetch.session import AsyncFetcher
 from .fetch.simple import Response
@@ -210,8 +210,9 @@ async def run_core_novel(
         cookie_hosts=cookie_hosts_for(url),
     )
     async with client:
-        page = await client.get(url, referer=opts.referer)
-        page = await expand_catalogue(client, page)
+        page = await fetch_render_input(client, url, render, referer=opts.referer)
+        if not (render and (render.native or render.cdp_endpoint)):
+            page = await expand_catalogue(client, page)
         render_warnings: tuple[str, ...] = ()
         renderer: Renderer | None = None
         if render is not None:
@@ -244,6 +245,7 @@ async def run_core_novel(
                 render=renderer,
                 ocr=ocr_runner,
                 preloaded=plan.preloaded,
+                page_fetcher=_RenderInput(client, render),
                 html_dir=html_dir,
                 on_progress=on_progress,
                 stop=stop,
@@ -344,3 +346,11 @@ def _progress_hook(progress: ChapterProgress | None) -> Callable[[int, int], Non
         progress.update(done, total, None)
 
     return report
+
+
+class _RenderInput:
+    def __init__(self, client: AsyncFetcher, render: RenderOptions | None):
+        self.client, self.render = client, render
+
+    async def get(self, url: str, *, referer: str | None = None, robots: bool = True) -> Response:
+        return await fetch_render_input(self.client, url, self.render, referer=referer)

@@ -99,6 +99,7 @@ async def capture_chapters(
     render: Renderer | None = None,
     ocr: OcrRunner | None = None,
     preloaded: dict[str, Response] | None = None,
+    page_fetcher: ChapterFetcher | None = None,
     html_dir: Path | None = None,
     on_progress: Callable[[int, int], None] | None = None,
     stop: Callable[[], bool] | None = None,
@@ -143,6 +144,7 @@ async def capture_chapters(
                     html_dir,
                     chapter_urls,
                     fonts,
+                    page_fetcher,
                 )
             except asyncio.CancelledError:
                 ledger.fail(task_id, spec.chapter, spec.page, "cancelled")
@@ -182,6 +184,7 @@ async def _capture_one(
     html_dir: Path | None,
     chapter_urls: frozenset[PageKey],
     fonts: FontCache,
+    page_fetcher: ChapterFetcher | None = None,
 ) -> None:
     chapter = record.spec.chapter
     failure: FailureCode | None = None
@@ -202,7 +205,7 @@ async def _capture_one(
             stats.pages += 1  # 统计"发出过的页面请求"，失败重试也算，便于核对恢复行为
         try:
             if page is None:
-                page = await client.get(url, referer=opts.referer)
+                page = await (page_fetcher or client).get(url, referer=opts.referer)
             if render is not None and not cached:
                 page, warnings = await render(page)
                 stats.warnings.extend(warnings)

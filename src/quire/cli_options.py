@@ -22,6 +22,12 @@ def add_manga_options(parser: argparse.ArgumentParser) -> None:
         "--render", action="store_true", help="core使用系统Chrome加载动态页面并滚动"
     )
     parser.add_argument("--chrome", help="Chrome可执行文件路径，需要--render")
+    parser.add_argument(
+        "--cdp-endpoint", default="", help="连接已登录 Chrome 的回环 CDP 地址，需要 --render"
+    )
+    parser.add_argument(
+        "--browser-native", action="store_true", help="使用 Chrome 原生网络，需要 --render"
+    )
     parser.add_argument("--render-timeout", type=float, default=None, help="渲染总期限秒，默认30")
     parser.add_argument("--max-scrolls", type=int, default=None, help="滚动上限，默认100")
     parser.add_argument("--render-wait", type=float, default=None, help="到底后的稳定等待秒，默认1")
@@ -75,7 +81,9 @@ def render_options(
     chrome_for_pdf: bool = False,
 ) -> RenderOptions | None:
     requested = (
-        (args.chrome is not None and not chrome_for_pdf)
+        getattr(args, "cdp_endpoint", "")
+        or getattr(args, "browser_native", False)
+        or (args.chrome is not None and not chrome_for_pdf)
         or args.render_timeout is not None
         or args.max_scrolls is not None
         or args.render_wait is not None
@@ -93,13 +101,16 @@ def render_options(
         from .fetch.browser_process import find_chrome
     except ImportError:
         raise UnsupportedError("缺少动态采集能力", hint="安装quire-local[core]") from None
-    executable = find_chrome(args.chrome)
-    if executable is None:
+    endpoint = getattr(args, "cdp_endpoint", "")
+    executable = None if endpoint else find_chrome(args.chrome)
+    if executable is None and not endpoint:
         raise UnsupportedError(
             "动态采集需要系统Chrome/Edge/Brave/Chromium", hint="安装Chrome或指定--chrome"
         )
     return RenderOptions(
         executable=executable,
+        cdp_endpoint=endpoint,
+        native=getattr(args, "browser_native", False),
         timeout=30 if args.render_timeout is None else args.render_timeout,
         max_scrolls=100 if args.max_scrolls is None else args.max_scrolls,
         settle=1 if args.render_wait is None else args.render_wait,
@@ -131,6 +142,12 @@ def add_novel_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--render", action="store_true", help="用系统 Chrome 渲染动态页面")
     parser.add_argument("--chrome", help="Chrome 可执行文件路径，用于 --render 或 PDF 导出")
+    parser.add_argument(
+        "--cdp-endpoint", default="", help="连接已登录 Chrome 的回环 CDP 地址，需要 --render"
+    )
+    parser.add_argument(
+        "--browser-native", action="store_true", help="使用 Chrome 原生网络，需要 --render"
+    )
     parser.add_argument("--render-timeout", type=float, default=None, help="渲染总期限秒，默认30")
     parser.add_argument("--max-scrolls", type=int, default=None, help="滚动上限，默认100")
     parser.add_argument("--render-wait", type=float, default=None, help="到底后的稳定等待秒，默认1")

@@ -307,7 +307,16 @@ class JobManager:
             chapter_ranges=spec.chapter_ranges,
             obey_robots=settings.obey_robots,
         )
-        render = RenderOptions(timeout=60, max_scrolls=1000) if spec.render else None
+        render = (
+            RenderOptions(
+                timeout=60,
+                max_scrolls=1000,
+                native=settings.browser_native,
+                cdp_endpoint=settings.cdp_endpoint,
+            )
+            if spec.render or settings.browser_native or settings.cdp_endpoint
+            else None
+        )
         if rule:
             manga_options, novel_options = rule.manga(manga_options), rule.novel(novel_options)
         if spec.series or (spec.kind == "manga" and spec.capture_mode == "catalogue"):

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..errors import ConfigError
+from ..fetch.browser_endpoint import validate_endpoint
 from ..image.options import PRESETS
 from ..workspace import atomic_output
 
@@ -32,8 +33,14 @@ class UiSettings:
     theme: str = "paper:light"
     auto_check_updates: bool = False
     obey_robots: bool = False
+    browser_native: bool = False
+    cdp_endpoint: str = ""
 
     def __post_init__(self) -> None:
+        if type(self.browser_native) is not bool or not isinstance(self.cdp_endpoint, str):
+            raise ConfigError("浏览器设置类型错误")
+        if self.cdp_endpoint:
+            validate_endpoint(self.cdp_endpoint)
         output = Path(self.output_dir).expanduser()
         if not output.is_absolute():
             raise ConfigError("输出目录须为绝对路径")
@@ -86,6 +93,8 @@ def parse(payload: Any) -> UiSettings:
         "theme",
         "auto_check_updates",
         "obey_robots",
+        "browser_native",
+        "cdp_endpoint",
     }
     unknown = set(payload) - known
     if unknown:
