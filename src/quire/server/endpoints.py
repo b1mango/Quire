@@ -58,16 +58,14 @@ def get_settings(ctx: QuireServer) -> dict[str, JsonValue]:
 
 
 def put_settings(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
-    path = ctx.settings_path
-    merged: dict[str, Any]
-    if isinstance(payload, dict):
-        current = get_settings(ctx)
-        merged = {**current, **payload}
-    else:
+    if not isinstance(payload, dict):
         raise ConfigError("设置格式不正确")
-    parsed = settings_mod.parse(merged)
-    settings_mod.save(path, parsed)
-    return get_settings(ctx)
+    # 读改写整体持锁：并发 PUT 各自合并后整体覆盖会丢更新
+    with ctx.settings_lock:
+        merged: dict[str, Any] = {**get_settings(ctx), **payload}
+        parsed = settings_mod.parse(merged)
+        settings_mod.save(ctx.settings_path, parsed)
+        return get_settings(ctx)
 
 
 def probe(

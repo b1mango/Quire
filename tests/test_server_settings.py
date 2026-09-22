@@ -182,6 +182,54 @@ def test_concurrent_settings_saves_use_distinct_staging_files(tmp_path, monkeypa
     assert all(not stage.exists() for stage in staged)
 
 
+def test_concurrent_put_settings_no_lost_update(tmp_path, monkeypatch):
+    import http.client
+    import json
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from quire.server.app import make_server
+
+    server = make_server("127.0.0.1", 0, data_root=tmp_path, opener=lambda p: None)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    original_load = settings_mod.load
+
+    def slow_load(path, data_root):
+        settings = original_load(path, data_root)
+        time.sleep(0.2)  # 拉宽读改写窗口：无锁时两个 PUT 必读到同一基线
+        return settings
+
+    monkeypatch.setattr(settings_mod, "load", slow_load)
+
+    def put(payload):
+        host, port = server.server_address[:2]
+        conn = http.client.HTTPConnection(host, port, timeout=10)
+        conn.request(
+            "PUT",
+            "/api/settings",
+            json.dumps(payload),
+            {"X-Quire-Token": server.token, "Content-Type": "application/json"},
+        )
+        response = conn.getresponse()
+        body = json.loads(response.read())
+        conn.close()
+        return response.status, body
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(put, ({"theme": "swiss:light"}, {"compress": "small"})))
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert all(status == 200 for status, _ in results)
+    assert results[0][1]["theme"] == "swiss:light"  # 各自响应都含自己刚写的值
+    assert results[1][1]["compress"] == "small"
+    final = settings_mod.load(server.settings_path, tmp_path)
+    assert final.theme == "swiss:light"
+    assert final.compress == "small"
+
+
 def test_settings_failed_replace_preserves_original_and_cleans_staging(tmp_path, monkeypatch):
     from quire import workspace
 

@@ -14,6 +14,7 @@ import json
 import logging
 import secrets
 import subprocess
+import threading
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -61,6 +62,7 @@ class QuireServer(ThreadingHTTPServer):
         self.token = token
         self.data_root = data_root.absolute()
         self.settings_path = self.data_root / "settings.json"
+        self.settings_lock = threading.Lock()
         self.manager = manager
         self.opener = opener
         self.revealer = revealer or _reveal_with_system
