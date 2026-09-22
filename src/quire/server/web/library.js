@@ -26,16 +26,18 @@ function visibleBooks() {
 }
 
 function renderLibrary(search) {
-  renderGroupBar();
+  renderFolders();
   const grid = $("grid");
   grid.textContent = "";
   const books = visibleBooks();
   const total = state.books.reduce((sum, b) => sum + b.bytes, 0);
   const group = (state.groups || []).find((g) => g.id === state.filterGroup);
+  $("libTitle").textContent = group ? group.name : "书库";
+  $("libBackBtn").hidden = !group;
   $("libSub").textContent = search
     ? `“${search}” · ${books.length} 部`
     : group
-      ? `${group.name} · ${books.length} 部`
+      ? `${books.length} 部`
       : `${state.books.length} 部作品 · 共 ${humanSize(total)}`;
   syncLibraryEmpty(search, books, group);
   books.forEach((book) => grid.appendChild(bookCard(book)));
@@ -73,49 +75,72 @@ function syncLibraryEmpty(search, books, group) {
   }
 }
 
-function renderGroupBar() {
+/* 分组为文件夹卡片：2×2 封面拼贴 + 组名 + 本数；点击进入分组，
+   拖书上去即移入；空组可从「…」删除。 */
+function renderFolders() {
+  const row = $("folderRow");
   const groups = state.groups || [];
-  $("groupBar").hidden = groups.length === 0;
-  $("groupAll").setAttribute("aria-pressed", String(!state.filterGroup));
-  const wrap = $("groupChips");
-  wrap.textContent = "";
+  row.hidden = state.filterGroup !== null || groups.length === 0;
+  row.textContent = "";
+  if (row.hidden) return;
   groups.forEach((group) => {
-    const pair = document.createElement("span");
-    pair.className = "group-pair";
-    const chip = document.createElement("button");
-    chip.className = "group-chip";
-    chip.type = "button";
-    chip.setAttribute("aria-pressed", String(state.filterGroup === group.id));
-    chip.append(document.createTextNode(`${group.name} ${group.members}`));
-    chip.addEventListener("click", () => {
-      state.filterGroup = state.filterGroup === group.id ? null : group.id;
+    const folder = document.createElement("button");
+    folder.type = "button";
+    folder.className = "folder";
+    folder.setAttribute("aria-label", `打开分组「${group.name}」,${group.members} 本`);
+    const collage = document.createElement("span");
+    collage.className = "folder-covers";
+    const members = state.books.filter((b) => b.group === group.id).slice(0, 4);
+    if (members.length) {
+      members.forEach((book) => {
+        const img = document.createElement("img");
+        img.alt = ""; img.loading = "lazy";
+        img.src = book.cover ? `${book.cover}?token=${encodeURIComponent(TOKEN)}` : coverPlaceholder(book.title, book.id);
+        collage.append(img);
+      });
+    } else {
+      const empty = document.createElement("span");
+      empty.className = "folder-empty";
+      empty.textContent = "空";
+      collage.append(empty);
+    }
+    const name = document.createElement("span");
+    name.className = "folder-name"; name.textContent = group.name;
+    const count = document.createElement("span");
+    count.className = "folder-count"; count.textContent = `共 ${group.members} 本`;
+    folder.append(collage, name, count);
+    folder.addEventListener("click", () => {
+      state.filterGroup = group.id;
       renderLibrary($("searchInput").value.trim());
     });
-    /* 拖拽入组：书名卡片拖上分组片即移动 */
-    chip.addEventListener("dragover", (e) => { e.preventDefault(); chip.classList.add("over"); });
-    chip.addEventListener("dragleave", () => chip.classList.remove("over"));
-    chip.addEventListener("drop", (e) => {
+    /* 拖拽入组：书卡拖上文件夹即移动 */
+    folder.addEventListener("dragover", (e) => { e.preventDefault(); folder.classList.add("over"); });
+    folder.addEventListener("dragleave", () => folder.classList.remove("over"));
+    folder.addEventListener("drop", (e) => {
       e.preventDefault();
-      chip.classList.remove("over");
+      folder.classList.remove("over");
       const ids = dragIds(e);
       if (ids.length) moveBooks(ids, group.id);
     });
-    pair.append(chip);
-    /* 空组删除是独立的同级按钮：键盘可单独到达，不与筛选混在一起 */
+    /* 空组删除:独立的「…」按钮,键盘可单独到达 */
     if (!group.members) {
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "group-del";
-      remove.textContent = "×";
-      remove.setAttribute("aria-label", `删除空分组「${group.name}」`);
-      remove.addEventListener("click", () => {
+      const more = document.createElement("span");
+      more.type = "button";
+      more.className = "folder-del";
+      more.setAttribute("role", "button");
+      more.setAttribute("tabindex", "0");
+      more.setAttribute("aria-label", `删除空分组「${group.name}」`);
+      more.textContent = "…";
+      const remove = () => {
         api(`/api/groups/${group.id}`, { method: "DELETE" })
-          .then(() => { loadBooks(); $("groupAll").focus(); })
+          .then(() => loadBooks())
           .catch((err) => { $("libSub").textContent = err.message; });
-      });
-      pair.append(remove);
+      };
+      more.addEventListener("click", (e) => { e.stopPropagation(); remove(); });
+      more.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.stopPropagation(); remove(); } });
+      folder.append(more);
     }
-    wrap.appendChild(pair);
+    row.appendChild(folder);
   });
 }
 
@@ -155,13 +180,13 @@ function openGroupMenu(ids, anchor) {
   menu.querySelectorAll("button").forEach((b) => b.remove());
   (state.groups || []).forEach((group) => {
     const item = document.createElement("button");
-    item.className = "btn";
+    item.setAttribute("role", "menuitem");
     item.textContent = group.name;
     item.addEventListener("click", () => { menu.hidePopover(); moveBooks(groupMenuIds, group.id); });
     menu.appendChild(item);
   });
   const out = document.createElement("button");
-  out.className = "btn";
+  out.setAttribute("role", "menuitem");
   out.textContent = "移出分组";
   out.addEventListener("click", () => { menu.hidePopover(); moveBooks(groupMenuIds, null); });
   menu.appendChild(out);
@@ -210,8 +235,19 @@ function clearSelection() {
   renderLibrary($("searchInput").value.trim());
 }
 
-/* 文件管理器式选择：点选切换；Shift 以最近点击为锚点连选；
-   框选与拖拽入组见文件底部。 */
+/* 文件管理器式选择：点选只留这本（再点取消）；Cmd/Ctrl 切换个别项；
+   Shift 以最近点击为锚点连选；双击打开。框选与拖拽入组见文件底部。 */
+function singlePick(id) {
+  if (state.selected.size === 1 && state.selected.has(id)) {
+    state.selected = new Set();
+    state.lastPickId = null;
+  } else {
+    state.selected = new Set([id]);
+    state.lastPickId = id;
+  }
+  renderLibrary($("searchInput").value.trim());
+}
+
 function togglePick(id, dot, btn) {
   if (state.selected.has(id)) { state.selected.delete(id); dot.classList.remove("on"); }
   else { state.selected.add(id); dot.classList.add("on"); }
@@ -264,8 +300,16 @@ function bookCard(book) {
       rangePick(state.lastPickId, book.id);
       return;
     }
-    if (state.selected.size > 0) { togglePick(book.id, dot, open); return; }
-    openLibraryBook(book);
+    if (event.metaKey || event.ctrlKey) { togglePick(book.id, dot, open); return; }
+    singlePick(book.id);
+  });
+  open.addEventListener("dblclick", () => openLibraryBook(book));
+  open.addEventListener("keydown", (event) => {
+    /* 键盘:已选中的卡按 Enter 打开;未选中时 Enter 走 click 选中 */
+    if (event.key === "Enter" && state.selected.has(book.id)) {
+      event.preventDefault();
+      openLibraryBook(book);
+    }
   });
   card.draggable = true;
   card.addEventListener("dragstart", (e) => {
@@ -287,7 +331,6 @@ function selectBook(book, trigger) {
   const same = bookMenuTrigger === trigger && menu.matches(":popover-open");
   closeBookMenu(false); if (same) return;
   state.selectedBook = book; bookMenuTrigger = trigger;
-  $("bookActionsTitle").textContent = book.title;
   $("bookMoveBtn").hidden = !(state.groups || []).length && !book.group;
   updateFollowButtons(book);
   menu.showPopover(); trigger.setAttribute("aria-expanded", "true");
@@ -460,7 +503,7 @@ $("batchMoveBtn").addEventListener("click", () => {
   if (state.selected.size) openGroupMenu([...state.selected], $("batchMoveBtn"));
 });
 $("clearSelBtn").addEventListener("click", clearSelection);
-$("groupAll").addEventListener("click", () => {
+$("libBackBtn").addEventListener("click", () => {
   state.filterGroup = null;
   renderLibrary($("searchInput").value.trim());
 });

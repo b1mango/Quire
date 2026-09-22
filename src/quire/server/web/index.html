@@ -182,22 +182,22 @@
         <!-- ============ 书库 ============ -->
         <div class="view" data-view="lib" hidden>
           <div class="lib-head">
-            <div>
-              <h1>书库</h1>
-              <p class="sub" id="libSub"></p>
+            <div class="lib-title">
+              <button class="btn ghost lib-back" id="libBackBtn" hidden>‹ 书库</button>
+              <div>
+                <h1 id="libTitle">书库</h1>
+                <p class="sub" id="libSub"></p>
+              </div>
             </div>
-            <div>
+            <div class="lib-tools">
+              <input class="input nofx" id="searchInput" placeholder="搜索书名或作者" aria-label="搜索书名或作者">
               <button class="btn ghost" id="checkAllBtn" hidden>全部检查</button>
               <button class="btn ghost" id="newGroupBtn">+ 分组</button>
-              <input class="input nofx" id="searchInput" placeholder="搜索书名或作者" aria-label="搜索书名或作者">
               <button class="btn ghost" id="libRetryBtn" hidden>重试加载</button>
             </div>
           </div>
-          <p class="hint lib-hint">点选 · Shift 连选 · 空白处拖框选 · 拖到分组移动 · 右键更多操作</p>
-          <div class="group-bar" id="groupBar" hidden>
-            <button class="group-chip" id="groupAll" aria-pressed="true">全部</button>
-            <span class="group-chips" id="groupChips"></span>
-          </div>
+          <p class="hint lib-hint">点选 · Shift 连选 · 框选 · 双击打开 · 右键菜单</p>
+          <div class="folder-row" id="folderRow" hidden></div>
           <div class="batch-bar" id="batchBar" hidden>
             <span class="meta" id="batchMeta" role="status" aria-live="polite">已选 0 本</span>
             <button class="btn ghost" id="selectAllBtn">全选当前结果</button>
@@ -205,23 +205,22 @@
             <button class="btn danger" id="batchDeleteBtn">删除</button>
             <button class="btn ghost" id="clearSelBtn">取消选择</button>
           </div>
-          <div class="book-actions" id="bookActions" role="group" aria-label="书籍操作" popover>
-            <b id="bookActionsTitle"></b>
-            <button class="btn primary" id="bookOpenBtn">打开</button>
-            <button class="btn ghost" id="bookRevealBtn">在 Finder 中显示</button>
-            <button class="btn ghost" id="bookCheckBtn" hidden>检查更新</button>
-            <button class="btn primary" id="bookFollowBtn" hidden>追更</button>
-            <button class="btn ghost" id="bookMoveBtn">移动到分组</button>
-            <button class="btn danger" id="bookDeleteBtn">删除</button>
+          <div class="menu" id="bookActions" role="menu" popover>
+            <button role="menuitem" id="bookOpenBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3h5.5A1.5 1.5 0 0 1 13 4.5v7a1.5 1.5 0 0 1-1.5 1.5H6"/><path d="M6 3v10M6 3H4.5A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H6"/></svg>打开</button>
+            <button role="menuitem" id="bookRevealBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/></svg>在 Finder 中显示</button>
+            <button role="menuitem" id="bookCheckBtn" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 3v2.6h-2.6"/></svg>检查更新</button>
+            <button role="menuitem" id="bookFollowBtn" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3.5v9M3.5 8h9"/></svg>追更</button>
+            <button role="menuitem" id="bookMoveBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/><path d="M8 8.5v3M6.5 10 8 11.5 9.5 10"/></svg>移动到分组</button>
+            <hr class="menu-sep">
+            <button role="menuitem" class="danger" id="bookDeleteBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 4h11M6.5 4V2.8A.8.8 0 0 1 7.3 2h1.4a.8.8 0 0 1 .8.8V4M4.5 4l.6 8.6a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L11.5 4"/></svg>删除</button>
           </div>
-          <div class="book-actions" id="groupMenu" role="group" aria-label="选择分组" popover>
-            <b>移动到分组</b>
-          </div>
-          <div class="book-actions" id="libMenu" role="group" aria-label="已选书籍操作" popover>
-            <b id="libMenuMeta">已选 0 本</b>
-            <button class="btn ghost" id="libMenuMove">移动到分组</button>
-            <button class="btn danger" id="libMenuDelete">删除</button>
-            <button class="btn ghost" id="libMenuClear">取消选择</button>
+          <div class="menu" id="groupMenu" role="menu" aria-label="选择分组" popover></div>
+          <div class="menu" id="libMenu" role="menu" aria-label="已选书籍操作" popover>
+            <div class="menu-meta" id="libMenuMeta">已选 0 本</div>
+            <button role="menuitem" id="libMenuMove"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/><path d="M8 8.5v3M6.5 10 8 11.5 9.5 10"/></svg>移动到分组</button>
+            <button role="menuitem" id="libMenuClear"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="m4.5 4.5 7 7m0-7-7 7"/></svg>取消选择</button>
+            <hr class="menu-sep">
+            <button role="menuitem" class="danger" id="libMenuDelete"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 4h11M6.5 4V2.8A.8.8 0 0 1 7.3 2h1.4a.8.8 0 0 1 .8.8V4M4.5 4l.6 8.6a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L11.5 4"/></svg>删除</button>
           </div>
           <div class="grid" id="grid"></div>
           <div class="empty-state" id="libEmpty" hidden>
@@ -233,18 +232,8 @@
 
         <!-- ============ 设置 ============ -->
         <div class="view" data-view="set" hidden>
-          <details class="help-panel"><summary>站点适配帮助</summary>
-            <p>未识别出内容时，可在本机终端依次运行：</p>
-            <pre>quire inspect URL --dump-html debug.html
-quire sites new example.com
-quire sites test example.com URL
-quire manga URL --core --site example.com</pre>
-            <p>在规则文件中填写章节、图片或正文选择器；动态页面使用 --render。
-            若目录被识别为小说，可在采集台中切换为漫画。⌘K 打开快捷导航。</p>
-          </details>
           <div class="vhead">
             <h1>设置</h1>
-            <p class="sub">数据全部保存在本机</p>
           </div>
           <section class="set-group">
             <h2>输出</h2>
@@ -268,21 +257,21 @@ quire manga URL --core --site example.com</pre>
               <label for="setBrowserNative"><input type="checkbox" id="setBrowserNative"> 使用真实浏览器网络</label>
               <label for="setCdpEndpoint">已登录 Chrome 的 CDP 地址（可选）</label>
               <input class="input" id="setCdpEndpoint" placeholder="http://127.0.0.1:9222" autocomplete="off">
-              <div class="hint">仅连接本机回环端点。Chrome 须已开启远程调试，并已登录目标站点；填写后任务直接使用该浏览器。仅采集网页版已有访问权限的内容，验证或付费限制仍会生效。留空时使用隔离 Chrome。</div>
+              <div class="hint">连接本机已开启远程调试的 Chrome，用于需要登录或反爬严格的站点；留空则使用内置隔离浏览器。</div>
             </div>
             <div class="field">
               <label id="netLimitLabel">并发与限速</label>
               <div class="hint" role="group" aria-labelledby="netLimitLabel">
                 <label>并发 <input class="input sm nofx" id="setConcurrency" inputmode="numeric"></label>
                 <label>每站限速 <input class="input sm nofx" id="setRate" inputmode="decimal"> req/s</label>
-                <div>默认并发 12（上限 16 的 80%）；每站默认 4 次/秒（应用上限 5 的 80%），非站点承载测量值；遇限流请调低。</div>
+                <div>默认并发 12、每站 4 次/秒；遇限流请调低。</div>
                 <div class="hint invalid" id="setFieldError" role="alert" hidden></div>
               </div>
             </div>
             <div class="field">
               <label>robots.txt</label>
               <div class="hint">
-                <label><input type="checkbox" id="setRobots"> 遵守站点的 robots.txt 协议（默认不校验；站点 robots 无法获取时始终按不限制继续）</label>
+                <label><input type="checkbox" id="setRobots"> 遵守站点的 robots.txt（无法获取时按不限制继续）</label>
               </div>
             </div>
           </section>

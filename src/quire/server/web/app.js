@@ -205,16 +205,27 @@ function finishRunView(status, data) {
 
 /* ------------------------------------------------------------ 书库 */
 
+/* 封面规则:有真实封面用真实封面(漫画=首章首页);没有则生成文字封面——
+   书名前 8 字分两行居中,细线内框 + 双色渐变(按书名散列,与主题协调)。 */
 function coverPlaceholder(title, seedText) {
   let seed = 0;
   for (const ch of seedText) seed = (seed * 31 + ch.codePointAt(0)) >>> 0;
   const colors = document.documentElement.dataset.theme === "paper" ? ["#625B50", "#746B5D", "#514D45"] : ["#1F3A5F", "#5B2A2A", "#243B32", "#3A2F52", "#4A3A1E", "#1E3B45", "#432B3B", "#2C3A20"];
   const c = colors[seed % colors.length], c2 = colors[(seed >> 3) % colors.length];
-  const ch = (title || "书").slice(0, 1);
+  const chars = (title || "书").slice(0, 8);
+  const lines = [];
+  for (let i = 0; i < chars.length; i += 4) lines.push(chars.slice(i, i + 4));
+  const fontSize = lines.length > 1 ? 52 : 64;
+  const startY = 210 - (lines.length - 1) * (fontSize * 0.72);
+  const text = lines.map((line, i) =>
+    `<text x="150" y="${startY + i * fontSize * 1.35}" font-size="${fontSize}" font-family="Songti SC,STSong,serif" fill="#fff" opacity=".94" text-anchor="middle" letter-spacing="4">${line}</text>`
+  ).join("");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="420" viewBox="0 0 300 420">` +
     `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>` +
     `<rect width="300" height="420" fill="url(#g)"/>` +
-    `<text x="150" y="228" font-size="150" font-family="Songti SC,STSong,serif" fill="#fff" opacity=".92" text-anchor="middle">${ch}</text>` +
+    `<rect x="16" y="16" width="268" height="388" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="1"/>` +
+    text +
+    `<line x1="110" y1="330" x2="190" y2="330" stroke="#fff" stroke-opacity=".5" stroke-width="1"/>` +
     `</svg>`;
   return "data:image/svg+xml," + encodeURIComponent(svg);
 }
