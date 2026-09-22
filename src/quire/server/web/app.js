@@ -11,6 +11,7 @@ const state = {
   caps: null, settings: null, probe: null, kind: "novel", captureMode: "catalogue",
   job: null, events: null, lastSeq: 0, startedAt: 0, timer: null,
   bookId: null, books: [], selectedBook: null, lastSpec: null,
+  groups: [], filterGroup: null, managing: false, selected: new Set(),
 };
 
 /* ------------------------------------------------------------ 标签页状态
@@ -221,17 +222,12 @@ function loadBooks() {
   const search = $("searchInput").value.trim();
   api("/api/books" + (search ? `?search=${encodeURIComponent(search)}` : "")).then((data) => {
     state.books = data.books;
+    state.groups = data.groups || [];
     state.selectedBook = null;
+    state.selected = new Set();
     closeBookMenu(false);
     $("checkAllBtn").hidden = !data.books.some((b) => b.follow);
-    const grid = $("grid");
-    grid.textContent = "";
-    $("libEmpty").hidden = data.books.length > 0;
-    const total = data.books.reduce((sum, b) => sum + b.bytes, 0);
-    $("libSub").textContent = search
-      ? `“${search}” · ${data.books.length} 部`
-      : `${data.books.length} 部作品 · 共 ${humanSize(total)}`;
-    data.books.forEach((book) => grid.appendChild(bookCard(book)));
+    renderLibrary(search);
   }).catch(() => {});
 }
 
@@ -367,7 +363,7 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault(); $("commandMenu").showModal(); return;
   }
-  if ($("commandMenu").open || $("deleteBookDialog").open) return;
+  if ($("commandMenu").open || $("deleteBookDialog").open || $("groupDialog").open) return;
   if (e.key === "Escape" && state.job && (state.job.status === "running" || state.job.status === "pending")) {
     api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" }).catch(() => {});
   }

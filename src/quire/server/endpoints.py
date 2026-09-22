@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import secrets
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -17,7 +18,7 @@ from ..assemble.models import clean_metadata_text
 from ..cli_console import data_home, find_chrome, module_available
 from ..errors import ConfigError, QuireError
 from ..sites.kind_guard import check_placement
-from ..store import library
+from ..store import groups, library
 from ..store.models import JsonValue
 from . import settings as settings_mod
 from .job_state import JobSpec
@@ -210,11 +211,71 @@ def _book_json(ctx: QuireServer, book: library.Book) -> dict[str, JsonValue]:
 
 def list_books(ctx: QuireServer, search: str) -> dict[str, JsonValue]:
     books = library.list_books(ctx.data_root, search[:200])
-    return {"books": [_book_json(ctx, book) for book in books]}
+    belongs = groups.membership(ctx.data_root)
+    payload: list[JsonValue] = []
+    for book in books:
+        item = _book_json(ctx, book)
+        item["group"] = belongs.get(book.id)
+        payload.append(item)
+    return {
+        "books": payload,
+        "groups": [
+            {"id": group.id, "name": group.name, "members": group.members}
+            for group in groups.list_groups(ctx.data_root)
+        ],
+    }
+
+
+def _group_name(payload: Any) -> str:
+    name = payload.get("name") if isinstance(payload, dict) else None
+    if not isinstance(name, str):
+        raise ConfigError("缺少分组名")
+    return name
+
+
+def create_group(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
+    group = groups.create_group(ctx.data_root, secrets.token_hex(8), _group_name(payload))
+    return {"id": group.id, "name": group.name, "members": 0}
+
+
+def rename_group(ctx: QuireServer, group_id: str, payload: Any) -> dict[str, JsonValue]:
+    groups.rename_group(ctx.data_root, group_id, _group_name(payload))
+    return {"renamed": group_id}
+
+
+def delete_group(ctx: QuireServer, group_id: str) -> dict[str, JsonValue]:
+    groups.delete_group(ctx.data_root, group_id)
+    return {"deleted": group_id}
+
+
+def batch_books(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
+    """批量书籍操作：move（入组/出组）整单校验；delete 逐本执行、汇报每本结果。"""
+    if not isinstance(payload, dict) or not isinstance(payload.get("ids"), list):
+        raise ConfigError("缺少书籍列表")
+    ids = [str(item) for item in payload["ids"]][:500]
+    if not ids:
+        raise ConfigError("没有选中任何书")
+    action = payload.get("action")
+    if action == "move":
+        target = payload.get("group_id")
+        moved = groups.assign(ctx.data_root, ids, str(target) if isinstance(target, str) else None)
+        return {"moved": moved}
+    if action == "delete":
+        freed = 0
+        failures: list[JsonValue] = []
+        for book_id in ids:
+            try:
+                freed += library.delete_book(ctx.data_root, book_id)
+                groups.drop_book(ctx.data_root, book_id)
+            except QuireError as exc:
+                failures.append({"id": book_id, "error": exc.message})
+        return {"deleted": len(ids) - len(failures), "freed": freed, "failures": failures}
+    raise ConfigError("不支持的批量操作")
 
 
 def delete_book(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
     freed = library.delete_book(ctx.data_root, book_id)
+    groups.drop_book(ctx.data_root, book_id)
     return {"deleted": True, "bytes": freed}
 
 

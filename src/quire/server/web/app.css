@@ -251,6 +251,35 @@ h1{font-family:var(--fd);font-size:28px;line-height:1.2;margin:0;letter-spacing:
 /* 书库 */
 .lib-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:24px;flex-wrap:wrap}
 .lib-head .input{max-width:280px}
+.lib-head>div:last-child{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.group-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.group-chip{
+  appearance:none;font:inherit;font-size:12.5px;cursor:pointer;
+  padding:7px 14px;border-radius:999px;
+  background:var(--surface-2);color:var(--muted);border:1px solid var(--border);
+  transition:all .16s var(--ease);
+}
+.group-chip:hover{color:var(--text);border-color:var(--border-strong)}
+.group-chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:600}
+.group-chip.over{border-color:var(--accent);background:var(--accent-soft);transform:scale(1.05)}
+.group-chip .gx{margin-left:7px;color:var(--faint)}
+.group-chip .gx:hover{color:var(--warn)}
+[data-theme="swiss"] .group-chip{border-radius:0;text-transform:uppercase;font-size:11px;letter-spacing:.08em;font-weight:600}
+.batch-bar{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:12px 14px;margin-bottom:20px;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);
+}
+.batch-bar .meta{font-size:12.5px;color:var(--muted);margin-right:auto}
+.card{position:relative}
+.cover .pick{
+  position:absolute;top:8px;left:8px;width:20px;height:20px;z-index:2;
+  border-radius:50%;border:1.5px solid var(--border-strong);
+  background:color-mix(in srgb,var(--surface) 82%, transparent);
+  transition:all .16s var(--ease);
+}
+.cover .pick.on{background:var(--accent);border-color:var(--accent);
+  background-image:radial-gradient(circle at center, var(--accent-fg) 2.5px, transparent 3px)}
 .book-actions{
   display:flex;align-items:center;gap:12px;flex-wrap:wrap;
   padding:12px 14px;margin-bottom:20px;

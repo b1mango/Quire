@@ -188,8 +188,21 @@
             </div>
             <div>
               <button class="btn ghost" id="checkAllBtn" hidden>全部检查</button>
+              <button class="btn ghost" id="newGroupBtn">+ 分组</button>
+              <button class="btn ghost" id="manageBtn">管理</button>
               <input class="input nofx" id="searchInput" placeholder="搜索书名或作者">
             </div>
+          </div>
+          <div class="group-bar" id="groupBar" hidden>
+            <button class="group-chip" id="groupAll" aria-pressed="true">全部</button>
+            <span class="group-chips" id="groupChips"></span>
+          </div>
+          <div class="batch-bar" id="batchBar" hidden>
+            <span class="meta" id="batchMeta">已选 0 本</span>
+            <button class="btn ghost" id="selectAllBtn">全选</button>
+            <button class="btn ghost" id="batchMoveBtn">移动到分组</button>
+            <button class="btn danger" id="batchDeleteBtn">删除</button>
+            <button class="btn primary" id="manageDoneBtn">完成</button>
           </div>
           <div class="book-actions" id="bookActions" role="group" aria-label="书籍操作" popover>
             <b id="bookActionsTitle"></b>
@@ -197,7 +210,11 @@
             <button class="btn ghost" id="bookRevealBtn">在 Finder 中显示</button>
             <button class="btn ghost" id="bookCheckBtn" hidden>检查更新</button>
             <button class="btn primary" id="bookFollowBtn" hidden>追更</button>
+            <button class="btn ghost" id="bookMoveBtn">移动到分组</button>
             <button class="btn danger" id="bookDeleteBtn">删除</button>
+          </div>
+          <div class="book-actions" id="groupMenu" role="group" aria-label="选择分组" popover>
+            <b>移动到分组</b>
           </div>
           <div class="grid" id="grid"></div>
           <div class="empty-state" id="libEmpty" hidden>
@@ -296,6 +313,12 @@ quire manga URL --core --site example.com</pre>
   <p class="hint">成品文件会一起删除，此操作无法撤销。</p>
   <p id="deleteBookError" role="alert"></p>
   <div class="dialog-actions"><button class="btn" id="deleteBookCancel">保留</button><button class="btn danger" id="deleteBookConfirm">删除</button></div>
+</dialog>
+<dialog id="groupDialog" class="delete-book-dialog" aria-labelledby="groupDialogTitle">
+  <h2 id="groupDialogTitle">新建分组</h2>
+  <input class="input" id="groupNameInput" maxlength="50" placeholder="分组名" spellcheck="false">
+  <p id="groupDialogError" role="alert"></p>
+  <div class="dialog-actions"><button class="btn" id="groupDialogCancel">取消</button><button class="btn primary" id="groupDialogConfirm">创建</button></div>
 </dialog>
 <dialog id="commandMenu" class="command-menu">
   <form method="dialog"><button class="btn ghost" aria-label="关闭命令面板">关闭 · Esc</button></form>

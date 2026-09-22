@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from ..errors import ConfigError, LedgerError, ParseError, QuireError
 from ..store.models import JsonValue
-from . import endpoints, follows
+from . import endpoints, files, follows
 from .jobs import JobManager
 
 _LOG = logging.getLogger(__name__)
@@ -215,6 +215,18 @@ class _Handler(BaseHTTPRequestHandler):
         if method == "POST" and len(parts) == 3 and parts[:2] == ["api", "books"]:
             if parts[2] == "check-all-updates":
                 return self._reply_json(200, follows.check_all(self.server))
+            if parts[2] == "batch":
+                return self._reply_json(200, endpoints.batch_books(self.server, self._body()))
+        if len(parts) >= 2 and parts[:2] == ["api", "groups"]:
+            if method == "POST" and len(parts) == 2:
+                return self._reply_json(201, endpoints.create_group(self.server, self._body()))
+            if len(parts) == 3:
+                if method == "PUT":
+                    return self._reply_json(
+                        200, endpoints.rename_group(self.server, parts[2], self._body())
+                    )
+                if method == "DELETE":
+                    return self._reply_json(200, endpoints.delete_group(self.server, parts[2]))
         if len(parts) == 3 and parts[0] == "api" and parts[1] == "books":
             if method == "DELETE":
                 return self._reply_json(200, endpoints.delete_book(self.server, parts[2]))
@@ -349,36 +361,10 @@ class _Handler(BaseHTTPRequestHandler):
                 return
 
     def _thumb(self, job_id: str, page: str) -> None:
-        job = self.server.manager.get(job_id)
-        if job is None or not page.isdigit():
-            return self._reply_json(404, {"error": "没有这张缩略图"})
-        path = self.server.manager.thumbs_root / job.id / f"p{int(page)}.jpg"
-        if not path.is_file() or path.is_symlink():
-            return self._reply_json(404, {"error": "没有这张缩略图"})
-        self._file(path, "image/jpeg")
+        files.thumb(self, job_id, page)
 
     def _cover(self, book_id: str) -> None:
-        from ..store import library
-
-        try:
-            book = library.get_book(self.server.data_root, book_id)
-        except LedgerError:
-            return self._reply_json(404, {"error": "没有这本书"})
-        if not book.cover:
-            return self._reply_json(404, {"error": "这本书没有封面"})
-        path = self.server.data_root / book.cover
-        if not path.is_file() or path.is_symlink() or path.parent.parent != self.server.data_root:
-            return self._reply_json(404, {"error": "这本书没有封面"})
-        self._file(path, "image/jpeg")
-
-    def _file(self, path: Path, content_type: str) -> None:
-        body = path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        files.cover(self, book_id)
 
     def _reply_json(self, status: int, payload: dict[str, JsonValue]) -> None:
         body = _json_bytes(payload)
