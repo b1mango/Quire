@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 from ..errors import BlockedError, ConfigError, FetchError, QuireError, UnsupportedError
 from ..utils.urls import is_usable_url
-from .browser_catalogue import catalogue_script
+from .browser_catalogue import ready_script
 from .browser_cdp import Cdp
 from .browser_endpoint import resolve_endpoint, validate_endpoint
 from .browser_native import NativeNetwork, owned_tab
@@ -142,7 +142,7 @@ async def _scroll(
     scrolls = 0
     while True:
         network.check()
-        script = network.catalogue_script
+        script = network.ready_script
         if isinstance(script, str) and script and await _evaluate(cdp, session, script):
             return
         state = await _evaluate(cdp, session, _STATE)
@@ -216,7 +216,7 @@ async def render_page(
                 async with BrowserNetwork(
                     cdp, session, tree["frameTree"]["frame"]["id"], client, page
                 ) as network:
-                    network.catalogue_script = catalogue_script(page.url)
+                    network.ready_script = ready_script(page.url)
                     snapshot: Any = None
                     for retried in (False, True):
                         navigation = await cdp.call(
@@ -295,7 +295,7 @@ async def _render_native(
             async with NativeNetwork(
                 cdp, session, tree["frameTree"]["frame"]["id"], page, client.max_bytes
             ) as network:
-                network.catalogue_script = catalogue_script(page.url)
+                network.ready_script = ready_script(page.url)
                 navigation = await cdp.call(
                     "Page.navigate", _navigate_params(page.url, options), session_id=session
                 )

@@ -37,6 +37,7 @@ from .parse.article import (
 )
 from .parse.chapters import ChapterLink, PageKey, find_next_page, page_key
 from .parse.minidom import parse as parse_html
+from .sites import eightbook
 from .sites.cleanup import clean_document
 from .store.cache import publish_bytes
 from .store.export_files import _directory
@@ -227,7 +228,7 @@ async def _capture_one(
             target.scheme,
             target.hostname,
             target.port or (443 if target.scheme == "https" else 80),
-        ):
+        ) and not eightbook.is_content_mirror(link.url, page.url):
             failure = "invalid_text"
             stats.warnings.append(f"第{chapter}章跳转到其他站点，未采纳正文")
             break

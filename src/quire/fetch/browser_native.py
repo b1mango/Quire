@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ..errors import BlockedError, FetchError, HttpStatusError, QuireError
+from ..sites import eightbook
 from ..utils.urls import is_usable_url
 from .browser_cdp import Cdp
 from .browser_network import _interception_gone
@@ -29,6 +30,7 @@ def allowed_hosts(url: str) -> frozenset[str]:
                 "c.shuqireader.com",
             }
         )
+    hosts.update(eightbook.allowed_hosts(url))
     return frozenset(hosts)
 
 
@@ -83,7 +85,7 @@ class NativeNetwork:
         self.hosts = allowed_hosts(page.url)
         self.pending: set[str] = set()
         self.warnings: set[str] = set()
-        self.catalogue_script: str | None = None
+        self.ready_script: str | None = None
         self.last_activity = asyncio.get_running_loop().time()
         self.status = 0
         self.error: BaseException | None = None

@@ -36,7 +36,7 @@ class BrowserNetwork:
         self.pending: set[asyncio.Task[None]] = set()
         self.error: BaseException | None = None
         self.warnings: set[str] = set()
-        self.catalogue_script: str | None = None
+        self.ready_script: str | None = None
         self.count = 0
         self.bytes = 0
         self.last_activity = asyncio.get_running_loop().time()

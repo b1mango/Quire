@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from quire.errors import ConfigError
-from quire.fetch.browser_catalogue import catalogue_script
+from quire.fetch.browser_catalogue import ready_script
 from quire.fetch.session import AsyncFetcher
 from quire.parse.chapters import discover_chapters
 from quire.parse.minidom import parse
@@ -34,8 +34,8 @@ def test_materialized_catalogue_preserves_prologue_order_and_all_2202_entries():
     assert len(plan.links) == 2202 and plan.links[0].title == "序章"
     assert len(links) == 2202 and links[0].title == "序章"
     assert links[-1].title == "第2201章 标题"
-    assert catalogue_script("https://t.shuqi.com/catalog/4994468/")
-    assert catalogue_script("https://evil.test/catalog/4994468/") is None
+    assert ready_script("https://t.shuqi.com/catalog/4994468/")
+    assert ready_script("https://evil.test/catalog/4994468/") is None
 
 
 def test_api_token_never_follows_cross_origin_redirect():
