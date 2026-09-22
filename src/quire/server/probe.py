@@ -16,6 +16,7 @@ from ..parse.images import collect, prefilter
 from ..parse.minidom import parse as parse_html
 from ..parse.packed import extract_script_images
 from ..parse.series import Volume, plan_volumes
+from ..sites import quanben
 from ..sites.rules import SiteRule, resolve_rule
 from ..utils.urls import is_usable_url, route_fragment
 
@@ -75,6 +76,7 @@ async def probe_url(
     chosen_kind = kind or (rule.kind if rule else None)
     async with AsyncFetcher(timeout=timeout, retries=1, concurrency=2, rate=rate) as client:
         page = await client.get(url)
+        page = await quanben.expand_listing(client, page)
         dynamic = bool(route_fragment(url))
         if not dynamic:
             try:
