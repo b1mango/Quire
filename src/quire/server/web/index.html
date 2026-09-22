@@ -189,11 +189,11 @@
             <div>
               <button class="btn ghost" id="checkAllBtn" hidden>全部检查</button>
               <button class="btn ghost" id="newGroupBtn">+ 分组</button>
-              <button class="btn ghost" id="manageBtn">管理</button>
               <input class="input nofx" id="searchInput" placeholder="搜索书名或作者" aria-label="搜索书名或作者">
               <button class="btn ghost" id="libRetryBtn" hidden>重试加载</button>
             </div>
           </div>
+          <p class="hint lib-hint">点选 · Shift 连选 · 空白处拖框选 · 拖到分组移动 · 右键更多操作</p>
           <div class="group-bar" id="groupBar" hidden>
             <button class="group-chip" id="groupAll" aria-pressed="true">全部</button>
             <span class="group-chips" id="groupChips"></span>
@@ -203,7 +203,7 @@
             <button class="btn ghost" id="selectAllBtn">全选当前结果</button>
             <button class="btn ghost" id="batchMoveBtn" aria-expanded="false" aria-controls="groupMenu">移动到分组</button>
             <button class="btn danger" id="batchDeleteBtn">删除</button>
-            <button class="btn primary" id="manageDoneBtn">完成</button>
+            <button class="btn ghost" id="clearSelBtn">取消选择</button>
           </div>
           <div class="book-actions" id="bookActions" role="group" aria-label="书籍操作" popover>
             <b id="bookActionsTitle"></b>
@@ -216,6 +216,12 @@
           </div>
           <div class="book-actions" id="groupMenu" role="group" aria-label="选择分组" popover>
             <b>移动到分组</b>
+          </div>
+          <div class="book-actions" id="libMenu" role="group" aria-label="已选书籍操作" popover>
+            <b id="libMenuMeta">已选 0 本</b>
+            <button class="btn ghost" id="libMenuMove">移动到分组</button>
+            <button class="btn danger" id="libMenuDelete">删除</button>
+            <button class="btn ghost" id="libMenuClear">取消选择</button>
           </div>
           <div class="grid" id="grid"></div>
           <div class="empty-state" id="libEmpty" hidden>
@@ -343,5 +349,6 @@ quire manga URL --core --site example.com</pre>
 <script src="/static/library.js"></script>
 <script src="/static/chapters.js"></script>
 <script src="/static/follows.js"></script>
+<div id="marquee" hidden></div>
 </body>
 </html>

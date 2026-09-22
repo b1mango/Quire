@@ -39,7 +39,8 @@ function renderLibrary(search) {
       : `${state.books.length} 部作品 · 共 ${humanSize(total)}`;
   syncLibraryEmpty(search, books, group);
   books.forEach((book) => grid.appendChild(bookCard(book)));
-  if (state.managing) syncBatchBar();
+  grid.classList.toggle("selecting", state.selected.size > 0);
+  syncBatchBar();
 }
 
 /* 空态分三种：初次空库（引导去采集台）、搜索无结果（可清除搜索）、
@@ -96,8 +97,8 @@ function renderGroupBar() {
     chip.addEventListener("drop", (e) => {
       e.preventDefault();
       chip.classList.remove("over");
-      const id = e.dataTransfer.getData("text/plain");
-      if (id) moveBooks([id], group.id);
+      const ids = dragIds(e);
+      if (ids.length) moveBooks(ids, group.id);
     });
     pair.append(chip);
     /* 空组删除是独立的同级按钮：键盘可单独到达，不与筛选混在一起 */
@@ -121,7 +122,8 @@ function renderGroupBar() {
 function moveBooks(ids, groupId) {
   api("/api/books/batch", { method: "POST", body: { action: "move", ids, group_id: groupId } })
     .then((result) => {
-      if (state.managing) { state.selected = new Set(); }
+      state.selected = new Set();
+      state.lastPickId = null;
       const group = (state.groups || []).find((g) => g.id === groupId);
       const count = result && Number.isFinite(result.moved) ? result.moved : ids.length;
       const message = groupId
@@ -188,14 +190,6 @@ $("groupMenu").addEventListener("keydown", (event) => {
   }
 });
 
-function setManaging(on) {
-  state.managing = on;
-  state.selected = new Set();
-  $("batchBar").hidden = !on;
-  $("manageBtn").setAttribute("aria-pressed", String(on));
-  renderLibrary($("searchInput").value.trim());
-}
-
 function syncBatchBar() {
   const books = visibleBooks();
   const visibleSelected = books.filter((b) => state.selected.has(b.id)).length;
@@ -207,13 +201,36 @@ function syncBatchBar() {
   $("selectAllBtn").textContent = all ? "全不选" : "全选当前结果";
   $("batchMoveBtn").disabled = !state.selected.size;
   $("batchDeleteBtn").disabled = !state.selected.size;
+  $("batchBar").hidden = state.selected.size === 0;
 }
 
+function clearSelection() {
+  state.selected = new Set();
+  state.lastPickId = null;
+  renderLibrary($("searchInput").value.trim());
+}
+
+/* 文件管理器式选择：点选切换；Shift 以最近点击为锚点连选；
+   框选与拖拽入组见文件底部。 */
 function togglePick(id, dot, btn) {
   if (state.selected.has(id)) { state.selected.delete(id); dot.classList.remove("on"); }
   else { state.selected.add(id); dot.classList.add("on"); }
+  state.lastPickId = id;
   if (btn) btn.setAttribute("aria-pressed", String(state.selected.has(id)));
+  const card = btn && btn.closest(".card");
+  if (card) card.classList.toggle("selected", state.selected.has(id));
+  $("grid").classList.toggle("selecting", state.selected.size > 0);
   syncBatchBar();
+}
+
+function rangePick(anchorId, targetId) {
+  const books = visibleBooks();
+  const from = books.findIndex((b) => b.id === anchorId);
+  const to = books.findIndex((b) => b.id === targetId);
+  if (from < 0 || to < 0) return;
+  const [lo, hi] = from < to ? [from, to] : [to, from];
+  for (let i = lo; i <= hi; i += 1) state.selected.add(books[i].id);
+  renderLibrary($("searchInput").value.trim());
 }
 
 /* ------------------------------------------------------------ 书籍卡片 */
@@ -221,6 +238,7 @@ function togglePick(id, dot, btn) {
 function bookCard(book) {
   const card = document.createElement("article");
   card.className = "card";
+  card.dataset.bookId = book.id;
   const open = document.createElement("button");
   open.type = "button"; open.className = "book-open";
   open.setAttribute("aria-label", `打开《${book.title}》`);
@@ -233,28 +251,35 @@ function bookCard(book) {
   open.append(cover, title);
   const footer = document.createElement("div"); footer.className = "book-footer";
   const meta = document.createElement("div"); meta.className = "cm";
-  meta.textContent = `${book.formats.join(" / ").toUpperCase()} · ${humanSize(book.bytes)}`;
-  if (state.managing) {
-    const dot = document.createElement("span");
-    dot.className = "pick" + (state.selected.has(book.id) ? " on" : "");
-    cover.append(dot);
-    open.setAttribute("aria-label", `选择《${book.title}》`);
-    open.setAttribute("aria-pressed", String(state.selected.has(book.id)));
-    open.addEventListener("click", () => togglePick(book.id, dot, open));
-  } else {
-    open.addEventListener("click", () => openLibraryBook(book));
-    card.draggable = true;
-    card.addEventListener("dragstart", (e) => {
-      e.dataTransfer.setData("text/plain", book.id);
-      e.dataTransfer.effectAllowed = "move";
-    });
-    const more = document.createElement("button"); more.type = "button"; more.className = "book-more";
-    more.setAttribute("aria-label", `《${book.title}》的更多操作`);
-    more.setAttribute("aria-expanded", "false"); more.setAttribute("aria-controls", "bookActions");
-    more.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
-    more.addEventListener("click", () => selectBook(book, more));
-    footer.append(meta, more);
-  }
+  meta.textContent = book.author
+    ? `${book.author} · ${book.formats.join(" / ").toUpperCase()} · ${humanSize(book.bytes)}`
+    : `${book.formats.join(" / ").toUpperCase()} · ${humanSize(book.bytes)}`;
+  const dot = document.createElement("span");
+  dot.className = "pick" + (state.selected.has(book.id) ? " on" : "");
+  cover.append(dot);
+  if (state.selected.has(book.id)) card.classList.add("selected");
+  open.setAttribute("aria-pressed", String(state.selected.has(book.id)));
+  open.addEventListener("click", (event) => {
+    if (event.shiftKey && state.lastPickId && state.lastPickId !== book.id) {
+      rangePick(state.lastPickId, book.id);
+      return;
+    }
+    if (state.selected.size > 0) { togglePick(book.id, dot, open); return; }
+    openLibraryBook(book);
+  });
+  card.draggable = true;
+  card.addEventListener("dragstart", (e) => {
+    /* 已选中的书被拖动时整组移动；未选中的书拖动时只带自己 */
+    const ids = state.selected.has(book.id) ? [...state.selected] : [book.id];
+    e.dataTransfer.setData("text/plain", JSON.stringify(ids));
+    e.dataTransfer.effectAllowed = "move";
+  });
+  const more = document.createElement("button"); more.type = "button"; more.className = "book-more";
+  more.setAttribute("aria-label", `《${book.title}》的更多操作`);
+  more.setAttribute("aria-expanded", "false"); more.setAttribute("aria-controls", "bookActions");
+  more.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
+  more.addEventListener("click", () => selectBook(book, more));
+  footer.append(meta, more);
   card.append(open, footer); return card;
 }
 function selectBook(book, trigger) {
@@ -300,7 +325,10 @@ document.addEventListener("keydown", event => {
 
 $("bookMoveBtn").addEventListener("click", () => {
   if (!state.selectedBook || !bookMenuTrigger) return;
-  const ids = [state.selectedBook.id];
+  /* 更多菜单作用在当前选择集（若该书在选择内），否则只作用于它自己 */
+  const ids = state.selected.has(state.selectedBook.id) && state.selected.size > 1
+    ? [...state.selected]
+    : [state.selectedBook.id];
   const anchor = bookMenuTrigger;
   closeBookMenu(false);
   openGroupMenu(ids, anchor);
@@ -308,6 +336,57 @@ $("bookMoveBtn").addEventListener("click", () => {
 
 let pendingDeleteBook = null;
 let pendingBatchIds = null;
+let libMenuIds = null;
+
+/* 拖拽载荷：优先 JSON 数组（批量拖动），兼容早期的单本纯文本 */
+function dragIds(event) {
+  const raw = event.dataTransfer.getData("text/plain");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(String) : [String(parsed)];
+  } catch (_) { return [raw]; }
+}
+
+function openLibMenu(ids, x, y) {
+  libMenuIds = ids;
+  const menu = $("libMenu");
+  $("libMenuMeta").textContent = `已选 ${ids.length} 本`;
+  $("libMenuMove").hidden = !(state.groups || []).length;
+  menu.showPopover();
+  menu.style.left = `${Math.max(8, Math.min(x, innerWidth - menu.offsetWidth - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, innerHeight - menu.offsetHeight - 8))}px`;
+  menu.querySelector("button:not([hidden])").focus();
+}
+function closeLibMenu() {
+  const menu = $("libMenu");
+  if (menu.matches(":popover-open")) menu.hidePopover();
+}
+$("libMenu").addEventListener("keydown", (event) => {
+  const buttons = [...event.currentTarget.querySelectorAll("button:not([hidden])")];
+  if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeLibMenu(); }
+  if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    const index = buttons.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+      : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next]?.focus();
+  }
+});
+$("libMenuMove").addEventListener("click", () => {
+  const ids = libMenuIds || [];
+  closeLibMenu();
+  if (ids.length) openGroupMenu(ids, $("libMenuMove"));
+});
+$("libMenuDelete").addEventListener("click", () => {
+  if (!libMenuIds || !libMenuIds.length) return;
+  pendingBatchIds = [...libMenuIds];
+  pendingDeleteBook = null;
+  closeLibMenu();
+  openDeleteDialog(`删除选中的 ${pendingBatchIds.length} 本书？`);
+});
+$("libMenuClear").addEventListener("click", () => { closeLibMenu(); clearSelection(); });
+
 function openDeleteDialog(message) {
   /* 复用同一对话框：每次打开先恢复默认按钮文案，部分失败态会被改成「仅重试失败项/关闭」 */
   $("deleteBookConfirm").textContent = "删除";
@@ -358,7 +437,8 @@ $("deleteBookConfirm").addEventListener("click", async () => {
       }
       $("deleteBookDialog").close();
       pendingBatchIds = null;
-      setManaging(false);
+      state.selected = new Set();
+      state.lastPickId = null;
       loadBooks();
       return;
     }
@@ -369,17 +449,17 @@ $("deleteBookConfirm").addEventListener("click", async () => {
   finally { $("deleteBookConfirm").disabled = false; }
 });
 
-$("manageBtn").addEventListener("click", () => setManaging(!state.managing));
-$("manageDoneBtn").addEventListener("click", () => setManaging(false));
 $("selectAllBtn").addEventListener("click", () => {
   const books = visibleBooks();
   const all = books.length > 0 && books.every((b) => state.selected.has(b.id));
-  state.selected = all ? new Set() : new Set(books.map((b) => b.id));
+  if (all) { clearSelection(); return; }
+  state.selected = new Set(books.map((b) => b.id));
   renderLibrary($("searchInput").value.trim());
 });
 $("batchMoveBtn").addEventListener("click", () => {
   if (state.selected.size) openGroupMenu([...state.selected], $("batchMoveBtn"));
 });
+$("clearSelBtn").addEventListener("click", clearSelection);
 $("groupAll").addEventListener("click", () => {
   state.filterGroup = null;
   renderLibrary($("searchInput").value.trim());
@@ -401,4 +481,87 @@ $("groupDialogConfirm").addEventListener("click", async () => {
     loadBooks();
   } catch (err) { $("groupDialogError").textContent = err.message; }
   finally { $("groupDialogConfirm").disabled = false; }
+});
+
+/* ------------------------------------------------------------ 框选与右键
+   指针拖动区分：落在书籍卡片上 = 拖拽入组（原生 DnD）；
+   落在网格空白/间隙 = 橡皮筋框选。 */
+
+(function marqueeSelect() {
+  const grid = $("grid");
+  const marquee = $("marquee");
+  let startX = 0;
+  let startY = 0;
+  let active = false;
+
+  grid.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    const card = event.target.closest(".card");
+    if (card && !state.selected.has(card.dataset.bookId)) {
+      state.selected = new Set([card.dataset.bookId]);
+      state.lastPickId = card.dataset.bookId;
+      renderLibrary($("searchInput").value.trim());
+    }
+    if (!state.selected.size) return;
+    openLibMenu([...state.selected], event.clientX, event.clientY);
+  });
+
+  grid.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest(".card")) return;
+    active = true;
+    startX = event.clientX;
+    startY = event.clientY;
+    grid.setPointerCapture(event.pointerId);
+  });
+
+  grid.addEventListener("pointermove", (event) => {
+    if (!active) return;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (marquee.hidden && Math.hypot(dx, dy) < 6) return;
+    const left = Math.min(startX, event.clientX);
+    const top = Math.min(startY, event.clientY);
+    const width = Math.abs(dx);
+    const height = Math.abs(dy);
+    marquee.hidden = false;
+    marquee.style.left = `${left}px`;
+    marquee.style.top = `${top}px`;
+    marquee.style.width = `${width}px`;
+    marquee.style.height = `${height}px`;
+    const box = { left, right: left + width, top, bottom: top + height };
+    visibleBooks().forEach((book) => {
+      const el = grid.querySelector(`[data-book-id="${CSS.escape(book.id)}"]`);
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const hit = rect.left < box.right && rect.right > box.left
+        && rect.top < box.bottom && rect.bottom > box.top;
+      if (hit) state.selected.add(book.id);
+    });
+    /* 只刷新选中态，不整树重绘 */
+    grid.querySelectorAll(".card").forEach((el) => {
+      const on = state.selected.has(el.dataset.bookId);
+      el.querySelector(".pick").classList.toggle("on", on);
+      el.classList.toggle("selected", on);
+      el.querySelector(".book-open").setAttribute("aria-pressed", String(on));
+    });
+    grid.classList.toggle("selecting", state.selected.size > 0);
+    syncBatchBar();
+  });
+
+  function endMarquee(event) {
+    if (!active) return;
+    active = false;
+    marquee.hidden = true;
+    if (grid.hasPointerCapture(event.pointerId)) grid.releasePointerCapture(event.pointerId);
+    if (state.selected.size) state.lastPickId = [...state.selected].pop();
+  }
+  grid.addEventListener("pointerup", endMarquee);
+  grid.addEventListener("pointercancel", endMarquee);
+})();
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.selected.size
+      && !document.querySelector("dialog[open]") && !document.querySelector("[popover]:popover-open")) {
+    clearSelection();
+  }
 });
