@@ -183,3 +183,45 @@ def test_poll_database_connection_lives_on_worker_and_loop_remains_responsive(
 
     asyncio.run(scenario())
     assert job.done == job.total == 1
+
+
+def test_thread_start_failure_releases_slot_and_fails_job(tmp_path, monkeypatch):
+    """Thread.start 本身失败：槽位释放、任务如实失败，后续任务照常执行。"""
+
+    async def runner(url, out, **kwargs):
+        return _result(out)
+
+    manager = JobManager(tmp_path, run_manga=runner, run_novel=runner)
+    real_start = threading.Thread.start
+    failed_once = False
+
+    def flaky_start(thread):
+        nonlocal failed_once
+        if not failed_once and thread.name.startswith("quire-"):
+            failed_once = True
+            raise RuntimeError("can't start new thread")
+        real_start(thread)
+
+    monkeypatch.setattr(threading.Thread, "start", flaky_start)
+    first = manager.submit(_spec("book"), _settings(tmp_path))
+    assert _wait(first) == "failed"
+    assert first.error == "任务失败：RuntimeError"
+    assert first.id not in manager._active
+    assert [event.kind for event in first.events_after(0, 0)].count("failed") == 1
+    # 槽位已释放：后续任务正常执行
+    assert _wait(manager.submit(_spec("book2"), _settings(tmp_path))) == "done"
+
+
+def test_chapter_registration_failure_does_not_fail_job(tmp_path, monkeypatch):
+    """advisory 章节注册失败只记日志，任务照常完成。"""
+
+    async def runner(url, out, **kwargs):
+        kwargs["on_task"]("task")
+        return _result(out)
+
+    def broken_register(self, task_id):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(ChapterTracker, "register", broken_register)
+    manager = JobManager(tmp_path, run_manga=runner, run_novel=runner)
+    assert _wait(manager.submit(_spec("book"), _settings(tmp_path))) == "done"

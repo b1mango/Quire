@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import struct
 import subprocess
 import zlib
@@ -15,6 +16,7 @@ from quire.image.codec import MAX_DIM, MAX_PIXELS
 from quire.ocr import preprocess
 from quire.ocr.onnx_engine import OnnxEngine, _to_tensor
 from quire.ocr.tesseract import OcrEngineError, TesseractEngine
+from tests.test_ocr_onnx import make_engine, png_bytes
 
 
 def oversized_png(size: tuple[int, int]) -> bytes:
@@ -96,3 +98,26 @@ def test_recognition_tensor_rejects_extreme_line_before_resize(
     with Image.new("L", (100000, 10)) as image:
         with pytest.raises(FetchError, match="dimensions or pixel count"):
             _to_tensor(np, image, (480000, 48))
+
+
+def test_extreme_line_box_is_skipped_while_other_lines_recognize(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """极端宽高比行框被跳过（记日志），其余行照常识别。"""
+    engine = make_engine()
+    boxes = [(0, 0, 100000, 10), (20, 20, 280, 44)]
+    monkeypatch.setattr(engine, "_detect", lambda image: boxes)
+    with caplog.at_level(logging.WARNING, logger="quire.ocr.onnx_engine"):
+        page = engine.recognize(png_bytes())
+    assert [(line.text, line.x0, line.y0, line.x1, line.y1) for line in page.lines] == [
+        ("你好", 20, 20, 280, 44)
+    ]
+    assert "line box" in caplog.text
+
+
+def test_all_line_boxes_over_budget_fail_honestly(monkeypatch: pytest.MonkeyPatch) -> None:
+    """所有行框尺寸都非法时才整页如实失败。"""
+    engine = make_engine()
+    monkeypatch.setattr(engine, "_detect", lambda image: [(0, 0, 100000, 10)])
+    with pytest.raises(OcrEngineError, match="行框尺寸"):
+        engine.recognize(png_bytes())

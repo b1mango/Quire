@@ -64,6 +64,12 @@ class ChapterTracker:
         finally:
             db.close()
 
+    def register_safely(self, task_id: str) -> None:
+        try:
+            self.register(task_id)
+        except Exception:
+            _LOG.exception("job %s chapter registration failed", self.job.id)
+
     def _report(self, task_id: str, counts: list[tuple[int, int, int, int]]) -> None:
         tracked = self.tasks[task_id]
         for chapter, total, done, failed in counts:

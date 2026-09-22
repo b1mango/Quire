@@ -32,6 +32,7 @@ from ..store.models import JsonValue
 from ..utils.naming import available_book_dir, safe_filename
 from .books import register_book
 from .chapter_stream import ChapterTracker
+from .execution import launch
 from .follows import resolve_prefix
 from .job_state import Job, JobSpec, job_workdir
 from .progress import ChapterSink, ExportSink, make_thumbs, poll_job, thumb_event
@@ -133,9 +134,12 @@ class JobManager:
         for job in settle:
             self._settle(job, "cancelled", "已取消")
         for job, settings in start:
-            threading.Thread(
-                target=self._thread_main, args=(job, settings), daemon=True, name=f"quire-{job.id}"
-            ).start()
+            launch(job, settings, self._thread_main, self._release_slot, self._settle, self._pump)
+
+    def _release_slot(self, job: Job) -> None:
+        # 线程体没运行（start 失败）时由 execution.launch 调用
+        with self._lock:
+            self._active.pop(job.id, None)
 
     # ---------------------------------------------------------- 执行线程
 
@@ -151,8 +155,7 @@ class JobManager:
             _LOG.exception("job %s finalization failed", job.id)
             self._settle(job, "failed", f"任务失败：{type(exc).__name__}")
         finally:
-            with self._lock:
-                self._active.pop(job.id, None)
+            self._release_slot(job)
             self._pump()
 
     def _execute(self, job: Job, settings: UiSettings) -> None:
@@ -287,7 +290,7 @@ class JobManager:
             with job.condition:
                 job.task_id = task_id
                 thumbs["task_id"] = task_id
-            chapters.register(task_id)
+            chapters.register_safely(task_id)  # advisory 进度：失败只记日志，不拖垮任务
 
         manga_options = MangaOptions(
             concurrency=settings.concurrency,

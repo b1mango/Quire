@@ -12,6 +12,7 @@ det 零检出时退回预处理的投影切行（§6.7 的兜底路径）。
 from __future__ import annotations
 
 import importlib.util
+import logging
 from contextlib import closing
 from pathlib import Path
 from types import ModuleType
@@ -25,6 +26,8 @@ from .base import OcrLine, OcrPage
 from .models import check_models, manual_hint
 from .preprocess import prepare, split_lines
 from .tesseract import OcrEngineError
+
+_LOG = logging.getLogger(__name__)
 
 #: det 输入的最长边与对齐；二值化阈值与 unclip 比例（DB 后处理惯例值）。
 DET_LIMIT = 1600
@@ -166,7 +169,20 @@ class OnnxEngine:
                 boxes = self._detect(prepared)
                 if not boxes:
                     boxes = split_lines(prepared)
-                lines = [line for box in boxes if (line := self._recognize_line(prepared, box))]
+                lines: list[OcrLine] = []
+                skipped = 0
+                for box in boxes:
+                    try:
+                        line = self._recognize_line(prepared, box)
+                    except FetchError as exc:
+                        # 单个行框尺寸非法只跳过该行，不拖垮整页
+                        skipped += 1
+                        _LOG.warning("OCR skip over-budget line box %s: %s", box, exc)
+                        continue
+                    if line:
+                        lines.append(line)
+                if skipped and skipped == len(boxes):
+                    raise OcrEngineError(f"整页 {skipped} 个行框尺寸均超出限制，无法识别")
                 return OcrPage(tuple(lines), self.name)
         except FetchError as exc:
             raise OcrEngineError(f"OCR 输入不是可解码或尺寸合规的图片：{exc}") from exc
