@@ -180,7 +180,7 @@
         </div>
 
         <!-- ============ 书库 ============ -->
-        <div class="view" data-view="lib" hidden>
+        <div class="view" data-view="lib" id="libView" hidden>
           <div class="lib-head">
             <div class="lib-title">
               <button class="btn ghost lib-back" id="libBackBtn" hidden>‹ 书库</button>
@@ -196,8 +196,6 @@
               <button class="btn ghost" id="libRetryBtn" hidden>重试加载</button>
             </div>
           </div>
-          <p class="hint lib-hint">点选 · Shift 连选 · 框选 · 双击打开 · 右键菜单</p>
-          <div class="folder-row" id="folderRow" hidden></div>
           <div class="batch-bar" id="batchBar" hidden>
             <span class="meta" id="batchMeta" role="status" aria-live="polite">已选 0 本</span>
             <button class="btn ghost" id="selectAllBtn">全选当前结果</button>
@@ -205,6 +203,7 @@
             <button class="btn danger" id="batchDeleteBtn">删除</button>
             <button class="btn ghost" id="clearSelBtn">取消选择</button>
           </div>
+          <p class="hint lib-hint" id="libHint">点选 · Shift 连选 · 框选 · 双击打开 · 右键菜单</p>
           <div class="menu" id="bookActions" role="menu" popover>
             <button role="menuitem" id="bookOpenBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3h5.5A1.5 1.5 0 0 1 13 4.5v7a1.5 1.5 0 0 1-1.5 1.5H6"/><path d="M6 3v10M6 3H4.5A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H6"/></svg>打开</button>
             <button role="menuitem" id="bookRevealBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/></svg>在 Finder 中显示</button>
@@ -331,6 +330,7 @@
   <button class="btn" data-command="lib">书库</button>
   <button class="btn" data-command="set">设置</button>
 </dialog>
+<div id="marquee" hidden></div>
 <script src="/static/capture.js"></script>
 <script src="/static/run-events.js"></script>
 <script src="/static/app.js"></script>
@@ -338,6 +338,5 @@
 <script src="/static/library.js"></script>
 <script src="/static/chapters.js"></script>
 <script src="/static/follows.js"></script>
-<div id="marquee" hidden></div>
 </body>
 </html>

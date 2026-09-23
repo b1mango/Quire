@@ -20,26 +20,30 @@ function openLibraryBook(book) {
 
 /* ------------------------------------------------------------ 分组与批量 */
 
+/* 根视图只显示未分组的书(分组的书收进文件夹);组内视图只显示本组。 */
 function visibleBooks() {
-  if (!state.filterGroup) return state.books;
+  if (!state.filterGroup) return state.books.filter((b) => !b.group);
   return state.books.filter((b) => b.group === state.filterGroup);
 }
 
 function renderLibrary(search) {
-  renderFolders();
   const grid = $("grid");
   grid.textContent = "";
   const books = visibleBooks();
   const total = state.books.reduce((sum, b) => sum + b.bytes, 0);
   const group = (state.groups || []).find((g) => g.id === state.filterGroup);
+  const groupCount = (state.groups || []).length;
   $("libTitle").textContent = group ? group.name : "书库";
   $("libBackBtn").hidden = !group;
   $("libSub").textContent = search
     ? `“${search}” · ${books.length} 部`
     : group
       ? `${books.length} 部`
-      : `${state.books.length} 部作品 · 共 ${humanSize(total)}`;
+      : `${books.length} 部作品` +
+        (groupCount ? ` · ${groupCount} 个分组` : "") +
+        ` · 共 ${humanSize(total)}`;
   syncLibraryEmpty(search, books, group);
+  if (!group) (state.groups || []).forEach((g) => grid.appendChild(folderCard(g)));
   books.forEach((book) => grid.appendChild(bookCard(book)));
   grid.classList.toggle("selecting", state.selected.size > 0);
   syncBatchBar();
@@ -75,73 +79,70 @@ function syncLibraryEmpty(search, books, group) {
   }
 }
 
-/* 分组为文件夹卡片：2×2 封面拼贴 + 组名 + 本数；点击进入分组，
-   拖书上去即移入；空组可从「…」删除。 */
-function renderFolders() {
-  const row = $("folderRow");
-  const groups = state.groups || [];
-  row.hidden = state.filterGroup !== null || groups.length === 0;
-  row.textContent = "";
-  if (row.hidden) return;
-  groups.forEach((group) => {
-    const folder = document.createElement("button");
-    folder.type = "button";
-    folder.className = "folder";
-    folder.setAttribute("aria-label", `打开分组「${group.name}」,${group.members} 本`);
-    const collage = document.createElement("span");
-    collage.className = "folder-covers";
-    const members = state.books.filter((b) => b.group === group.id).slice(0, 4);
-    if (members.length) {
-      members.forEach((book) => {
-        const img = document.createElement("img");
-        img.alt = ""; img.loading = "lazy";
-        img.src = book.cover ? `${book.cover}?token=${encodeURIComponent(TOKEN)}` : coverPlaceholder(book.title, book.id);
-        collage.append(img);
-      });
-    } else {
-      const empty = document.createElement("span");
-      empty.className = "folder-empty";
-      empty.textContent = "空";
-      collage.append(empty);
-    }
-    const name = document.createElement("span");
-    name.className = "folder-name"; name.textContent = group.name;
-    const count = document.createElement("span");
-    count.className = "folder-count"; count.textContent = `共 ${group.members} 本`;
-    folder.append(collage, name, count);
-    folder.addEventListener("click", () => {
-      state.filterGroup = group.id;
-      renderLibrary($("searchInput").value.trim());
+/* 分组为文件夹卡片,与书卡同尺寸、排在网格最前;封面取组内最新 1–4 本
+   拼贴(1 本整幅、2 本对半、3–4 本四格),随组内书籍变化。空组有「×」删除。 */
+function folderCard(group) {
+  const card = document.createElement("div");
+  card.className = "card folder-card";
+  card.dataset.groupId = group.id;
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "book-open folder-open";
+  open.setAttribute("aria-label", `打开分组「${group.name}」,${group.members} 本`);
+  const cover = document.createElement("span");
+  cover.className = "cover folder-cover";
+  const members = state.books.filter((b) => b.group === group.id).slice(0, 4);
+  if (members.length) {
+    cover.dataset.tiles = String(members.length);
+    members.forEach((book) => {
+      const img = document.createElement("img");
+      img.alt = ""; img.loading = "lazy";
+      img.src = book.cover ? `${book.cover}?token=${encodeURIComponent(TOKEN)}` : coverPlaceholder(book.title, book.id);
+      cover.append(img);
     });
-    /* 拖拽入组：书卡拖上文件夹即移动 */
-    folder.addEventListener("dragover", (e) => { e.preventDefault(); folder.classList.add("over"); });
-    folder.addEventListener("dragleave", () => folder.classList.remove("over"));
-    folder.addEventListener("drop", (e) => {
-      e.preventDefault();
-      folder.classList.remove("over");
-      const ids = dragIds(e);
-      if (ids.length) moveBooks(ids, group.id);
+  } else {
+    const empty = document.createElement("span");
+    empty.className = "folder-empty";
+    empty.textContent = "空";
+    cover.append(empty);
+  }
+  const title = document.createElement("div");
+  title.className = "ct"; title.textContent = group.name;
+  open.append(cover, title);
+  const footer = document.createElement("div");
+  footer.className = "book-footer";
+  const meta = document.createElement("div");
+  meta.className = "cm"; meta.textContent = `共 ${group.members} 本`;
+  footer.append(meta);
+  if (!group.members) {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "book-more";
+    remove.setAttribute("aria-label", `删除空分组「${group.name}」`);
+    remove.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg>';
+    remove.addEventListener("click", (e) => {
+      e.stopPropagation();
+      api(`/api/groups/${group.id}`, { method: "DELETE" })
+        .then(() => loadBooks())
+        .catch((err) => { $("libSub").textContent = err.message; });
     });
-    /* 空组删除:独立的「…」按钮,键盘可单独到达 */
-    if (!group.members) {
-      const more = document.createElement("span");
-      more.type = "button";
-      more.className = "folder-del";
-      more.setAttribute("role", "button");
-      more.setAttribute("tabindex", "0");
-      more.setAttribute("aria-label", `删除空分组「${group.name}」`);
-      more.textContent = "…";
-      const remove = () => {
-        api(`/api/groups/${group.id}`, { method: "DELETE" })
-          .then(() => loadBooks())
-          .catch((err) => { $("libSub").textContent = err.message; });
-      };
-      more.addEventListener("click", (e) => { e.stopPropagation(); remove(); });
-      more.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.stopPropagation(); remove(); } });
-      folder.append(more);
-    }
-    row.appendChild(folder);
+    footer.append(remove);
+  }
+  open.addEventListener("click", () => {
+    state.filterGroup = group.id;
+    renderLibrary($("searchInput").value.trim());
   });
+  /* 拖拽入组:书卡拖上文件夹即移动 */
+  card.addEventListener("dragover", (e) => { e.preventDefault(); card.classList.add("over"); });
+  card.addEventListener("dragleave", () => card.classList.remove("over"));
+  card.addEventListener("drop", (e) => {
+    e.preventDefault();
+    card.classList.remove("over");
+    const ids = dragIds(e);
+    if (ids.length) moveBooks(ids, group.id);
+  });
+  card.append(open, footer);
+  return card;
 }
 
 function moveBooks(ids, groupId) {
@@ -235,19 +236,8 @@ function clearSelection() {
   renderLibrary($("searchInput").value.trim());
 }
 
-/* 文件管理器式选择：点选只留这本（再点取消）；Cmd/Ctrl 切换个别项；
-   Shift 以最近点击为锚点连选；双击打开。框选与拖拽入组见文件底部。 */
-function singlePick(id) {
-  if (state.selected.size === 1 && state.selected.has(id)) {
-    state.selected = new Set();
-    state.lastPickId = null;
-  } else {
-    state.selected = new Set([id]);
-    state.lastPickId = id;
-  }
-  renderLibrary($("searchInput").value.trim());
-}
-
+/* 文件管理器式选择：点选逐本累积(再点取消);Shift 以最近点击为锚点连选;
+   双击打开。框选与拖拽入组见文件底部。 */
 function togglePick(id, dot, btn) {
   if (state.selected.has(id)) { state.selected.delete(id); dot.classList.remove("on"); }
   else { state.selected.add(id); dot.classList.add("on"); }
@@ -300,8 +290,7 @@ function bookCard(book) {
       rangePick(state.lastPickId, book.id);
       return;
     }
-    if (event.metaKey || event.ctrlKey) { togglePick(book.id, dot, open); return; }
-    singlePick(book.id);
+    togglePick(book.id, dot, open);
   });
   open.addEventListener("dblclick", () => openLibraryBook(book));
   open.addEventListener("keydown", (event) => {
@@ -531,6 +520,7 @@ $("groupDialogConfirm").addEventListener("click", async () => {
    落在网格空白/间隙 = 橡皮筋框选。 */
 
 (function marqueeSelect() {
+  const view = $("libView");
   const grid = $("grid");
   const marquee = $("marquee");
   let startX = 0;
@@ -539,7 +529,7 @@ $("groupDialogConfirm").addEventListener("click", async () => {
 
   grid.addEventListener("contextmenu", (event) => {
     event.preventDefault();
-    const card = event.target.closest(".card");
+    const card = event.target.closest(".card[data-book-id]");
     if (card && !state.selected.has(card.dataset.bookId)) {
       state.selected = new Set([card.dataset.bookId]);
       state.lastPickId = card.dataset.bookId;
@@ -549,15 +539,19 @@ $("groupDialogConfirm").addEventListener("click", async () => {
     openLibMenu([...state.selected], event.clientX, event.clientY);
   });
 
-  grid.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || event.target.closest(".card")) return;
+  /* 框选挂在 body(书库视图激活时才生效):任何空白处都可起橡皮筋;
+     落在书卡/文件夹/按钮/输入框上的按下不启动(那里是点击与拖拽的领地)。 */
+  document.body.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || view.hidden) return;
+    if (event.target.closest(".card, .folder-card, button, input, select, .batch-bar, .lib-head, .sidebar, .toolbar, dialog, [popover]:popover-open")) return;
+    event.preventDefault(); /* 空白处起框选,不进入文本选择 */
     active = true;
     startX = event.clientX;
     startY = event.clientY;
-    grid.setPointerCapture(event.pointerId);
+    document.body.setPointerCapture(event.pointerId);
   });
 
-  grid.addEventListener("pointermove", (event) => {
+  document.body.addEventListener("pointermove", (event) => {
     if (!active) return;
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
@@ -581,7 +575,7 @@ $("groupDialogConfirm").addEventListener("click", async () => {
       if (hit) state.selected.add(book.id);
     });
     /* 只刷新选中态，不整树重绘 */
-    grid.querySelectorAll(".card").forEach((el) => {
+    grid.querySelectorAll(".card[data-book-id]").forEach((el) => {
       const on = state.selected.has(el.dataset.bookId);
       el.querySelector(".pick").classList.toggle("on", on);
       el.classList.toggle("selected", on);
@@ -595,11 +589,11 @@ $("groupDialogConfirm").addEventListener("click", async () => {
     if (!active) return;
     active = false;
     marquee.hidden = true;
-    if (grid.hasPointerCapture(event.pointerId)) grid.releasePointerCapture(event.pointerId);
+    if (document.body.hasPointerCapture(event.pointerId)) document.body.releasePointerCapture(event.pointerId);
     if (state.selected.size) state.lastPickId = [...state.selected].pop();
   }
-  grid.addEventListener("pointerup", endMarquee);
-  grid.addEventListener("pointercancel", endMarquee);
+  document.body.addEventListener("pointerup", endMarquee);
+  document.body.addEventListener("pointercancel", endMarquee);
 })();
 
 document.addEventListener("keydown", (event) => {
