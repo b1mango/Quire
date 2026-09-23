@@ -31,9 +31,9 @@
         <button class="side-item" data-view-btn="lib" aria-current="false">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="2.5" width="4.6" height="11"/><rect x="8.9" y="2.5" width="4.6" height="11"/></svg>书库
         </button>
-        <div class="side-rec" id="sideRec">
-          <div class="side-rec-title">推荐站点</div>
-        </div>
+        <button class="side-item" data-view-btn="rec" aria-current="false">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c1.8 1.6 2.7 3.4 2.7 5.5s-.9 3.9-2.7 5.5c-1.8-1.6-2.7-3.4-2.7-5.5s.9-3.9 2.7-5.5Z"/></svg>推荐站点
+        </button>
         <button class="side-item side-settings" data-view-btn="set" aria-current="false">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 2v1.4M8 12.6V14M2 8h1.4M12.6 8H14M3.8 3.8l1 1M11.2 11.2l1 1M12.2 3.8l-1 1M4.8 11.2l-1 1"/></svg>设置
         </button>
@@ -232,6 +232,15 @@
           </div>
         </div>
 
+        <!-- ============ 推荐站点 ============ -->
+        <div class="view" data-view="rec" hidden>
+          <div class="vhead">
+            <h1>推荐站点</h1>
+            <p class="sub">本项目实测可抓取的站点。复制地址去浏览器找书，回采集台粘贴；或直接「去采集」。</p>
+          </div>
+          <div class="rec-grid" id="recGrid"></div>
+        </div>
+
         <!-- ============ 设置 ============ -->
         <div class="view" data-view="set" hidden>
           <div class="vhead">
@@ -331,6 +340,7 @@
   <h2>前往</h2>
   <button class="btn" data-command="new">采集台</button>
   <button class="btn" data-command="lib">书库</button>
+  <button class="btn" data-command="rec">推荐站点</button>
   <button class="btn" data-command="set">设置</button>
 </dialog>
 <div id="marquee" hidden></div>
