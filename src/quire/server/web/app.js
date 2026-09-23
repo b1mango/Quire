@@ -461,3 +461,54 @@ document.addEventListener("keydown", (e) => {
     if (paused) { attachJob(paused); showView("run"); }
   }).catch(() => {});
 })();
+
+/* ------------------------------------------------------------ 推荐站点
+   收录本项目实测可抓的站点(见 项目进度.md 站点可达性记录);
+   点击复制站点地址,去浏览器找书后回采集台粘贴。 */
+(function recSites() {
+  const SITES = [
+    { name: "全本小说网", host: "quanben.io", kind: "小说", note: "完结全本多,直接可抓" },
+    { name: "无限小说", host: "8book.com", kind: "小说", note: "繁体全本,需开浏览器渲染" },
+    { name: "The Paper Books", host: "thepaperbooks.com", kind: "小说", note: "" },
+    { name: "咚漫", host: "dongmanmanhua.cn", kind: "漫画", note: "" },
+    { name: "B站漫画", host: "manga.bilibili.com", kind: "漫画", note: "" },
+    { name: "腾讯动漫", host: "ac.qq.com", kind: "漫画", note: "" },
+  ];
+  const box = $("sideRec");
+  if (!box) return;
+  SITES.forEach((site) => {
+    const url = `https://${site.host}/`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.title = `${url}${site.note ? ` — ${site.note}` : ""}(点击复制地址)`;
+    const name = document.createElement("span");
+    name.textContent = site.name;
+    const kind = document.createElement("span");
+    kind.className = "rec-kind";
+    kind.textContent = site.kind;
+    btn.append(name, kind);
+    btn.addEventListener("click", () => {
+      const done = () => {
+        btn.classList.add("copied");
+        name.textContent = "已复制地址";
+        setTimeout(() => { btn.classList.remove("copied"); name.textContent = site.name; }, 1200);
+      };
+      const fallback = () => {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { if (document.execCommand("copy")) done(); } catch (_) {}
+        ta.remove();
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done).catch(fallback);
+      } else {
+        fallback();
+      }
+    });
+    box.appendChild(btn);
+  });
+})();

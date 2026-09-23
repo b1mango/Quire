@@ -128,6 +128,20 @@ main{flex:1;display:flex;flex-direction:column}
 .side-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 [data-theme="swiss"] .side-item[aria-current="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
 .side-item svg{width:15px;height:15px;flex:none;opacity:.8}
+/* 推荐站点:侧栏下部的小模块,点击复制站点地址 */
+.side-rec{margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+.side-rec-title{font-size:11px;color:var(--faint);letter-spacing:.1em;padding:0 11px 6px}
+.side-rec button{
+  appearance:none;font:inherit;cursor:pointer;width:100%;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:6px 11px;border:0;border-radius:var(--radius-sm);
+  background:transparent;color:var(--muted);font-size:12.5px;text-align:left;
+  transition:background .16s var(--ease),color .16s var(--ease);
+}
+.side-rec button:hover{background:var(--surface-3);color:var(--text)}
+.side-rec button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.side-rec .rec-kind{font-size:11px;color:var(--faint);flex:none}
+.side-rec button.copied{color:var(--accent)}
 /* 设置沉到侧栏底部,与功能入口拉开层级 */
 .side-settings{margin-top:auto}
 
@@ -141,6 +155,7 @@ main{flex:1;display:flex;flex-direction:column}
   .sidebar{position:static;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--border)}
   .side-item{width:auto}
   .side-settings{margin-top:0}
+  .side-rec{display:none} /* 窄窗不显示推荐站点,保持顶栏单行 */
 }
 
 /* 内容区 */
@@ -260,9 +275,16 @@ h1{font-family:var(--fd);font-size:var(--fs-h1);line-height:1.2;margin:0;letter-
 
 /* 书库 */
 .lib-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:10px;flex-wrap:wrap}
-.lib-title{display:flex;align-items:flex-start;gap:10px}
-.lib-back{margin-top:6px;padding-left:0;color:var(--muted)}
-.lib-back:hover{color:var(--accent)}
+.lib-title{display:flex;align-items:flex-start;gap:6px}
+.lib-back{
+  appearance:none;border:0;background:transparent;cursor:pointer;
+  font:inherit;font-size:14px;line-height:1;color:var(--muted);
+  display:inline-flex;align-items:center;gap:3px;
+  padding:4px 6px;margin-top:10px;border-radius:var(--radius-sm);
+  transition:color .16s var(--ease),background-color .16s var(--ease);
+}
+.lib-back:hover{color:var(--accent);background:var(--surface-2)}
+.lib-back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .lib-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .lib-tools .input{width:240px}
 /* 文件夹卡:与书卡同网格同尺寸,封面为组内最新 1–4 本的拼贴 */
