@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from ..errors import ConfigError, LedgerError, ParseError, QuireError
 from ..store.models import JsonValue
-from . import endpoints, files, follows
+from . import endpoints, files, follows, recsites
 from .jobs import JobManager
 
 _LOG = logging.getLogger(__name__)
@@ -197,6 +197,10 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._reply_json(200, endpoints.put_settings(self.server, self._body()))
         if method == "POST" and path == "/api/probe":
             return self._probe()
+        if method == "GET" and path == "/api/sites":
+            return self._reply_json(200, recsites.list_sites())
+        if method == "POST" and path == "/api/sites/open":
+            return self._reply_json(200, recsites.open_site(self._body()))
         if path == "/api/jobs":
             if method == "GET":
                 return self._reply_json(200, endpoints.list_jobs(self.server))

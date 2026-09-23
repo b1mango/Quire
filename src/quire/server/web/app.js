@@ -463,20 +463,15 @@ document.addEventListener("keydown", (e) => {
 })();
 
 /* ------------------------------------------------------------ 推荐站点
-   收录本项目实测可抓的站点(见 项目进度.md 站点可达性记录)。
-   每张卡:复制地址(去浏览器找书)或「去采集」(填入链接框并切到采集台)。 */
-(function recSites() {
-  const SITES = [
-    { name: "全本小说网", host: "quanben.io", kind: "小说", note: "完结全本多,直接可抓" },
-    { name: "无限小说", host: "8book.com", kind: "小说", note: "繁体全本,需开浏览器渲染" },
-    { name: "The Paper Books", host: "thepaperbooks.com", kind: "小说", note: "英文小说" },
-    { name: "咚漫", host: "dongmanmanhua.cn", kind: "漫画", note: "实测 91/91 原图通过" },
-    { name: "B站漫画", host: "manga.bilibili.com", kind: "漫画", note: "" },
-    { name: "腾讯动漫", host: "ac.qq.com", kind: "漫画", note: "" },
-  ];
+   清单由服务端 /api/sites 提供(本项目实测可抓,见 项目进度.md)。
+   每张卡:标题 + 网址 + 资源特点;「打开站点」在默认浏览器打开主页找书,
+   「复制地址」供回采集台粘贴。 */
+(async function recSites() {
   const grid = $("recGrid");
   if (!grid) return;
-  SITES.forEach((site) => {
+  const data = await api("/api/sites").catch(() => null);
+  if (!data) return;
+  data.sites.forEach((site) => {
     const url = `https://${site.host}/`;
     const card = document.createElement("div");
     card.className = "rec-card";
@@ -500,6 +495,18 @@ document.addEventListener("keydown", (e) => {
     }
     const actions = document.createElement("div");
     actions.className = "rec-actions";
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "btn primary";
+    open.textContent = "打开站点";
+    open.addEventListener("click", () => {
+      api("/api/sites/open", { method: "POST", body: { host: site.host } })
+        .then(() => {
+          open.textContent = "已在浏览器打开";
+          setTimeout(() => { open.textContent = "打开站点"; }, 1500);
+        })
+        .catch(() => { open.textContent = "打开失败"; setTimeout(() => { open.textContent = "打开站点"; }, 1500); });
+    });
     const copy = document.createElement("button");
     copy.type = "button";
     copy.className = "btn ghost";
@@ -525,16 +532,7 @@ document.addEventListener("keydown", (e) => {
         fallback();
       }
     });
-    const go = document.createElement("button");
-    go.type = "button";
-    go.className = "btn primary";
-    go.textContent = "去采集";
-    go.addEventListener("click", () => {
-      $("urlInput").value = url;
-      showView("new");
-      $("urlInput").focus();
-    });
-    actions.append(copy, go);
+    actions.append(open, copy);
     card.append(actions);
     grid.appendChild(card);
   });
