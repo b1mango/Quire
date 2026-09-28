@@ -483,11 +483,11 @@ document.addEventListener("keydown", (e) => {
    每张卡:标题 + 网址 + 资源特点;「打开站点」在默认浏览器打开主页找书,
    「复制地址」供回采集台粘贴。 */
 (async function recSites() {
-  const grid = $("recGrid");
-  if (!grid) return;
+  const cols = $("recCols");
+  if (!cols) return;
   const data = await api("/api/sites").catch(() => null);
   if (!data) return;
-  data.sites.forEach((site) => {
+  const buildCard = (site) => {
     const url = `https://${site.host}/`;
     const card = document.createElement("div");
     card.className = "rec-card";
@@ -550,6 +550,23 @@ document.addEventListener("keydown", (e) => {
     });
     actions.append(open, copy);
     card.append(actions);
-    grid.appendChild(card);
+    return card;
+  };
+  /* 按类型分列（小说/漫画在前，未知类型依出现顺序补列）；站点增多时列内滑动 */
+  const kinds = ["小说", "漫画"];
+  data.sites.forEach((site) => { if (!kinds.includes(site.kind)) kinds.push(site.kind); });
+  kinds.forEach((kind) => {
+    const sites = data.sites.filter((site) => site.kind === kind);
+    if (!sites.length) return;
+    const section = document.createElement("section");
+    section.className = "rec-col";
+    const title = document.createElement("h2");
+    title.className = "rec-col-title";
+    title.textContent = kind;
+    const list = document.createElement("div");
+    list.className = "rec-col-list";
+    sites.forEach((site) => list.appendChild(buildCard(site)));
+    section.append(title, list);
+    cols.appendChild(section);
   });
 })();
