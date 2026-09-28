@@ -1,3 +1,4 @@
+import AppKit
 import WebKit
 
 /// The page-world clipboard endpoint is read-only. Drag geometry stays in an isolated world.
@@ -15,6 +16,7 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply, WKScriptMes
 
     func install(on controller: WKUserContentController) {
         controller.addScriptMessageHandler(self, contentWorld: .page, name: "clipboard")
+        controller.addScriptMessageHandler(self, contentWorld: .page, name: "chooseDirectory")
         controller.add(self, contentWorld: .defaultClient, name: "windowDrag")
         controller.addUserScript(
             WKUserScript(
@@ -41,6 +43,10 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply, WKScriptMes
         _ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
         replyHandler: @escaping (Any?, String?) -> Void
     ) {
+        if message.name == "chooseDirectory" {
+            chooseDirectory(message, replyHandler: replyHandler)
+            return
+        }
         guard message.name == "clipboard", isTrusted(message) else {
             replyHandler(nil, "Clipboard access requires the trusted main frame.")
             return
@@ -52,6 +58,34 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply, WKScriptMes
             return
         }
         replyHandler(NSPasteboard.general.string(forType: .string) ?? "", nil)
+    }
+
+    // await window.webkit.messageHandlers.chooseDirectory.postMessage({}) -> string | null
+    // Presents a directory picker sheet; cancel resolves to null. Never reads the path itself.
+    private func chooseDirectory(
+        _ message: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void
+    ) {
+        guard isTrusted(message) else {
+            replyHandler(nil, "Directory access requires the trusted main frame.")
+            return
+        }
+        guard let window = webView?.window else {
+            replyHandler(nil, "The window is not ready.")
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "选择"
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else {
+                replyHandler(NSNull(), nil)
+                return
+            }
+            replyHandler(url.path, nil)
+        }
     }
 
     func userContentController(

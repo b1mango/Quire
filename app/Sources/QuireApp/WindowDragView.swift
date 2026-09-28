@@ -44,6 +44,15 @@ final class WindowDragView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            // Mirror the title bar: follow the system's double-click action setting.
+            if UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") == "Minimize" {
+                window?.miniaturize(nil)
+            } else {
+                window?.zoom(nil)
+            }
+            return
+        }
         window?.performDrag(with: event)
     }
 

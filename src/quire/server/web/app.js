@@ -351,6 +351,22 @@ function saveSettings() {
   }).finally(() => { btn.disabled = false; });
 }
 
+/* 原生壳里通过 NSOpenPanel 选目录（chooseDirectory 桥）；纯浏览器运行没有该桥，按钮保持隐藏 */
+const dirBridge = window.webkit && window.webkit.messageHandlers
+  && window.webkit.messageHandlers.chooseDirectory;
+if (dirBridge) {
+  $("browseOutputBtn").hidden = false;
+  $("browseOutputBtn").addEventListener("click", async () => {
+    try {
+      const path = await dirBridge.postMessage({});
+      if (path && typeof path === "string") {
+        $("setOutput").value = path;
+        $("settingsMeta").textContent = "";
+      }
+    } catch (_) { /* 面板不可用时仍走手动输入 */ }
+  });
+}
+
 /* 重新编辑任一设置字段后，撤去旧的“已保存/保存失败”状态 */
 ["setOutput", "setConcurrency", "setRate", "setCdpEndpoint", "setTaskNovel", "setTaskManga"].forEach((id) => {
   $(id).addEventListener("input", () => { $("settingsMeta").textContent = ""; });
