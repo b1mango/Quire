@@ -368,7 +368,6 @@ $("bookMoveBtn").addEventListener("click", () => {
 
 let pendingDeleteBook = null;
 let pendingBatchIds = null;
-let libMenuIds = null;
 
 /* 拖拽载荷：优先 JSON 数组（批量拖动），兼容早期的单本纯文本 */
 function dragIds(event) {
@@ -379,45 +378,6 @@ function dragIds(event) {
     return Array.isArray(parsed) ? parsed.map(String) : [String(parsed)];
   } catch (_) { return [raw]; }
 }
-
-function openLibMenu(ids, x, y) {
-  libMenuIds = ids;
-  const menu = $("libMenu");
-  $("libMenuMeta").textContent = `已选 ${ids.length} 本`;
-  $("libMenuMove").hidden = !(state.groups || []).length;
-  menu.showPopover();
-  menu.style.left = `${Math.max(8, Math.min(x, innerWidth - menu.offsetWidth - 8))}px`;
-  menu.style.top = `${Math.max(8, Math.min(y, innerHeight - menu.offsetHeight - 8))}px`;
-  menu.querySelector("button:not([hidden])").focus();
-}
-function closeLibMenu() {
-  const menu = $("libMenu");
-  if (menu.matches(":popover-open")) menu.hidePopover();
-}
-$("libMenu").addEventListener("keydown", (event) => {
-  const buttons = [...event.currentTarget.querySelectorAll("button:not([hidden])")];
-  if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeLibMenu(); }
-  if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-    event.preventDefault();
-    const index = buttons.indexOf(document.activeElement);
-    const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
-      : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
-    buttons[next]?.focus();
-  }
-});
-$("libMenuMove").addEventListener("click", () => {
-  const ids = libMenuIds || [];
-  closeLibMenu();
-  if (ids.length) openGroupMenu(ids, $("libMenuMove"));
-});
-$("libMenuDelete").addEventListener("click", () => {
-  if (!libMenuIds || !libMenuIds.length) return;
-  pendingBatchIds = [...libMenuIds];
-  pendingDeleteBook = null;
-  closeLibMenu();
-  openDeleteDialog(`删除选中的 ${pendingBatchIds.length} 本书？`);
-});
-$("libMenuClear").addEventListener("click", () => { closeLibMenu(); clearSelection(); });
 
 function openDeleteDialog(message) {
   /* 复用同一对话框：每次打开先恢复默认按钮文案，部分失败态会被改成「仅重试失败项/关闭」 */
@@ -515,7 +475,7 @@ $("groupDialogConfirm").addEventListener("click", async () => {
   finally { $("groupDialogConfirm").disabled = false; }
 });
 
-/* ------------------------------------------------------------ 框选与右键
+/* ------------------------------------------------------------ 框选
    指针拖动区分：落在书籍卡片上 = 拖拽入组（原生 DnD）；
    落在网格空白/间隙 = 橡皮筋框选。 */
 
@@ -526,18 +486,6 @@ $("groupDialogConfirm").addEventListener("click", async () => {
   let startX = 0;
   let startY = 0;
   let active = false;
-
-  grid.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-    const card = event.target.closest(".card[data-book-id]");
-    if (card && !state.selected.has(card.dataset.bookId)) {
-      state.selected = new Set([card.dataset.bookId]);
-      state.lastPickId = card.dataset.bookId;
-      renderLibrary($("searchInput").value.trim());
-    }
-    if (!state.selected.size) return;
-    openLibMenu([...state.selected], event.clientX, event.clientY);
-  });
 
   /* 框选挂在 body(书库视图激活时才生效):任何空白处都可起橡皮筋;
      落在书卡/文件夹/按钮/输入框上的按下不启动(那里是点击与拖拽的领地)。 */
