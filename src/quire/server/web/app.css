@@ -131,7 +131,7 @@ main{flex:1;display:flex;flex-direction:column}
 /* 设置沉到侧栏底部,与功能入口拉开层级 */
 .side-settings{margin-top:auto}
 
-/* 采集队列进行中：侧栏呼吸灯（prefers-reduced-motion 由全局规则关停动画） */
+/* 任务队列进行中：侧栏呼吸灯（prefers-reduced-motion 由全局规则关停动画） */
 .run-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);margin-left:auto;flex:none;animation:breathe 1.6s var(--ease) infinite}
 @keyframes breathe{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
 
@@ -548,6 +548,6 @@ html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--faint) 45%,tra
 .update-row .btn{flex:none;padding:4px 10px;font-size:12px}
 .dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
 
-/* 采集队列：运行红色，全部成功后短暂绿色呼吸。 */
+/* 任务队列：运行红色，全部成功后短暂绿色呼吸。 */
 .run-dot[data-status="active"]{background:#d94c50}
 .run-dot[data-status="done"]{background:var(--ok)}
