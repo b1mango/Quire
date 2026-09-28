@@ -35,6 +35,11 @@ const PROBE_STAGES = {
   parse: "正在识别章节……",
   estimate: "正在抽样估算体积……",
 };
+const PROBE_STAGE_PROGRESS = { fetch: 30, render: 55, parse: 75, estimate: 90 };
+
+function probeProgress(stage) {
+  $("probeMeterFill").style.width = `${PROBE_STAGE_PROGRESS[stage] || 30}%`;
+}
 
 /* probe 走 NDJSON 流（fetch + ReadableStream，EventSource 不支持 POST）：
    每个阶段一帧 {"stage": …}，收尾是 {"result": …} 或 {"error": …}。 */
@@ -47,6 +52,8 @@ function probeUrl(url) {
   $("seriesField").hidden = true;
   $("probeHint").classList.add("is-loading");
   $("probeHint").textContent = PROBE_STAGES.fetch;
+  $("probeMeter").hidden = false;
+  $("probeMeterFill").style.width = "8%";
   fetch("/api/probe", {
     method: "POST",
     headers: { "X-Quire-Token": TOKEN, "Content-Type": "application/json" },
@@ -71,8 +78,10 @@ function probeUrl(url) {
         if (!line.trim()) continue;
         const frame = JSON.parse(line);
         if (frame.stage) {
-          if (state.probeRequest === request)
+          if (state.probeRequest === request) {
             $("probeHint").textContent = PROBE_STAGES[frame.stage] || frame.stage;
+            probeProgress(frame.stage);
+          }
         } else if (frame.error) {
           failure = frame;
         } else if (frame.result) {
@@ -93,6 +102,7 @@ function probeUrl(url) {
   }).catch((err) => {
     if (state.probeRequest !== request) return;
     $("probeHint").classList.remove("is-loading");
+    $("probeMeter").hidden = true;
     $("probeHint").textContent = err.hint ? `${err.message} ${err.hint}` : err.message;
     $("wsStatus").hidden = true;
     $("startBtn").disabled = true;
@@ -103,6 +113,7 @@ function probeUrl(url) {
 function renderProbeResult(result) {
   $("probeHint").classList.remove("is-loading");
   $("probeHint").hidden = true;
+  $("probeMeter").hidden = true;
   state.probe = result;
   renderVolumes(result);
   renderRange(result);
@@ -197,6 +208,8 @@ function resetProbe() {
   $("rangeField").hidden = true;
   $("wsStatus").hidden = true;
   $("sizeEstimate").textContent = "识别后可估";
+  $("probeMeter").hidden = true;
+  $("probeMeterFill").style.width = "0";
   $("startBtn").disabled = true;
   $("probeHint").hidden = true;
   $("probeHint").classList.remove("is-loading");

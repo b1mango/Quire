@@ -221,7 +221,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._thumb(job_id, parts[4])
         if method == "POST" and len(parts) == 3 and parts[:2] == ["api", "books"]:
             if parts[2] == "check-all-updates":
-                return self._reply_json(200, follows.check_all(self.server))
+                return self._stream_ndjson(lambda send: follows.check_all_stream(self.server, send))
             if parts[2] == "batch":
                 return self._reply_json(200, endpoints.batch_books(self.server, self._body()))
         if len(parts) >= 2 and parts[:2] == ["api", "groups"]:
@@ -243,7 +243,9 @@ class _Handler(BaseHTTPRequestHandler):
             if parts[3] == "reveal":
                 return self._reply_json(200, endpoints.reveal_book(self.server, parts[2]))
             if parts[3] == "check-update":
-                return self._reply_json(200, follows.check_update(self.server, parts[2]))
+                return self._stream_ndjson(
+                    lambda send: follows.check_update_stream(self.server, parts[2], send)
+                )
             if parts[3] == "follow":
                 return self._reply_json(201, follows.follow_submit(self.server, parts[2]))
         if method == "GET" and len(parts) == 4 and parts[:2] == ["api", "books"]:
@@ -293,11 +295,13 @@ class _Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             raise ConfigError("请求体不是有效的 JSON") from None
 
-    def _probe(self) -> None:
-        """流式识别：首帧才发响应头（之前的校验失败仍走普通 JSON 错误码）。
+    def _stream_ndjson(
+        self, driver: Callable[[Callable[[dict[str, JsonValue]], None]], None]
+    ) -> None:
+        """NDJSON 流响应：首帧才发响应头（之前的校验失败仍走普通 JSON 错误码）。
 
-        阶段帧让前端能显示「请求目录 → 识别章节 → 估算体积」的进度文案；
-        识别中途的失败以 ``{"error": …}`` 帧收尾（项目设计.md §3.3）。
+        阶段帧让前端能显示进度；流中途的失败以 ``{"error": …}`` 帧收尾，
+        此时响应行已是 200（项目设计.md §3.3）。
         """
         started = False
 
@@ -314,7 +318,11 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(_json_bytes(obj) + b"\n")
             self.wfile.flush()
 
-        endpoints.probe_stream(self.server, self._body(), send_frame)
+        driver(send_frame)
+
+    def _probe(self) -> None:
+        body = self._body()
+        self._stream_ndjson(lambda send: endpoints.probe_stream(self.server, body, send))
 
     def _job(self, job_id: str) -> None:
         job = self.server.manager.get(job_id)

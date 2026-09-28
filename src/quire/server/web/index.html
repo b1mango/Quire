@@ -67,6 +67,7 @@
                 <button class="btn ghost ws-paste" id="pasteBtn" type="button">粘贴</button>
               </div>
               <div class="hint" id="probeHint" role="status" aria-live="polite" hidden></div>
+              <div class="meter" id="probeMeter" hidden><div class="meter-fill" id="probeMeterFill"></div></div>
 
               <div class="ws-options">
                 <div class="field" id="formatField" hidden>
@@ -199,6 +200,10 @@
             <button class="btn ghost" id="batchMoveBtn" aria-expanded="false" aria-controls="groupMenu">移动到分组</button>
             <button class="btn danger" id="batchDeleteBtn">删除</button>
             <button class="btn ghost" id="clearSelBtn">取消选择</button>
+          </div>
+          <div class="lib-check" id="libCheckBar" hidden>
+            <div class="meter"><div class="meter-fill" id="libCheckFill"></div></div>
+            <span class="meta" id="libCheckText"></span>
           </div>
           <p class="hint lib-hint" id="libHint">点选 · Shift 连选 · 框选 · 双击打开 · 右键菜单</p>
           <div class="menu" id="bookActions" role="menu" popover>

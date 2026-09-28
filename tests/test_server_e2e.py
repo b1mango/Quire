@@ -478,6 +478,43 @@ def test_follow_rejected_when_catalogue_changed(ui):
         assert status == 400 and "续抓" in error["error"]
 
 
+def test_check_all_streams_progress_frames(ui):
+    """全部检查：首帧总数、逐本进度帧、收尾完整结果。"""
+    server, _ = ui
+    with novel_site() as site:
+        site.titles = {number: CHAPTER_TITLES[number] for number in (1, 2, 3)}
+        site.pages = {number: CHAPTER_PAGES[number] for number in (1, 2, 3)}
+        site.missing = set()
+        status, job = _request(
+            server,
+            "POST",
+            "/api/jobs",
+            {
+                "kind": "novel",
+                "url": f"{site.url}/book/",
+                "title": "测试之书",
+                "formats": ["txt"],
+                "ocr": "never",
+            },
+        )
+        assert status == 201
+        assert _wait_job(server, job["id"])["status"] == "done"
+        status, frames = _request_frames(server, "POST", "/api/books/check-all-updates")
+        assert status == 200
+        assert frames[0] == {"total": 1}
+        progress = [frame for frame in frames if frame.get("done")]
+        assert progress == [
+            {
+                "done": 1,
+                "total": 1,
+                "title": "测试之书",
+                "update": 0,
+                "error": None,
+            }
+        ]
+        assert frames[-1]["result"]["results"][0]["chapters"] == 3
+
+
 def test_probe_rejects_page_without_content(ui):
     server, _ = ui
     with novel_site() as site:

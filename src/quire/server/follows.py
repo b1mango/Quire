@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -55,12 +56,20 @@ def register_follow(data_root: Path, book_id: str, spec: JobSpec, result: NovelR
     )
 
 
-def check_update(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
-    """重新 probe 来源目录，对比章节数与末章标题指纹，结果记入 follows 表。"""
+def _followable(ctx: QuireServer, book_id: str) -> tuple[library.Book, library.Follow]:
     book = library.get_book(ctx.data_root, book_id)
     follow = library.get_follow(ctx.data_root, book_id)
     if follow is None:
         raise ConfigError("这本书不支持追更", hint="只有目录模式采集的整本小说可以追更。")
+    return book, follow
+
+
+def _compare_remote(
+    ctx: QuireServer,
+    book: library.Book,
+    follow: library.Follow,
+    on_stage: Callable[[str], None] | None = None,
+) -> dict[str, JsonValue]:
     result = asyncio.run(
         probe_url(
             book.source_url,
@@ -68,13 +77,15 @@ def check_update(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
             kind="novel",
             capture_mode=follow.capture_mode,
             obey_robots=settings_mod.load(ctx.settings_path, ctx.data_root).obey_robots,
+            on_stage=on_stage,
         )
     )
     titles = result.chapters
     match = result.count >= follow.chapters and titles[follow.chapters - 1] == follow.last_title
-    library.record_check(ctx.data_root, book_id, remote_count=result.count, match=match)
+    library.record_check(ctx.data_root, book.id, remote_count=result.count, match=match)
     return {
-        "book_id": book_id,
+        "book_id": book.id,
+        "title": book.title,
         "chapters": follow.chapters,
         "remote_count": result.count,
         "update": result.count - follow.chapters if match else 0,
@@ -82,17 +93,60 @@ def check_update(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
     }
 
 
-def check_all(ctx: QuireServer) -> dict[str, JsonValue]:
-    """书库页「全部检查」：逐本 probe，单本失败不拖垮其余。"""
+def check_update(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
+    """重新 probe 来源目录，对比章节数与末章标题指纹，结果记入 follows 表。"""
+    book, follow = _followable(ctx, book_id)
+    return _compare_remote(ctx, book, follow)
+
+
+def check_update_stream(
+    ctx: QuireServer, book_id: str, send_frame: Callable[[dict[str, JsonValue]], None]
+) -> None:
+    """NDJSON 流式单本检查：probe 阶段帧先行，结果或错误帧收尾（§3.3 同识别语义）。"""
+    book, follow = _followable(ctx, book_id)
+    streamed = False
+
+    def frame(obj: dict[str, JsonValue]) -> None:
+        nonlocal streamed
+        streamed = True
+        send_frame(obj)
+
+    try:
+        payload = _compare_remote(ctx, book, follow, on_stage=lambda name: frame({"stage": name}))
+    except QuireError as exc:
+        if not streamed:
+            raise
+        frame({"error": exc.message, "hint": exc.hint})
+        return
+    frame({"result": payload})
+
+
+def check_all_stream(ctx: QuireServer, send_frame: Callable[[dict[str, JsonValue]], None]) -> None:
+    """书库页「全部检查」：首帧给总数，逐本发进度帧，单本失败不拖垮其余。"""
+    books = [
+        book
+        for book in library.list_books(ctx.data_root)
+        if library.get_follow(ctx.data_root, book.id) is not None
+    ]
+    send_frame({"total": len(books)})
     results: list[JsonValue] = []
-    for book in library.list_books(ctx.data_root):
-        if library.get_follow(ctx.data_root, book.id) is None:
-            continue
+    for index, book in enumerate(books, 1):
         try:
-            results.append(check_update(ctx, book.id))
+            owned, follow = _followable(ctx, book.id)
+            payload: dict[str, JsonValue] = _compare_remote(ctx, owned, follow)
         except QuireError as exc:
-            results.append({"book_id": book.id, "error": exc.message})
-    return {"results": results}
+            payload = {"book_id": book.id, "title": book.title, "error": exc.message}
+        send_frame(
+            {
+                "done": index,
+                "total": len(books),
+                "title": book.title,
+                "update": payload.get("update", 0),
+                "error": payload.get("error"),
+            }
+        )
+        results.append(payload)
+    send_frame({"result": {"results": results}})
 
 
 def follow_submit(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
