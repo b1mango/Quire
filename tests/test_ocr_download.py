@@ -61,9 +61,7 @@ def test_download_streams_progress_frames(tmp_path: Path, monkeypatch) -> None:
 
 def test_download_ready_short_circuits_without_network(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(ocr_dl, "module_available", lambda name: True)
-    monkeypatch.setattr(
-        ocr_dl, "check_models", lambda d: SimpleNamespace(missing=(), corrupt=())
-    )
+    monkeypatch.setattr(ocr_dl, "check_models", lambda d: SimpleNamespace(missing=(), corrupt=()))
     frames: list[dict] = []
     ocr_dl.download_ocr_models(_ctx(tmp_path), frames.append)
     assert frames == [{"total": 0}, {"result": {"ready": True, "downloaded": []}}]
@@ -90,9 +88,7 @@ def test_download_rejected_without_onnxruntime(tmp_path: Path, monkeypatch) -> N
         ocr_dl.download_ocr_models(_ctx(tmp_path), lambda frame: None)
 
 
-def test_runner_without_download_permission_points_to_settings(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_runner_without_download_permission_points_to_settings(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(capture, "onnx_available", lambda: True)
     monkeypatch.setattr(
         capture, "check_models", lambda d: SimpleNamespace(ready=False, missing=("a",), corrupt=())
