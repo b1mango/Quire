@@ -59,7 +59,7 @@ class AsyncFetcher:
             or type(retries) is not int
             or not 0 <= retries <= 10
             or type(concurrency) is not int
-            or not 1 <= concurrency <= 16
+            or not 1 <= concurrency <= 32
             or type(max_bytes) is not int
             or not 1 <= max_bytes <= 128 * 1024 * 1024
         ):

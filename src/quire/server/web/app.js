@@ -305,14 +305,14 @@ function saveSettings() {
   const taskNovel = parseInt($("setTaskNovel").value, 10);
   const taskManga = parseInt($("setTaskManga").value, 10);
   const fieldError = $("setFieldError");
-  if (!Number.isFinite(concurrency) || concurrency < 1 || concurrency > 16) {
-    fieldError.textContent = "并发须为 1–16 的整数";
+  if (!Number.isFinite(concurrency) || concurrency < 1 || concurrency > 32) {
+    fieldError.textContent = "并发须为 1–32 的整数";
     fieldError.hidden = false;
     $("setConcurrency").focus();
     return;
   }
-  if (!Number.isFinite(rate) || rate <= 0 || rate > 5) {
-    fieldError.textContent = "每站限速须为 0–5 之间的数值";
+  if (!Number.isFinite(rate) || rate <= 0 || rate > 10) {
+    fieldError.textContent = "每站限速须为 0–10 之间的数值";
     fieldError.hidden = false;
     $("setRate").focus();
     return;

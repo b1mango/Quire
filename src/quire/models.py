@@ -37,8 +37,8 @@ class MangaOptions:
     def __post_init__(self) -> None:
         if type(self.obey_robots) is not bool:
             raise ConfigError("robots 开关须为布尔值")
-        if not 1 <= self.concurrency <= 16 or not 0 <= self.retries <= 10:
-            raise ConfigError("并发须为 1-16，重试须为 0-10")
+        if not 1 <= self.concurrency <= 32 or not 0 <= self.retries <= 10:
+            raise ConfigError("并发须为 1-32，重试须为 0-10")
         if any(not math.isfinite(v) or v <= 0 for v in (self.rate, self.timeout, self.dpi)):
             raise ConfigError("速率、超时和 DPI 须为有限正数")
         if self.first < 1 or self.last < 0 or (self.last and self.last < self.first):
@@ -164,8 +164,8 @@ class NovelOptions:
             raise ConfigError("单章模式不能选择目录范围")
         if self.capture_mode not in {"auto", "catalogue", "single"}:
             raise ConfigError("采集模式须为 auto、catalogue 或 single")
-        if not 1 <= self.concurrency <= 16 or not 0 <= self.retries <= 10:
-            raise ConfigError("并发须为 1-16，重试须为 0-10")
+        if not 1 <= self.concurrency <= 32 or not 0 <= self.retries <= 10:
+            raise ConfigError("并发须为 1-32，重试须为 0-10")
         if not 1 <= self.max_chapters <= 20000 or not 1 <= self.max_pages <= 200:
             raise ConfigError("章节数上限须为 1-20000，单章页数上限须为 1-200")
         if any(not math.isfinite(v) or v <= 0 for v in (self.rate, self.timeout)):

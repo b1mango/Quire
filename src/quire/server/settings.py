@@ -18,7 +18,7 @@ from ..image.options import PRESETS
 from ..workspace import atomic_output
 
 THEMES = ("paper:light", "darkroom:light", "darkroom:dark", "swiss:light")
-MAX_RATE = 5.0  # 应用默认策略上限，并非站点承载能力测量值
+MAX_RATE = 10.0  # 应用默认策略上限，并非站点承载能力测量值
 OCR_MODES = ("auto", "always", "never")
 
 
@@ -28,8 +28,8 @@ class UiSettings:
     compress: str = "balanced"
     task_novel_mb: int = 100
     task_manga_mb: int = 500
-    concurrency: int = 12
-    rate: float = 4.0
+    concurrency: int = 16
+    rate: float = 6.0
     ocr: str = "auto"
     theme: str = "paper:light"
     auto_check_updates: bool = False
@@ -53,14 +53,14 @@ class UiSettings:
             raise ConfigError("小说任务体积上限须为 1-1000000 MB")
         if type(self.task_manga_mb) is not int or not 1 <= self.task_manga_mb <= 1_000_000:
             raise ConfigError("漫画任务体积上限须为 1-1000000 MB")
-        if type(self.concurrency) is not int or not 1 <= self.concurrency <= 16:
-            raise ConfigError("并发须为 1-16")
+        if type(self.concurrency) is not int or not 1 <= self.concurrency <= 32:
+            raise ConfigError("并发须为 1-32")
         if (
             type(self.rate) not in {int, float}
             or not math.isfinite(self.rate)
             or not 0 < self.rate <= MAX_RATE
         ):
-            raise ConfigError("每站限速须大于 0 且不超过 5 次/秒")
+            raise ConfigError("每站限速须大于 0 且不超过 10 次/秒")
         if self.ocr not in OCR_MODES:
             raise ConfigError("OCR 模式须为 auto、always 或 never")
         if self.theme not in THEMES:
