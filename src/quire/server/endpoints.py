@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from .. import __version__
 from ..assemble.models import clean_metadata_text
-from ..cli_console import data_home, find_chrome, module_available
+from ..cli_console import find_chrome, module_available
 from ..errors import ConfigError, QuireError
 from ..sites.kind_guard import check_placement
 from ..store import groups, library
@@ -35,7 +35,7 @@ def capabilities(ctx: QuireServer) -> dict[str, JsonValue]:
     if module_available("onnxruntime"):
         from ..ocr.models import check_models
 
-        status = check_models(data_home() / "models")
+        status = check_models(ctx.data_root / "models")
         ocr["onnxruntime"] = True
         ocr["models_ready"] = status.ready
         ocr["model_dir"] = str(status.model_dir)

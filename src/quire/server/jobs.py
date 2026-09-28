@@ -302,6 +302,7 @@ class JobManager:
             concurrency=settings.concurrency,
             rate=settings.rate,
             ocr_mode=spec.ocr,
+            ocr_download=False,
             model_dir=self.data_root / "models",
             capture_mode=spec.capture_mode,
             max_chapters=20000,

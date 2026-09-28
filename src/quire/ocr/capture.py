@@ -17,7 +17,7 @@ from typing import Protocol
 from ..errors import UnsupportedError
 from ..parse.minidom import Document
 from .base import OcrEngine, OcrLine
-from .models import ensure_models
+from .models import check_models, ensure_models
 from .onnx_engine import OnnxEngine, onnx_available
 from .postprocess import merge_lines, normalize_paragraphs
 from .tesseract import TesseractEngine, find_tesseract
@@ -57,12 +57,14 @@ class OcrRunner:
         engine: str = "auto",
         model_dir: Path,
         offline: bool = False,
+        allow_download: bool = True,
         content_selector: str | None = None,
         max_bytes: int = 32 * 1024 * 1024,
     ) -> None:
         self.preference = engine
         self.model_dir = model_dir
         self.offline = offline
+        self.allow_download = allow_download
         self.content_selector = content_selector
         self.max_bytes = max_bytes
         self._engine: OcrEngine | None = None
@@ -95,6 +97,13 @@ class OcrRunner:
                 "指定的 onnx 引擎缺少 onnxruntime",
                 hint="安装 quire-local[ocr]，或改用 --ocr-engine tesseract",
             )
+        if not self.allow_download:
+            status = check_models(self.model_dir)
+            if not status.ready:
+                raise UnsupportedError(
+                    "内置 OCR 模型未下载",
+                    hint="在设置页的「文字识别」里点「下载 OCR 模块」（约 16 MB），完成后重试。",
+                )
         ensure_models(self.model_dir, offline=self.offline)
         return OnnxEngine(self.model_dir)
 

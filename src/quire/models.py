@@ -133,6 +133,7 @@ class NovelOptions:
     ocr_mode: str = "auto"  # auto|always|never（项目设计.md §6.7）
     ocr_engine: str = "auto"  # auto|tesseract|onnx
     offline: bool = False  # 离线：缺 OCR 模型直接报错（退出码 6），不下载
+    ocr_download: bool = True  # False 时缺模型不自动下载，改指引去设置页下载模块
     model_dir: Path | None = None  # OCR 模型目录；None 用数据根下的 models/
     capture_mode: str = "auto"  # auto | catalogue | single
     chapter_first: int = 1

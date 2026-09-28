@@ -146,11 +146,13 @@ def ensure_models(
     *,
     offline: bool = False,
     downloader: Downloader | None = None,
+    on_file: Callable[[str], None] | None = None,
 ) -> ModelStatus:
     """保证模型目录可用；缺文件或损坏时按需下载并强制校验。
 
     ``offline`` 下缺失直接报错（退出码 6）并打印手动放置路径；
-    下载任一步失败即中止，目录里不留半成品。
+    下载任一步失败即中止，目录里不留半成品。``on_file`` 在每个文件
+    安装成功后被调用（文件名），供进度展示。
     """
     status = check_models(model_dir)
     if status.ready:
@@ -182,5 +184,7 @@ def ensure_models(
                 hint=manual_hint(model_dir, wanted),
             )
         _install(model_dir, name, expected, data)
+        if on_file is not None:
+            on_file(name)
     write_checksums(model_dir)
     return check_models(model_dir)

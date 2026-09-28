@@ -185,6 +185,7 @@ async def run_core_novel(
             engine=opts.ocr_engine,
             model_dir=model_dir,
             offline=opts.offline,
+            allow_download=opts.ocr_download,
             content_selector=opts.content_selector,
             max_bytes=opts.max_bytes,
         )

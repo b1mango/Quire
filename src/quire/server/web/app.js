@@ -275,28 +275,47 @@ function loadSettingsView() {
     $("setBrowserNative").checked = !!settings.browser_native;
     $("setCdpEndpoint").value = settings.cdp_endpoint || "";
   }).catch((err) => { $("settingsMeta").textContent = err.message; });
-  api("/api/capabilities").then((caps) => {
-    state.caps = caps;
-    syncOcrAvailability();
-    updateChromeHint();
-    const dl = $("doctorList");
-    dl.textContent = "";
-    const rows = [
-      ["版本", `quire ${caps.version}`],
-      ["Chrome", caps.chrome || "未找到（小说转 PDF 需要）"],
-      ["tesseract", caps.ocr.tesseract ? "已安装" : "未安装"],
-      ["内置 OCR", caps.ocr.onnxruntime ? (caps.ocr.models_ready ? "模型已就绪" : "模型按需下载") : "未安装（quire-local[ocr]）"],
-      ["数据目录", caps.data_dir],
-      ["输出目录", caps.output_dir],
-    ];
-    rows.forEach(([key, value]) => {
-      const dt = document.createElement("dt");
-      dt.textContent = key;
-      const dd = document.createElement("dd");
-      dd.textContent = value;
-      dl.append(dt, dd);
-    });
-  }).catch(() => {});
+  api("/api/capabilities").then(renderDoctor).catch(() => {});
+}
+
+function updateOcrModule(caps) {
+  const ocr = (caps && caps.ocr) || {};
+  const status = $("ocrModuleStatus");
+  $("ocrDownloadBtn").hidden = true;
+  if (ocr.tesseract) {
+    status.textContent = "tesseract 已就绪，图片正文可直接识别";
+  } else if (!ocr.onnxruntime) {
+    status.textContent = "没有 OCR 引擎（应用未含内置引擎；也可以安装 tesseract）";
+  } else if (ocr.models_ready) {
+    status.textContent = "内置 OCR 已就绪";
+  } else {
+    status.textContent = "内置引擎就绪，模型未下载（约 16 MB）";
+    $("ocrDownloadBtn").hidden = false;
+  }
+}
+
+function renderDoctor(caps) {
+  state.caps = caps;
+  syncOcrAvailability();
+  updateChromeHint();
+  const dl = $("doctorList");
+  dl.textContent = "";
+  const rows = [
+    ["版本", `quire ${caps.version}`],
+    ["Chrome", caps.chrome || "未找到（小说转 PDF 需要）"],
+    ["tesseract", caps.ocr.tesseract ? "已安装" : "未安装"],
+    ["内置 OCR", caps.ocr.onnxruntime ? (caps.ocr.models_ready ? "模型已就绪" : "模型未下载") : "未安装（quire-local[ocr]）"],
+    ["数据目录", caps.data_dir],
+    ["输出目录", caps.output_dir],
+  ];
+  rows.forEach(([key, value]) => {
+    const dt = document.createElement("dt");
+    dt.textContent = key;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    dl.append(dt, dd);
+  });
+  updateOcrModule(caps);
 }
 
 function saveSettings() {
@@ -350,6 +369,28 @@ function saveSettings() {
     $("settingsMeta").textContent = `保存失败：${err.message}`;
   }).finally(() => { btn.disabled = false; });
 }
+
+/* OCR 模块按需下载（模型文件，约 16 MB）；引擎本身随应用分发，不能页面下载 */
+$("ocrDownloadBtn").addEventListener("click", () => {
+  const btn = $("ocrDownloadBtn"), status = $("ocrModuleStatus");
+  btn.disabled = true;
+  $("ocrMeter").hidden = false;
+  $("ocrMeterFill").style.width = "5%";
+  streamFrames("/api/ocr/models/download", (frame) => {
+    if (typeof frame.done === "number") {
+      $("ocrMeterFill").style.width = `${Math.round((frame.done / (frame.total || 1)) * 100)}%`;
+      status.textContent = `正在下载 ${frame.done}/${frame.total} · ${frame.file}`;
+    } else if (frame.total) {
+      status.textContent = `准备下载 ${frame.total} 个文件…`;
+    }
+  }).then(() => api("/api/capabilities")).then((caps) => {
+    $("ocrMeter").hidden = true;
+    renderDoctor(caps);
+  }).catch((err) => {
+    $("ocrMeter").hidden = true;
+    status.textContent = err.hint ? `${err.message} ${err.hint}` : `下载失败：${err.message}`;
+  }).finally(() => { btn.disabled = false; });
+});
 
 /* 原生壳里通过 NSOpenPanel 选目录（chooseDirectory 桥）；纯浏览器运行没有该桥，按钮保持隐藏 */
 const dirBridge = window.webkit && window.webkit.messageHandlers

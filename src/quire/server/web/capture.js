@@ -261,7 +261,7 @@ function syncOcrAvailability() {
     : !ocr ? "正在检查 OCR 可用性…"
     : ocr.tesseract || (ocr.onnxruntime && ocr.models_ready)
       ? "OCR 已就绪；自动模式仅在正文为图片时启用。"
-      : ocr.onnxruntime ? "自动是识别策略：模型尚未下载，遇到图片正文时按需下载。"
+      : ocr.onnxruntime ? "自动是识别策略：OCR 模型未下载，请先到 设置 · 文字识别 下载 OCR 模块。"
       : "自动是识别策略：OCR 引擎未安装；普通文字可采集，图片正文暂不能识别。";
   $("ocrAvailability").textContent = message;
   $("ocrAvailability").hidden = state.kind !== "novel";

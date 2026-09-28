@@ -297,6 +297,15 @@
                 <button data-ocr="never" aria-pressed="false">关闭</button>
               </div>
             </div>
+            <div class="field">
+              <label>OCR 模块</label>
+              <div class="ocr-module">
+                <span class="meta" id="ocrModuleStatus">正在检查…</span>
+                <button class="btn ghost" id="ocrDownloadBtn" type="button" hidden>下载 OCR 模块</button>
+              </div>
+              <div class="meter" id="ocrMeter" hidden><div class="meter-fill" id="ocrMeterFill"></div></div>
+              <div class="hint">识别"正文是图片"的小说时需要；普通文字站用不到。</div>
+            </div>
           </section>
           <section class="set-group">
             <h2>追更</h2>
