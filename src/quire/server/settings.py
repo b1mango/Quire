@@ -26,7 +26,8 @@ OCR_MODES = ("auto", "always", "never")
 class UiSettings:
     output_dir: str
     compress: str = "balanced"
-    target_mb: int = 50
+    task_novel_mb: int = 100
+    task_manga_mb: int = 500
     concurrency: int = 12
     rate: float = 4.0
     ocr: str = "auto"
@@ -48,8 +49,10 @@ class UiSettings:
             raise ConfigError(f"输出目录不是文件夹：{output}")
         if self.compress not in PRESETS:
             raise ConfigError("未知压缩档位")
-        if type(self.target_mb) is not int or not 1 <= self.target_mb <= 1_000_000:
-            raise ConfigError("目标体积须为 1-1000000 MB")
+        if type(self.task_novel_mb) is not int or not 1 <= self.task_novel_mb <= 1_000_000:
+            raise ConfigError("小说任务体积上限须为 1-1000000 MB")
+        if type(self.task_manga_mb) is not int or not 1 <= self.task_manga_mb <= 1_000_000:
+            raise ConfigError("漫画任务体积上限须为 1-1000000 MB")
         if type(self.concurrency) is not int or not 1 <= self.concurrency <= 16:
             raise ConfigError("并发须为 1-16")
         if (
@@ -71,10 +74,6 @@ class UiSettings:
     def output_path(self) -> Path:
         return Path(self.output_dir).expanduser()
 
-    @property
-    def target_bytes(self) -> int | None:
-        return None if self.compress == "lossless" else self.target_mb * 1_000_000
-
 
 def defaults(data_root: Path) -> UiSettings:
     return UiSettings(str(data_root / "library"))
@@ -83,10 +82,15 @@ def defaults(data_root: Path) -> UiSettings:
 def parse(payload: Any) -> UiSettings:
     if not isinstance(payload, dict):
         raise ConfigError("设置格式不正确")
+    payload = {key: value for key, value in payload.items() if key != "target_mb"}
+    legacy_presets = {"lossless": "archive", "high": "balanced", "tiny": "small"}
+    if payload.get("compress") in legacy_presets:
+        payload = {**payload, "compress": legacy_presets[payload["compress"]]}
     known = {
         "output_dir",
         "compress",
-        "target_mb",
+        "task_novel_mb",
+        "task_manga_mb",
         "concurrency",
         "rate",
         "ocr",

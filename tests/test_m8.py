@@ -184,7 +184,7 @@ def test_actual_size_split_and_unsplittable_chapter(tmp_path):
             selected=(1,),
             rule=site,
             fetcher=client(),
-            compression=CompressionOptions("lossless", None),
+            compression=CompressionOptions("archive", None),
         )
     )
     limit = one.volumes[0].bytes_out + 500
@@ -195,7 +195,7 @@ def test_actual_size_split_and_unsplittable_chapter(tmp_path):
             split_by=f"size {limit}",
             rule=site,
             fetcher=client(),
-            compression=CompressionOptions("lossless", None),
+            compression=CompressionOptions("archive", None),
         )
     )
     assert len(result.volumes) == 4
@@ -217,7 +217,7 @@ def test_size_limit_includes_final_volume_title(tmp_path):
             split_by="size 1MB",
             rule=site,
             fetcher=client(),
-            compression=CompressionOptions("lossless", None),
+            compression=CompressionOptions("archive", None),
         )
     )
     limit = first.volumes[0].bytes_out - 1
@@ -228,7 +228,7 @@ def test_size_limit_includes_final_volume_title(tmp_path):
             split_by=f"size {limit}",
             rule=site,
             fetcher=client(),
-            compression=CompressionOptions("lossless", None),
+            compression=CompressionOptions("archive", None),
         )
     )
     assert len(result.volumes) > 1
@@ -365,7 +365,7 @@ def test_size_split_changed_range_does_not_reuse_old_volume(tmp_path):
             split_by="chapters 1",
             rule=site,
             fetcher=client(),
-            compression=CompressionOptions("lossless", None),
+            compression=CompressionOptions("archive", None),
         )
     )
     small = max(v.bytes_out for v in reference.volumes) + 500
@@ -377,7 +377,7 @@ def test_size_split_changed_range_does_not_reuse_old_volume(tmp_path):
             rule=site,
             options=opts,
             fetcher=client(),
-            compression=CompressionOptions("lossless", None),
+            compression=CompressionOptions("archive", None),
         )
     )
     assert len(narrow.volumes) == 4
@@ -389,7 +389,7 @@ def test_size_split_changed_range_does_not_reuse_old_volume(tmp_path):
             rule=site,
             options=opts,
             fetcher=client(),
-            compression=CompressionOptions("lossless", None),
+            compression=CompressionOptions("archive", None),
         )
     )
     assert len(wide.volumes) == 1 and not wide.volumes[0].artifacts_reused
@@ -422,7 +422,7 @@ def test_size_split_delivers_prefix_before_later_oversize(tmp_path):
                 tmp_path / "partial",
                 split_by="size 30000",
                 rule=rule(tmp_path),
-                compression=CompressionOptions("lossless", None),
+                compression=CompressionOptions("archive", None),
                 fetcher=AsyncFetcher(rate=10000, transport=httpx.MockTransport(handler)),
                 on_volume=delivered.append,
             )

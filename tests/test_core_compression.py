@@ -99,7 +99,7 @@ def test_target_unreachable_keeps_cache_and_reencode_without_redownload(tmp_path
         b"must not download",
         resume=True,
         name="again",
-        compression=CompressionOptions("lossless", None),
+        compression=CompressionOptions("archive", None),
     )
     assert resumed.resources_reused == 1 and resumed.target_met is None
     assert resumed.quality is None and resumed.encoding_rounds == 1
@@ -120,7 +120,7 @@ def test_reduced_encoding_reaches_a_measured_target(tmp_path):
         resume=True,
         name="minimum",
         options=MangaOptions(keep_images=True),
-        compression=CompressionOptions("tiny", None),
+        compression=CompressionOptions("small", None),
     )
     target = (initial.bytes_out + minimum.bytes_out) // 2
     assert minimum.bytes_out < target < initial.bytes_out
@@ -137,7 +137,7 @@ def test_reduced_encoding_reaches_a_measured_target(tmp_path):
 
 def test_lossless_jpeg_payload_is_unchanged(tmp_path):
     data = image_bytes(fmt="JPEG")
-    result = capture(tmp_path, data, compression=CompressionOptions("lossless", None))
+    result = capture(tmp_path, data, compression=CompressionOptions("archive", None))
     obj = PdfReader(result.output).pages[0]["/Resources"]["/XObject"]["/Im0"]
     assert obj.get_data() == data
 
@@ -153,7 +153,7 @@ def test_tall_strip_page_count_and_disable(tmp_path):
         data,
         resume=True,
         name="whole",
-        compression=CompressionOptions("lossless", None, split_tall=False),
+        compression=CompressionOptions("archive", None, split_tall=False),
     )
     assert len(PdfReader(result.output).pages) == 1
 
@@ -231,7 +231,7 @@ def test_cli_flags_are_validated_before_network(tmp_path, capsys):
         ["--compress", "balanced"],
         ["--no-split-tall"],
         ["--core", "--target-size", "junk"],
-        ["--core", "--compress", "lossless", "--target-size", "5MB"],
+        ["--core", "--compress", "archive", "--target-size", "5MB"],
     ):
         assert main([*base, *flags]) == 1
     assert "Traceback" not in capsys.readouterr().err

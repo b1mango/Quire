@@ -56,7 +56,7 @@ def change_manifest(items, mutate):
 
 def test_lossless_strips_mapping_and_limited_comparisons(tmp_path, monkeypatch):
     sources = sources_for_capture(tmp_path, monkeypatch)
-    result = fixture.capture(tmp_path, compression=CompressionOptions("lossless", None))
+    result = fixture.capture(tmp_path, compression=CompressionOptions("archive", None))
     directory = tmp_path / "review"
     report = verify.verify_artifacts(
         result.output, sources, lossless=True, max_edge=0, comparison_dir=directory
@@ -112,7 +112,7 @@ def test_default_compression_records_resize_and_native_error(tmp_path, monkeypat
 
 def test_quality_failure_returns_report_instead_of_raising(tmp_path, monkeypatch):
     sources = sources_for_capture(tmp_path, monkeypatch)
-    result = fixture.capture(tmp_path, compression=CompressionOptions("lossless", None))
+    result = fixture.capture(tmp_path, compression=CompressionOptions("archive", None))
     with Image.new("RGB", (400, 600), "black") as wrong:
         wrong.save(sources[0])
     for lossless in (False, True):

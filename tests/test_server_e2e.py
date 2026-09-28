@@ -114,7 +114,6 @@ def test_manga_full_flow(ui):
                 "title": probe["title"],
                 "formats": ["pdf"],
                 "compress": "balanced",
-                "target_mb": 50,
             },
         )
         assert status == 201

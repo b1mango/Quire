@@ -11,12 +11,25 @@ from quire.server.progress import ChapterSink, ExportSink, make_thumbs, task_cou
 from tests.mock_site.server import page_image
 
 
-def test_defaults_and_target_bytes(tmp_path):
+def test_defaults_and_task_sizes(tmp_path):
     settings = settings_mod.defaults(tmp_path)
     assert settings.output_path == tmp_path / "library"
-    assert settings.target_bytes == 50_000_000
-    lossless = settings_mod.UiSettings(str(tmp_path), compress="lossless")
-    assert lossless.target_bytes is None
+    assert settings.task_novel_mb == 100
+    assert settings.task_manga_mb == 500
+
+
+def test_legacy_target_mb_key_is_dropped():
+    assert settings_mod.parse({"output_dir": "/tmp/x", "target_mb": 1}) == settings_mod.UiSettings(
+        "/tmp/x"
+    )
+
+
+@pytest.mark.parametrize(
+    ("legacy", "preset"),
+    [("lossless", "archive"), ("high", "balanced"), ("tiny", "small")],
+)
+def test_legacy_compress_presets_are_mapped(legacy, preset):
+    assert settings_mod.parse({"output_dir": "/tmp/x", "compress": legacy}).compress == preset
 
 
 def test_load_missing_returns_defaults(tmp_path):
@@ -28,7 +41,8 @@ def test_load_missing_returns_defaults(tmp_path):
     [
         {"output_dir": "relative"},
         {"output_dir": "/tmp/x", "compress": "huge"},
-        {"output_dir": "/tmp/x", "target_mb": 0},
+        {"output_dir": "/tmp/x", "task_novel_mb": 0},
+        {"output_dir": "/tmp/x", "task_manga_mb": "500"},
         {"output_dir": "/tmp/x", "concurrency": 0},
         {"output_dir": "/tmp/x", "rate": float("nan")},
         {"output_dir": "/tmp/x", "rate": -1},

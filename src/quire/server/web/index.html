@@ -78,18 +78,12 @@
                 <div class="field" id="compressField" hidden>
                   <label>画质与体积</label>
                   <div class="segmented" id="compressSeg">
-                    <button data-compress="lossless" aria-pressed="false">无损</button>
                     <button data-compress="archive" aria-pressed="false">原画</button>
-                    <button data-compress="high" aria-pressed="false">高</button>
                     <button data-compress="balanced" aria-pressed="true">均衡</button>
                     <button data-compress="small" aria-pressed="false">压缩</button>
-                    <button data-compress="tiny" aria-pressed="false">极小</button>
                   </div>
                   <div class="hint" id="compressDesc">日常阅读推荐</div>
                   <div class="hint" id="sizeEstimate">识别后可估</div>
-                  <div class="hint">
-                    <label>目标体积 <input class="input sm nofx" id="targetInput" value="50" inputmode="numeric" aria-label="目标体积（MB）"> MB</label>
-                  </div>
                 </div>
 
                 <div class="field" id="ocrField" hidden>
@@ -120,7 +114,7 @@
                       <option value="volume">按站点卷结构</option>
                       <option value="chapters 20">每 20 章一卷</option>
                       <option value="chapters 1">每章一卷</option>
-                      <option value="size 50MB">每卷不超过 50 MB</option>
+                      <option value="size 500MB" id="splitSizeOpt">每卷不超过 500 MB</option>
                       <option value="none">合为一卷</option>
                     </select>
                   </div>
@@ -259,6 +253,14 @@
                 <button data-compress="small" aria-pressed="false">压缩</button>
               </div>
               <div class="hint" id="setCompressDesc">日常阅读推荐</div>
+            </div>
+            <div class="field">
+              <label id="taskSizeLabel">任务体积上限</label>
+              <div class="hint" role="group" aria-labelledby="taskSizeLabel">
+                <label>小说 <input class="input sm nofx" id="setTaskNovel" inputmode="numeric"> MB</label>
+                <label>漫画 <input class="input sm nofx" id="setTaskManga" inputmode="numeric"> MB</label>
+                <div>默认小说 100、漫画 500；超出上限时自动降低画质（原画档保留原图不受限），漫画按体积分卷时每卷不超过漫画上限。</div>
+              </div>
             </div>
           </section>
           <section class="set-group">

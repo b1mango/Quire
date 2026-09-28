@@ -148,7 +148,6 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
     formats = payload.get("formats")
     if not isinstance(kind, str) or not isinstance(title, str) or not isinstance(formats, list):
         raise ConfigError("任务缺少类型、书名或格式")
-    target = payload.get("target_mb")
     ranges = payload.get("chapter_ranges") or ""
     if not isinstance(ranges, str):
         raise ConfigError("章节范围表达式须为字符串")
@@ -156,15 +155,16 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
     check_placement(url, kind)
     if kind == "novel" and "pdf" in formats and find_chrome() is None:
         raise ConfigError("转 PDF 需要 Chrome，这台机器上没找到", hint="安装 Chrome 后再试。")
+    settings = settings_mod.load(ctx.settings_path, ctx.data_root)
+    compress = str(payload.get("compress") or "balanced")
+    task_mb = settings.task_manga_mb if kind == "manga" else settings.task_novel_mb
     spec = JobSpec(
         kind=kind,
         url=url,
         title=clean_metadata_text(title) or "book",
         formats=tuple(str(item) for item in formats),
-        compress=str(payload.get("compress") or "balanced"),
-        target_bytes=None
-        if payload.get("compress") == "lossless"
-        else (int(target) * 1_000_000 if isinstance(target, int | float) else 50_000_000),
+        compress=compress,
+        target_bytes=None if compress == "archive" else task_mb * 1_000_000,
         ocr=str(payload.get("ocr") or "auto"),
         series=payload.get("series", False),
         split_by=str(payload.get("split_by", "none")),
@@ -176,7 +176,7 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
         chapter_ranges=ranges,
         follow_prefix=payload.get("follow_prefix", 0),
     )
-    job = ctx.manager.submit(spec, settings_mod.load(ctx.settings_path, ctx.data_root))
+    job = ctx.manager.submit(spec, settings)
     return dict(job.snapshot())
 
 

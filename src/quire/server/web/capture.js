@@ -123,8 +123,18 @@ function renderProbeResult(result) {
   $("startMeta").textContent = "";
 }
 
+function syncSplitSizeOption() {
+  const opt = $("splitSizeOpt");
+  if (!opt) return;
+  const settings = state.settings || {};
+  const mb = state.kind === "novel" ? settings.task_novel_mb || 100 : settings.task_manga_mb || 500;
+  opt.value = `size ${mb}MB`;
+  opt.textContent = `每卷不超过 ${mb} MB`;
+}
+
 function updateKindFields() {
   syncOcrAvailability();
+  syncSplitSizeOption();
   $("compressField").hidden = state.kind !== "manga";
   $("ocrField").hidden = state.kind !== "novel";
   updateChromeHint();
@@ -157,7 +167,6 @@ function startJob() {
     title: state.probe ? state.probe.title : "book",
     formats,
     compress,
-    target_mb: parseInt($("targetInput").value, 10) || 50,
     ocr: segValue($("ocrSeg"), "ocr") || "auto",
     series: Boolean(!customRange && state.probe && state.probe.series && state.kind === "manga"),
     split_by: $("splitMode").value,
@@ -213,16 +222,19 @@ async function pasteUrl() {
 
 function updateSizeEstimate() {
   const result = state.probe;
-  const preset = segValue($("compressSeg"), "compress");
-  let bytes = result && result.estimates && result.estimates[preset];
-  let selected = result && result.count;
-  if (result && result.series) {
-    try { const range = rangeState(); if (range.custom) selected = range.numbers.length; } catch (_) { bytes = null; }
+  if (!result) return;
+  let selected = result.count, failed = false;
+  if (result.series) {
+    try { const range = rangeState(); if (range.custom) selected = range.numbers.length; } catch (_) { failed = true; }
   }
-  if (bytes && result.count) bytes *= selected / result.count;
-  $("sizeEstimate").textContent = bytes
-    ? `约 ${humanSize(bytes * .7)}–${humanSize(bytes * 1.3)}`
-    : result && result.estimate_bytes
+  const scale = failed || !result.count ? 0 : selected / result.count;
+  const parts = [["archive", "原画"], ["balanced", "均衡"], ["small", "压缩"]]
+    .map(([key, label]) => [label, result.estimates && result.estimates[key]])
+    .filter(([, bytes]) => bytes && scale)
+    .map(([label, bytes]) => `${label}约 ${humanSize(bytes * scale * .7)}–${humanSize(bytes * scale * 1.3)}`);
+  $("sizeEstimate").textContent = parts.length
+    ? parts.join(" · ")
+    : result.estimate_bytes
       ? `原图约 ${humanSize(result.estimate_bytes)}`
       : "暂无法估算体积";
 }

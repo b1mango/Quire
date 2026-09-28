@@ -41,7 +41,7 @@ async def export_by_size(
     identity["chapter_titles"] = list(plan.chapter_titles)
     encoding = (
         compression
-        if compression.preset == "lossless"
+        if compression.preset == "archive"
         else replace(compression, target_bytes=min(compression.target_bytes or limit, limit))
     )
     with Ledger(root) as ledger:

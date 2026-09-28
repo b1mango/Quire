@@ -69,7 +69,9 @@ def compression_options(args: argparse.Namespace) -> CompressionOptions | None:
             raise ConfigError("压缩与切页参数需要 --core")
         return None
     preset = args.compress or "balanced"
-    target = None if preset == "lossless" else 50_000_000
+    if preset == "archive" and args.target_size is not None:
+        raise ConfigError("原画档保留原图，不支持 --target-size")
+    target = None if preset == "archive" else 50_000_000
     if args.target_size is not None:
         target = parse_size(args.target_size)
     return CompressionOptions(preset, target, not args.no_bitonal, not args.no_split_tall)

@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT / "src"))
 CASES = {
     "sample": {},
     "unreachable": {"target_bytes": 1},
-    "lossless": {"preset": "lossless", "target_bytes": None},
+    "archive": {"preset": "archive", "target_bytes": None},
 }
 LIMITS = {
     "psnr_db_min": 28,
@@ -371,8 +371,8 @@ def inspect_pdf(root: Path, case: str, specs: list[dict], run: dict) -> dict:
                         size=list(actual.size),
                         geometry_ok=geometry,
                     )
-                    entry["passed"] &= geometry and (case != "lossless" or entry["exact"])
-                    if case == "lossless" and spec["file"] == "02-color.jpg":
+                    entry["passed"] &= geometry and (case != "archive" or entry["exact"])
+                    if case == "archive" and spec["file"] == "02-color.jpg":
                         entry["jpeg_bytes_preserved"] = (
                             obj.get_data() == (root / "sources" / spec["file"]).read_bytes()
                         )

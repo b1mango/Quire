@@ -265,6 +265,9 @@ function loadSettingsView() {
     setSeg($("setCompressSeg"), "compress", settings.compress);
     syncCompressDesc($("setCompressSeg"), "setCompressDesc");
     setSeg($("setOcrSeg"), "ocr", settings.ocr);
+    $("setTaskNovel").value = settings.task_novel_mb;
+    $("setTaskManga").value = settings.task_manga_mb;
+    syncSplitSizeOption();
     $("setConcurrency").value = settings.concurrency;
     $("setRate").value = settings.rate;
     $("setAutoCheck").checked = !!settings.auto_check_updates;
@@ -299,6 +302,8 @@ function loadSettingsView() {
 function saveSettings() {
   const concurrency = parseInt($("setConcurrency").value, 10);
   const rate = parseFloat($("setRate").value);
+  const taskNovel = parseInt($("setTaskNovel").value, 10);
+  const taskManga = parseInt($("setTaskManga").value, 10);
   const fieldError = $("setFieldError");
   if (!Number.isFinite(concurrency) || concurrency < 1 || concurrency > 16) {
     fieldError.textContent = "并发须为 1–16 的整数";
@@ -312,11 +317,21 @@ function saveSettings() {
     $("setRate").focus();
     return;
   }
+  const checkTaskSize = (value, input) => {
+    if (Number.isFinite(value) && value >= 1 && value <= 1000000) return true;
+    fieldError.textContent = "任务体积上限须为 1-1000000 MB 的整数";
+    fieldError.hidden = false;
+    input.focus();
+    return false;
+  };
+  if (!checkTaskSize(taskNovel, $("setTaskNovel")) || !checkTaskSize(taskManga, $("setTaskManga"))) return;
   fieldError.hidden = true;
   const payload = {
     output_dir: $("setOutput").value.trim(),
     compress: segValue($("setCompressSeg"), "compress"),
     ocr: segValue($("setOcrSeg"), "ocr"),
+    task_novel_mb: taskNovel,
+    task_manga_mb: taskManga,
     concurrency,
     rate,
     auto_check_updates: $("setAutoCheck").checked,
@@ -329,6 +344,7 @@ function saveSettings() {
   $("settingsMeta").textContent = "保存中…";
   api("/api/settings", { method: "PUT", body: payload }).then((settings) => {
     state.settings = settings;
+    syncSplitSizeOption();
     $("settingsMeta").textContent = "已保存";
   }).catch((err) => {
     $("settingsMeta").textContent = `保存失败：${err.message}`;
@@ -336,7 +352,7 @@ function saveSettings() {
 }
 
 /* 重新编辑任一设置字段后，撤去旧的“已保存/保存失败”状态 */
-["setOutput", "setConcurrency", "setRate", "setCdpEndpoint"].forEach((id) => {
+["setOutput", "setConcurrency", "setRate", "setCdpEndpoint", "setTaskNovel", "setTaskManga"].forEach((id) => {
   $(id).addEventListener("input", () => { $("settingsMeta").textContent = ""; });
 });
 ["setRobots", "setAutoCheck", "setBrowserNative"].forEach((id) => {

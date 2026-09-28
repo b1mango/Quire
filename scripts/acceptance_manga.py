@@ -62,7 +62,7 @@ def run_case(
             data["verification"] = verify_artifacts(
                 Path(data["output"]),
                 source_paths,
-                lossless=config.get("compression", {}).get("preset") == "lossless",
+                lossless=config.get("compression", {}).get("preset") == "archive",
                 max_edge=data["result"]["compression"]["max_edge"],
                 expected_missing=config.get("expected_missing", 0),
                 comparison_dir=root / "comparisons" / label,
@@ -190,7 +190,7 @@ def run(root: Path, phase: str, *, reuse_measurement: bool = False) -> dict:
                 continue
             for mode, compression in (
                 ("default", {}),
-                ("lossless", {"preset": "lossless", "target_bytes": None}),
+                ("archive", {"preset": "archive", "target_bytes": None}),
                 ("unreachable", {"target_bytes": 1}),
             ):
                 config = {
@@ -214,7 +214,7 @@ def run(root: Path, phase: str, *, reuse_measurement: bool = False) -> dict:
                 "name": "lossless-from-cache",
                 "resume": True,
                 "keep_images": True,
-                "compression": {"preset": "lossless", "target_bytes": None},
+                "compression": {"preset": "archive", "target_bytes": None},
             }
             record(f"{site}-resource-reuse", config)
     elif phase == "workload":

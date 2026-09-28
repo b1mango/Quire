@@ -1,12 +1,9 @@
 "use strict";
 
 const COMPRESS_DESC = {
-  lossless: "保留画质；色彩归一化、长图切分可能改变文件",
-  archive: "接近原图，仍会重新编码",
-  high: "高画质，体积偏大",
+  archive: "保留原图，体积最大",
   balanced: "日常阅读推荐",
-  small: "优先节省空间",
-  tiny: "极限体积，画质损失明显",
+  small: "优先节省空间，体积最小",
 };
 function syncCompressDesc(seg, descId) {
   const desc = $(descId);

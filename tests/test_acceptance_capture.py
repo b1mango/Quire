@@ -64,7 +64,7 @@ def test_worker_separates_capture_cache_and_artifact_reuse(tmp_path):
             "resume": True,
             "name": "lossless",
             "mode": "resource-reuse",
-            "compression": {"preset": "lossless", "target_bytes": None},
+            "compression": {"preset": "archive", "target_bytes": None},
         }
     )
     assert rebuilt["result"]["resources_reused"] == 1 and not rebuilt["result"]["artifacts_reused"]

@@ -158,7 +158,7 @@ def test_identity_includes_export_choices(
     )
     compression = replace(
         compression,
-        preset="high" if field == "preset" else compression.preset,
+        preset="small" if field == "preset" else compression.preset,
         target_bytes=None if field == "target_bytes" else compression.target_bytes,
         bitonal=field != "bitonal",
         split_tall=field != "split_tall",

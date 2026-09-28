@@ -9,12 +9,9 @@ from decimal import Decimal
 from ..errors import ConfigError
 
 PRESETS = {
-    "lossless": (0, 0),
-    "archive": (95, 0),
-    "high": (88, 2400),
+    "archive": (0, 0),
     "balanced": (80, 2000),
     "small": (70, 1600),
-    "tiny": (60, 1200),
 }
 
 
@@ -58,12 +55,10 @@ class CompressionOptions:
             type(self.target_bytes) is not int or not 1 <= self.target_bytes <= 10**12
         ):
             raise ConfigError("目标体积须为 1 byte 至 1 TB 的整数字节")
-        if self.preset == "lossless" and self.target_bytes is not None:
-            raise ConfigError("lossless 不支持体积目标")
 
     def passes(self) -> tuple[Encoding, ...]:
         quality, edge = PRESETS[self.preset]
-        initial = Encoding(quality, edge, self.preset == "lossless")
+        initial = Encoding(quality, edge, self.preset == "archive")
         if initial.lossless or self.target_bytes is None:
             return (initial,)
         middle = Encoding(max(60, (quality + 60) // 2), max(1200, (edge or 2800) - 400))

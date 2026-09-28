@@ -53,8 +53,8 @@ def test_smoke_rerun_readback_and_cache(tmp_path):
                 0 if attempt else 7
             )
         assert report["cases"]["unreachable"]["target_met"] is False
-        assert all(p["exact"] for p in report["cases"]["lossless"]["pages"])
-        assert report["cases"]["lossless"]["pages"][1]["jpeg_bytes_preserved"]
+        assert all(p["exact"] for p in report["cases"]["archive"]["pages"])
+        assert report["cases"]["archive"]["pages"][1]["jpeg_bytes_preserved"]
         assert len(list((tmp_path / "comparisons").rglob("*-detail.png"))) == 33
         manifest = json.loads((tmp_path / "manifest.json").read_text())
         assert manifest[5]["stored_size"] == [1000, 800]
