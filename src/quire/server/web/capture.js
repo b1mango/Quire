@@ -126,7 +126,9 @@ function renderProbeResult(result) {
   status.dataset.kind = result.kind;
   status.textContent =
     `${result.kind === "manga" ? "漫画" : "小说"} · ${result.title} · 约 ${result.count} ` +
-    (result.kind === "manga" && !result.series ? "页" : "章") + (result.render ? " · 动态页面已就绪" : "");
+    (result.kind === "manga" && !result.series ? "页" : "章") +
+    (result.library ? ` · 书库已有前 ${result.library.chapters} 章` : "") +
+    (result.render ? " · 动态页面已就绪" : "");
   updateSizeEstimate();
   $("formatField").hidden = false;
   updateKindFields();

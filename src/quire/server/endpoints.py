@@ -68,6 +68,18 @@ def put_settings(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
         return get_settings(ctx)
 
 
+def _library_hint(ctx: QuireServer, url: str) -> JsonValue:
+    """识别链接命中书库且该书已登记追更进度时，给出库内已抓连续章节数（续抓选范围用）。"""
+    wanted = url.rstrip("/")
+    for book in library.list_books(ctx.data_root):
+        if book.source_url.rstrip("/") != wanted:
+            continue
+        follow = library.get_follow(ctx.data_root, book.id)
+        if follow is not None and follow.chapters:
+            return {"book_id": book.id, "title": book.title, "chapters": follow.chapters}
+    return None
+
+
 def probe(
     ctx: QuireServer, payload: Any, on_stage: Callable[[str], None] | None = None
 ) -> dict[str, JsonValue]:
@@ -96,6 +108,7 @@ def probe(
         "chapters": [{"index": i, "title": title} for i, title in enumerate(result.chapters, 1)],
         "estimate_bytes": result.estimate_bytes,
         "estimates": dict(result.estimates),
+        "library": _library_hint(ctx, result.url),
         "volumes": [
             {
                 "index": v.index,

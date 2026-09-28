@@ -333,6 +333,14 @@
   <p id="groupDialogError" role="alert"></p>
   <div class="dialog-actions"><button class="btn" id="groupDialogCancel">取消</button><button class="btn primary" id="groupDialogConfirm">创建</button></div>
 </dialog>
+<dialog id="updateDialog" class="delete-book-dialog" aria-labelledby="updateDialogTitle">
+  <h2 id="updateDialogTitle">检查更新</h2>
+  <div id="updateDialogBody"></div>
+  <div class="dialog-actions">
+    <button class="btn" id="updateDialogClose">关闭</button>
+    <button class="btn primary" id="updateDialogGo" hidden>去采集续更</button>
+  </div>
+</dialog>
 <dialog id="commandMenu" class="command-menu">
   <form method="dialog"><button class="btn ghost" aria-label="关闭命令面板">关闭 · Esc</button></form>
   <h2>前往</h2>

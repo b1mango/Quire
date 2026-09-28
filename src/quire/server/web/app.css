@@ -539,6 +539,10 @@ html{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--faint) 45%,tra
 .delete-book-dialog{width:min(420px,calc(100vw - 48px));box-sizing:border-box;padding:26px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
 .delete-book-dialog::backdrop{background:rgb(0 0 0 / .35)}
 .delete-book-dialog p{overflow-wrap:anywhere;line-height:1.6}
+.update-rows{display:flex;flex-direction:column;gap:6px;margin:12px 0 2px;max-height:46vh;overflow-y:auto}
+.update-row{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--muted)}
+.update-row .umeta{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.update-row .btn{flex:none;padding:4px 10px;font-size:12px}
 .dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
 
 /* 采集队列：运行红色，全部成功后短暂绿色呼吸。 */

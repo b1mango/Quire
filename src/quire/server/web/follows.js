@@ -73,6 +73,88 @@ function hideLibCheck() {
   $("libCheckFill").style.width = "0";
 }
 
+/* ------------------------------------------------------------ 检查结果弹窗 */
+
+let updateDialogBook = null;
+
+function showUpdateDialog(build) {
+  const body = $("updateDialogBody");
+  body.textContent = "";
+  build(body);
+  $("updateDialog").showModal();
+}
+
+/* 跳转采集台续解析：带上原链接立即识别，章节列表会标注已在库进度（probe 的 library 字段） */
+function resumeInCapture(bookId) {
+  const book = (state.books || []).find((item) => item.id === bookId);
+  if (!book || !book.source_url) return;
+  $("updateDialog").close();
+  saveTabState(tabKey());
+  state.kind = book.kind;
+  state.captureMode = "catalogue";
+  switchTab();
+  showView("new");
+  setSeg($("kindSeg"), "kind", book.kind);
+  setSeg($("captureSeg"), "capture", "catalogue");
+  $("urlInput").value = book.source_url;
+  recheckUrl();
+}
+
+function openBookUpdateDialog(book, data) {
+  showUpdateDialog((body) => {
+    const title = document.createElement("p");
+    title.textContent = `《${book.title}》`;
+    const counts = document.createElement("p");
+    counts.textContent = `书库已抓到第 ${data.chapters} 章 · 来源更新到第 ${data.remote_count} 章`;
+    const note = document.createElement("p");
+    note.className = "hint";
+    note.textContent = data.changed
+      ? "来源目录在已抓末章处对不上，可能是站点改号或插章，建议去采集整本重抓。"
+      : data.update > 0
+        ? `有 ${data.update} 章新内容，去采集会从第 ${data.chapters + 1} 章续起。`
+        : "已是最新，没有新章节。";
+    body.append(title, counts, note);
+  });
+}
+
+function openCheckAllDialog(results) {
+  showUpdateDialog((body) => {
+    const summary = document.createElement("p");
+    if (!results.length) {
+      summary.textContent = "书库里没有可追更的书。";
+      body.append(summary);
+      return;
+    }
+    const updates = results.filter((r) => r.update > 0).length;
+    const failed = results.filter((r) => r.error).length;
+    summary.textContent = `共检查 ${results.length} 本：${updates} 本有更新` +
+      (failed ? `，${failed} 本检查失败` : updates ? "" : "，全部已是最新");
+    body.append(summary);
+    const rows = document.createElement("div");
+    rows.className = "update-rows";
+    results.forEach((r) => {
+      const row = document.createElement("div");
+      row.className = "update-row";
+      const text = document.createElement("span");
+      text.className = "umeta";
+      text.textContent = r.error
+        ? `${r.title} · 检查失败：${r.error}`
+        : `${r.title} · 库中第 ${r.chapters} 章 → 来源第 ${r.remote_count} 章` +
+          (r.changed ? "（目录变动）" : r.update ? `（+${r.update} 章）` : "");
+      row.append(text);
+      if (!r.error) {
+        const go = document.createElement("button");
+        go.className = "btn ghost";
+        go.textContent = r.changed ? "去重抓" : r.update ? "去续更" : "去解析";
+        go.addEventListener("click", () => resumeInCapture(r.book_id));
+        row.append(go);
+      }
+      rows.append(row);
+    });
+    body.append(rows);
+  });
+}
+
 function checkBookUpdate() {
   const book = state.selectedBook;
   if (!book) return;
@@ -93,11 +175,10 @@ function checkBookUpdate() {
       remote_count: data.remote_count,
     };
     updateFollowButtons(book);
-    $("libSub").textContent = data.changed
-      ? "目录在已抓末章处对不上，建议整本重抓"
-      : data.update > 0
-        ? `有 ${data.update} 章新内容`
-        : "已是最新";
+    updateDialogBook = book;
+    $("updateDialogGo").hidden = false;
+    $("updateDialogGo").textContent = data.changed ? "去采集重抓" : "去采集续更";
+    openBookUpdateDialog(book, data);
     loadBooks();
   }).catch((err) => {
     hideLibCheck();
@@ -132,11 +213,9 @@ function checkAllUpdates(silent) {
   }).then((data) => {
     hideLibCheck();
     const updates = data.results.filter((r) => r.update > 0).length;
-    const failed = data.results.filter((r) => r.error).length;
-    if (!silent || updates) {
-      $("libSub").textContent =
-        `检查完成：${updates} 本有更新` + (failed ? ` · ${failed} 本检查失败` : "");
-    }
+    updateDialogBook = null;
+    $("updateDialogGo").hidden = true;
+    if (!silent || updates) openCheckAllDialog(data.results);
     loadBooks();
   }).catch(() => { hideLibCheck(); }).finally(() => { $("checkAllBtn").disabled = false; });
 }
@@ -144,3 +223,7 @@ function checkAllUpdates(silent) {
 $("bookCheckBtn").addEventListener("click", checkBookUpdate);
 $("bookFollowBtn").addEventListener("click", followBook);
 $("checkAllBtn").addEventListener("click", () => checkAllUpdates(false));
+$("updateDialogClose").addEventListener("click", () => $("updateDialog").close());
+$("updateDialogGo").addEventListener("click", () => {
+  if (updateDialogBook) resumeInCapture(updateDialogBook.id);
+});

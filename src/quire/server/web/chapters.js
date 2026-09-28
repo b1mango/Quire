@@ -44,19 +44,19 @@ function renderRange(result) {
     $("rangeField").appendChild(rangeOrderButton);
   }
   const first = $("rangeFirst"), last = $("rangeLast");
+  const owned = Math.min((result.library && result.library.chapters) || 0, chapters.length);
   first.textContent = ""; last.textContent = "";
   chapters.forEach((chapter, index) => {
     const option = document.createElement("option");
     option.value = String(index + 1);
-    option.textContent = `${index + 1} · ${chapter.title}`;
+    option.textContent = `${index + 1} · ${chapter.title}${index < owned ? "（已在库）" : ""}`;
     first.appendChild(option);
     last.appendChild(option.cloneNode(true));
   });
-  first.value = "1";
+  first.value = owned ? String(owned + 1) : "1";
   last.value = String(chapters.length);
   applyRangeOrder();
-  $("rangeExpr").value = "";
-  updateRangeSummary();
+  syncExprFromSelects();
 }
 
 /* 与后端 parse/chapter_range.py 同规则：逗号分段、连字符区间、单章、开放尾 200-。

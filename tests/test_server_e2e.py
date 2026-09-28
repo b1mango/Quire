@@ -515,6 +515,44 @@ def test_check_all_streams_progress_frames(ui):
         assert frames[-1]["result"]["results"][0]["chapters"] == 3
 
 
+def test_probe_reports_library_progress(ui):
+    """识别命中书库来源的链接时返回库内进度（续抓标注已在库章节）；未命中为 None。"""
+    server, _ = ui
+    with novel_site() as site:
+        site.titles = {number: CHAPTER_TITLES[number] for number in (1, 2, 3)}
+        site.pages = {number: CHAPTER_PAGES[number] for number in (1, 2, 3)}
+        site.missing = set()
+        status, job = _request(
+            server,
+            "POST",
+            "/api/jobs",
+            {
+                "kind": "novel",
+                "url": f"{site.url}/book/",
+                "title": "测试之书",
+                "formats": ["txt"],
+                "ocr": "never",
+            },
+        )
+        assert status == 201
+        assert _wait_job(server, job["id"])["status"] == "done"
+        _, data = _request(server, "GET", "/api/books")
+        book = data["books"][0]
+
+        status, probe = _request(server, "POST", "/api/probe", {"url": f"{site.url}/book/"})
+        assert status == 200
+        assert probe["library"] == {
+            "book_id": book["id"],
+            "title": "测试之书",
+            "chapters": 3,
+        }
+
+        with serve() as comic:
+            status, probe = _request(server, "POST", "/api/probe", {"url": f"{comic.url}/comic"})
+            assert status == 200
+            assert probe["library"] is None
+
+
 def test_probe_rejects_page_without_content(ui):
     server, _ = ui
     with novel_site() as site:
