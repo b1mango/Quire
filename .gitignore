@@ -16,3 +16,8 @@ output/
 .env
 .env.*
 !.env.example
+
+# 项目工作文档统一归档于 Agent-settings，不入本仓库
+项目设计.md
+项目进度.md
+对话记录.md
