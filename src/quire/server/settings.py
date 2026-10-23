@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..errors import ConfigError
+from ..fetch.browser import RenderOptions
 from ..fetch.browser_endpoint import validate_endpoint
 from ..image.options import PRESETS
 from ..workspace import atomic_output
@@ -73,6 +74,16 @@ class UiSettings:
     @property
     def output_path(self) -> Path:
         return Path(self.output_dir).expanduser()
+
+    def render_options(self, enabled: bool = False) -> RenderOptions | None:
+        if enabled or self.browser_native or self.cdp_endpoint:
+            return RenderOptions(
+                timeout=60,
+                max_scrolls=1000,
+                native=self.browser_native,
+                cdp_endpoint=self.cdp_endpoint,
+            )
+        return None
 
 
 def defaults(data_root: Path) -> UiSettings:

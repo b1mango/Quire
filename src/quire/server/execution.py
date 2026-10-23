@@ -16,6 +16,19 @@ if TYPE_CHECKING:
     from .settings import UiSettings
 
 _LOG = logging.getLogger(__name__)
+MAX_FINISHED_JOBS = 50
+
+
+def prune_history(jobs: dict[str, Job], active: dict[str, str]) -> None:
+    """Caller holds the manager lock; only drop old in-memory terminal states."""
+    finished = []
+    for job in jobs.values():
+        with job.condition:
+            if job.id not in active and job.status not in {"pending", "running"}:
+                finished.append(job)
+    finished.sort(key=lambda job: job.created_at, reverse=True)
+    for job in finished[MAX_FINISHED_JOBS:]:
+        jobs.pop(job.id, None)
 
 
 def launch(

@@ -497,10 +497,13 @@ $("emptyClearBtn").addEventListener("click", () => {
 });
 $("saveSettingsBtn").addEventListener("click", saveSettings);
 document.addEventListener("keydown", (e) => {
+  if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
     e.preventDefault(); $("commandMenu").showModal(); return;
   }
-  if ($("commandMenu").open || $("deleteBookDialog").open || $("groupDialog").open) return;
+  if (document.querySelector("dialog[open]")) return;
+  if (e.target.isContentEditable || e.target.closest?.("input, textarea, select")) return;
+  if (document.querySelector('.view[data-view="run"]').hidden) return;
   if (e.key === "Escape" && state.job && (state.job.status === "running" || state.job.status === "pending")) {
     api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" }).catch(() => {});
   }
@@ -527,11 +530,13 @@ document.addEventListener("keydown", (e) => {
   });
   renderFormatChips(); updateKindFields();
   loadSettingsView();
-  api("/api/jobs").then((data) => {
-    const active = data.jobs.find((j) => j.status === "running" || j.status === "pending");
-    if (active) { attachJob(active); showView("run"); return; }
-    const paused = data.jobs.find((j) => j.status === "paused");
-    if (paused) { attachJob(paused); showView("run"); }
+  api("/api/jobs").then(async (data) => {
+    const current = data.jobs.find((j) => j.status === "running" || j.status === "pending")
+      || data.jobs.find((j) => j.status === "paused");
+    if (current) {
+      const detail = await api(`/api/jobs/${current.id}`);
+      attachJob(detail); showView("run");
+    }
   }).catch(() => {});
 })();
 

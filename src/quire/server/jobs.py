@@ -22,7 +22,6 @@ from ..core_series import SeriesResult
 from ..errors import PausedError, QuireError
 from ..export_options import available_output
 from ..fetch.async_policy import HostPace
-from ..fetch.browser import RenderOptions
 from ..image.options import CompressionOptions
 from ..models import MangaOptions, MangaResult, NovelOptions, NovelResult
 from ..novel_options import available_novel_output
@@ -32,7 +31,7 @@ from ..store.models import JsonValue
 from ..utils.naming import available_book_dir, safe_filename
 from .books import register_book
 from .chapter_stream import ChapterTracker
-from .execution import launch
+from .execution import launch, prune_history
 from .follows import resolve_prefix
 from .job_state import Job, JobSpec, job_workdir
 from .progress import ChapterSink, ExportSink, make_thumbs, poll_job, thumb_event
@@ -75,6 +74,7 @@ class JobManager:
     def submit(self, spec: JobSpec, settings: UiSettings) -> Job:
         job = Job(secrets.token_hex(8), spec)
         with self._lock:
+            prune_history(self._jobs, self._active)
             self._jobs[job.id] = job
             self._queue.append((job, settings))
         self._pump()
@@ -86,6 +86,7 @@ class JobManager:
 
     def jobs(self) -> list[Job]:
         with self._lock:
+            prune_history(self._jobs, self._active)
             return sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)
 
     def cancel(self, job_id: str) -> Job | None:
@@ -140,13 +141,14 @@ class JobManager:
         # 线程体没运行（start 失败）时由 execution.launch 调用
         with self._lock:
             self._active.pop(job.id, None)
+            prune_history(self._jobs, self._active)
 
     # ---------------------------------------------------------- 执行线程
 
     def _thread_main(self, job: Job, settings: UiSettings) -> None:
         try:
             # 渲染任务串行：等待期间任务仍是 pending，不占浏览器
-            if job.spec.render:
+            if settings.render_options(job.spec.render) is not None:
                 with self._render_lock:
                     self._execute(job, settings)
             else:
@@ -311,16 +313,7 @@ class JobManager:
             chapter_ranges=spec.chapter_ranges,
             obey_robots=settings.obey_robots,
         )
-        render = (
-            RenderOptions(
-                timeout=60,
-                max_scrolls=1000,
-                native=settings.browser_native,
-                cdp_endpoint=settings.cdp_endpoint,
-            )
-            if spec.render or settings.browser_native or settings.cdp_endpoint
-            else None
-        )
+        render = settings.render_options(spec.render)
         if rule:
             manga_options, novel_options = rule.manga(manga_options), rule.novel(novel_options)
         if spec.series or (spec.kind == "manga" and spec.capture_mode == "catalogue"):

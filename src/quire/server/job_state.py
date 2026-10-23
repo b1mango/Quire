@@ -216,9 +216,9 @@ class Job:
                     return []
                 self.condition.wait(remaining)
 
-    def snapshot(self) -> dict[str, JsonValue]:
+    def snapshot(self, *, include_chapters: bool = True) -> dict[str, JsonValue]:
         with self.condition:
-            return {
+            result: dict[str, JsonValue] = {
                 "id": self.id,
                 "kind": self.spec.kind,
                 "url": self.spec.url,
@@ -232,9 +232,11 @@ class Job:
                 "hint": self.hint,
                 "book_id": self.book_id,
                 "created_at": self.created_at,
-                "chapters": [dict(chapter) for chapter in self._chapters.values()],
                 "spec": _spec_payload(self.spec),
             }
+            if include_chapters:
+                result["chapters"] = [dict(chapter) for chapter in self._chapters.values()]
+            return result
 
 
 def _spec_payload(spec: JobSpec) -> dict[str, JsonValue]:

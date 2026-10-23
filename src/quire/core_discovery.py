@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from .assemble.models import clean_metadata_text
 from .errors import ConfigError
-from .fetch.browser import RenderOptions, render_page
+from .fetch.browser import RenderOptions, fetch_render_input, render_page
 from .fetch.session import AsyncFetcher
 from .manga import discover_page
 from .models import MangaOptions, MangaResult
@@ -33,7 +33,9 @@ async def discover_manga(
         if current in visited or len(visited) >= 50:
             raise ConfigError("漫画章节分页循环或超过 50 页；请检查 chapter.next_page 规则")
         visited.add(current)
-        page = await client.get(current, referer=opts.referer or (url if current != url else None))
+        page = await fetch_render_input(
+            client, current, render, referer=opts.referer or (url if current != url else None)
+        )
         notes: tuple[str, ...] = ()
         if render:
             page, notes = await render_page(page, client, render)

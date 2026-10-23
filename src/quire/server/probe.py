@@ -8,7 +8,7 @@ from pathlib import Path
 
 from ..assemble.models import clean_metadata_text
 from ..errors import ConfigError, ParseError, QuireError
-from ..fetch.browser import RenderOptions, render_page
+from ..fetch.browser import RenderOptions, fetch_render_input, render_page
 from ..fetch.session import AsyncFetcher
 from ..fetch.simple import Response
 from ..parse.article import extract_article, validate_article
@@ -75,6 +75,7 @@ async def probe_url(
     split_by: str = "volume",
     capture_mode: str = "auto",
     obey_robots: bool = True,
+    render: RenderOptions | None = None,
     on_stage: Callable[[str], None] | None = None,
 ) -> ProbeResult:
     url = validate_task_url(url)
@@ -100,9 +101,11 @@ async def probe_url(
         cookie_hosts=cookie_hosts_for(url),
     ) as client:
         stage("fetch")
-        page = await client.get(url)
-        page = await expand_catalogue(client, page)
-        dynamic = bool(route_fragment(url)) or bilibili.is_reader_page(page.url)
+        page = await fetch_render_input(client, url, render)
+        native = bool(render and (render.native or render.cdp_endpoint))
+        if not native:
+            page = await expand_catalogue(client, page)
+        dynamic = native or bool(route_fragment(url)) or bilibili.is_reader_page(page.url)
         if not dynamic:
             stage("parse")
             try:
@@ -118,7 +121,7 @@ async def probe_url(
         if bilibili.is_reader_page(page.url):
             # B站阅读页:旁观式捕获首屏图片作样本,总页数读阅读器 UI。
             page, total = await bilibili.capture_reader_page(
-                page.url, RenderOptions(timeout=60), full=False
+                page.url, render or RenderOptions(timeout=60), full=False
             )
             stage("parse")
             result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
@@ -128,9 +131,11 @@ async def probe_url(
             page, _ = await render_page(
                 page,
                 client,
-                RenderOptions(timeout=60, max_scrolls=1000),
+                render or RenderOptions(timeout=60, max_scrolls=1000),
                 content="images" if chosen_kind == "manga" and capture_mode == "single" else "text",
             )
+            if native:
+                page = await expand_catalogue(client, page)
             stage("parse")
             result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
         estimate_stage(result)

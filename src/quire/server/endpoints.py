@@ -94,6 +94,7 @@ def probe(
             split_by=str(payload.get("split_by", "volume")),
             capture_mode=payload.get("capture_mode", "auto"),
             obey_robots=settings.obey_robots,
+            render=settings.render_options(),
             on_stage=on_stage,
         )
     )
@@ -194,7 +195,7 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
 
 
 def list_jobs(ctx: QuireServer) -> dict[str, JsonValue]:
-    return {"jobs": [job.snapshot() for job in ctx.manager.jobs()]}
+    return {"jobs": [job.snapshot(include_chapters=False) for job in ctx.manager.jobs()]}
 
 
 def _book_json(ctx: QuireServer, book: library.Book) -> dict[str, JsonValue]:

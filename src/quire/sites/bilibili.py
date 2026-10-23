@@ -31,12 +31,15 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from contextlib import AsyncExitStack
 from html import escape
 from urllib.parse import parse_qs, urlsplit
 
 from ..errors import FetchError, QuireError, UnsupportedError
 from ..fetch.browser import RenderOptions
 from ..fetch.browser_cdp import Cdp
+from ..fetch.browser_endpoint import resolve_endpoint
+from ..fetch.browser_native import owned_tab
 from ..fetch.browser_process import ChromeProcess, find_chrome
 from ..fetch.simple import Response
 
@@ -154,52 +157,53 @@ async def capture_reader_page(
     """
     if not is_reader_page(url):
         raise UnsupportedError("请使用 B站漫画 HTTPS 单话阅读页")
-    executable = find_chrome(render.executable)
-    if executable is None:
-        raise UnsupportedError(
-            "动态采集需要系统Chrome/Edge/Brave/Chromium", hint="安装Chrome或指定--chrome"
-        )
     try:
-        async with asyncio.timeout(render.timeout):
-            async with ChromeProcess(
-                executable,
-                extra_args=("--window-size=1600,2400",),
-                proxy_bypass=_PROXY_BYPASS,
-            ) as chrome:
-                async with Cdp(chrome.endpoint) as cdp:
-                    await cdp.call("Browser.setDownloadBehavior", {"behavior": "deny"})
-                    target = await cdp.call("Target.createTarget", {"url": "about:blank"})
-                    attached = await cdp.call(
-                        "Target.attachToTarget",
-                        {"targetId": target["targetId"], "flatten": True},
+        async with asyncio.timeout(render.timeout), AsyncExitStack() as stack:
+            if render.cdp_endpoint:
+                endpoint = await resolve_endpoint(render.cdp_endpoint)
+            else:
+                executable = find_chrome(render.executable)
+                if executable is None:
+                    raise UnsupportedError(
+                        "动态采集需要系统Chrome/Edge/Brave/Chromium",
+                        hint="安装Chrome或指定--chrome",
                     )
-                    session = attached["sessionId"]
-                    await cdp.call("Page.enable", session_id=session)
-                    await cdp.call(
-                        "Fetch.enable",
-                        {"patterns": [{"urlPattern": _IMAGE_PATTERN}]},
-                        session_id=session,
+                chrome = await stack.enter_async_context(
+                    ChromeProcess(
+                        executable,
+                        extra_args=("--window-size=1600,2400",),
+                        proxy_bypass=_PROXY_BYPASS,
                     )
-                    tap = _ImageTap(cdp, session)
-                    pump = asyncio.create_task(tap.pump())
-                    try:
-                        navigation = await cdp.call(
-                            "Page.navigate", {"url": url}, session_id=session
-                        )
-                        if navigation.get("errorText"):
-                            raise FetchError("B站漫画阅读页导航失败")
-                        state = await _await_ready(cdp, session)
-                        await _await_first_images(tap)
-                        if pump.done():
-                            pump.result()
-                        if full:
-                            await _paginate(cdp, session, tap, render, url, _total_pages(state))
-                            state = await _state(cdp, session)
-                        if pump.done():
-                            pump.result()
-                    finally:
-                        pump.cancel()
-                        await asyncio.gather(pump, return_exceptions=True)
+                )
+                endpoint = chrome.endpoint
+            cdp = await stack.enter_async_context(Cdp(endpoint))
+            if not render.cdp_endpoint:
+                await cdp.call("Browser.setDownloadBehavior", {"behavior": "deny"})
+            session = await stack.enter_async_context(owned_tab(cdp))
+            await cdp.call("Page.enable", session_id=session)
+            await cdp.call(
+                "Fetch.enable",
+                {"patterns": [{"urlPattern": _IMAGE_PATTERN}]},
+                session_id=session,
+            )
+            tap = _ImageTap(cdp, session)
+            pump = asyncio.create_task(tap.pump())
+            try:
+                navigation = await cdp.call("Page.navigate", {"url": url}, session_id=session)
+                if navigation.get("errorText"):
+                    raise FetchError("B站漫画阅读页导航失败")
+                state = await _await_ready(cdp, session)
+                await _await_first_images(tap)
+                if pump.done():
+                    pump.result()
+                if full:
+                    await _paginate(cdp, session, tap, render, url, _total_pages(state))
+                    state = await _state(cdp, session)
+                if pump.done():
+                    pump.result()
+            finally:
+                pump.cancel()
+                await asyncio.gather(pump, return_exceptions=True)
     except TimeoutError:
         raise FetchError(
             "B站漫画页面翻页超时，未确认内容完整", hint="可增大 --render-timeout 后重试。"

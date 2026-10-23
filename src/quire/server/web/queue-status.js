@@ -4,6 +4,7 @@ const queueStatuses = new Map();
 let queueCompleteTimer = null;
 let queueRevision = 0;
 let queuePolling = false;
+let queuePollTimer = null;
 
 function paintQueueStatus() {
   const statuses = [...queueStatuses.values()];
@@ -30,6 +31,7 @@ function updateQueueJob(job) {
 
 async function refreshQueueStatus() {
   if (queuePolling) return;
+  clearTimeout(queuePollTimer);
   queuePolling = true;
   const revision = queueRevision;
   try {
@@ -39,7 +41,10 @@ async function refreshQueueStatus() {
     (data.jobs || []).forEach((job) => queueStatuses.set(job.id, job.status));
     paintQueueStatus();
   } catch (_) { /* 网络失败时保留最后确认的状态。 */ }
-  finally { queuePolling = false; }
+  finally {
+    queuePolling = false;
+    const active = [...queueStatuses.values()].some((s) => s === "running" || s === "pending");
+    queuePollTimer = setTimeout(refreshQueueStatus, active ? 3000 : 30000);
+  }
 }
 refreshQueueStatus();
-setInterval(refreshQueueStatus, 3000);

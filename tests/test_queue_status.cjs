@@ -19,3 +19,15 @@ test('queue indicator stays red until every job succeeds, errors never turn gree
  context.updateQueueJob({id:'c',status:'running'});assert.equal(dot.hidden,false);
  context.updateQueueJob({id:'c',status:'failed'});assert.equal(dot.dataset.status,'idle');assert.equal(dot.hidden,true);
 });
+
+test('queue poll uses short active interval and backs off when idle', async () => {
+ const dot={dataset:{},setAttribute(k,v){this[k]=v}};
+ const timers=[]; let jobs=[{id:'a',status:'running'}];
+ const context=vm.createContext({$:()=>dot,api:async()=>({jobs}),setTimeout:(fn,delay)=>{timers.push({fn,delay});return timers.length},clearTimeout(){}});
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/quire/server/web/queue-status.js'),'utf8'),context);
+ await new Promise(setImmediate);
+ assert.equal(timers.at(-1).delay,3000);
+ jobs=[{id:'a',status:'done'}];
+ await context.refreshQueueStatus();
+ assert.equal(timers.at(-1).delay,30000);
+});
