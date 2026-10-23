@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shlex
 import socket
 import sys
 import textwrap
@@ -27,11 +28,12 @@ def _fake_chrome(
     stubborn: bool = False,
     endpoint: str = "12345\n/devtools/browser/fake-browser\n",
     early_exit: bool = False,
+    late_helper: bool = False,
 ) -> Path:
     executable = tmp_path / "fake-chrome"
-    executable.write_text(
-        f"#!{sys.executable}\n"
-        + textwrap.dedent(
+    script = tmp_path / "fake-chrome.py"
+    script.write_text(
+        textwrap.dedent(
             f"""\
             import json
             import signal
@@ -45,9 +47,18 @@ def _fake_chrome(
                                 if arg.startswith('--user-data-dir=')))
             if {early_exit!r}:
                 sys.exit(7)
-            child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+            helper = {str(tmp_path / "late-helper.py")!r} if {late_helper!r} else None
+            child = subprocess.Popen(
+                [sys.executable, helper, str(profile)] if helper
+                else [sys.executable, '-c', 'import time; time.sleep(60)']
+            )
+            if helper:
+                while not (profile / 'helper-ready').exists():
+                    time.sleep(0.01)
 
             def stop(signum, frame):
+                if helper:
+                    sys.exit(0)  # The helper deliberately outlives its parent.
                 child.wait(timeout=2)
                 (directory / 'child-reaped').write_text('yes')
                 if not {stubborn!r}:
@@ -62,6 +73,30 @@ def _fake_chrome(
                 time.sleep(0.02)
             """
         ),
+        encoding="utf-8",
+    )
+    if late_helper:
+        (tmp_path / "late-helper.py").write_text(
+            textwrap.dedent("""\
+                import signal, sys, time
+                from pathlib import Path
+                profile = Path(sys.argv[1])
+                def stop(*_):
+                    time.sleep(0.2)
+                    profile.mkdir(exist_ok=True)
+                    (profile / 'late-helper-write').write_text('after parent exit')
+                    sys.exit(0)
+                signal.signal(signal.SIGTERM, stop)
+                (profile / 'helper-ready').write_text('ready')
+                while True:
+                    time.sleep(0.01)
+                """),
+            encoding="utf-8",
+        )
+    # Kernels split shebang interpreter paths at whitespace. A POSIX launcher
+    # quotes both paths and execs Python so process-group ownership stays intact.
+    executable.write_text(
+        f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(script))} "$@"\n',
         encoding="utf-8",
     )
     executable.chmod(0o700)
@@ -213,6 +248,47 @@ def test_chrome_start_failure_cleans_resources(
                     os.waitpid(process.pid, os.WNOHANG)
         else:
             _assert_clean(process, tmp_path)
+        _assert_no_transport_tasks()
+
+    asyncio.run(run())
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX executable launcher")
+def test_fake_chrome_accepts_interpreter_and_fixture_paths_with_spaces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = tmp_path / "中文 空格 'quoted'"
+    directory.mkdir()
+    interpreter = directory / "python interpreter"
+    interpreter.symlink_to(Path(sys.executable).resolve())
+    monkeypatch.setattr(sys, "executable", str(interpreter))
+    executable = _fake_chrome(directory, ready=True)
+    process = ChromeProcess(str(executable))
+
+    async def run() -> None:
+        async with process:
+            assert process.endpoint == "ws://127.0.0.1:12345/devtools/browser/fake-browser"
+        _assert_clean(process, directory)
+        _assert_no_transport_tasks()
+
+    asyncio.run(run())
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process groups")
+def test_chrome_waits_for_late_helper_before_removing_profile(tmp_path: Path) -> None:
+    executable = _fake_chrome(tmp_path, ready=True, late_helper=True)
+    process = ChromeProcess(str(executable))
+
+    async def run() -> None:
+        async with process:
+            pass
+        assert process.profile is not None and not process.profile.exists()
+        assert process.pid is not None
+        with pytest.raises(ProcessLookupError):
+            os.killpg(process.pid, 0)
+        child = int((tmp_path / "child.pid").read_text())
+        with pytest.raises(ProcessLookupError):
+            os.kill(child, 0)
         _assert_no_transport_tasks()
 
     asyncio.run(run())

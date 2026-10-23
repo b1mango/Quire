@@ -181,21 +181,41 @@ class ChromeProcess:
             return False
         return True
 
+    def _group_alive(self) -> bool:
+        assert self._process is not None
+        # Reap our parent while checking the group; otherwise its zombie keeps
+        # the group observable after every helper has already exited.
+        self._process.poll()
+        try:
+            os.killpg(self._process.pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            # macOS may deny this probe while only sandboxed helpers remain.
+            # That is evidence of a live group, not permission to delete its profile.
+            pass
+        return True
+
+    async def _wait_group_exit(self) -> bool:
+        deadline = asyncio.get_running_loop().time() + _STOP_TIMEOUT
+        while self._group_alive():
+            if asyncio.get_running_loop().time() >= deadline:
+                return False
+            await asyncio.sleep(0.02)
+        return True
+
     async def _cleanup(self) -> None:
         try:
             if self._process is not None:
                 self._signal_group(signal.SIGTERM)
-                deadline = asyncio.get_running_loop().time() + _STOP_TIMEOUT
-                # macOS can deny killpg(..., 0) once only sandboxed helpers remain.
-                # Reap our owned parent; Chrome normally shuts its helpers down on TERM.
-                while self._process.poll() is None:
-                    if asyncio.get_running_loop().time() >= deadline:
-                        self._signal_group(signal.SIGKILL)
-                        break
-                    await asyncio.sleep(0.02)
+                # A Chrome parent can exit before a helper finishes writing.
+                # Keep its private profile until the whole owned group is gone.
+                if not await self._wait_group_exit():
+                    self._signal_group(signal.SIGKILL)
+                    if not await self._wait_group_exit():
+                        raise NetworkError("Isolated Chrome process group did not exit")
                 await asyncio.to_thread(self._process.wait)
         except OSError:
             raise NetworkError("Unable to clean up isolated Chrome process") from None
-        finally:
-            if self._temporary is not None:
-                self._temporary.cleanup()
+        if self._temporary is not None:
+            self._temporary.cleanup()
