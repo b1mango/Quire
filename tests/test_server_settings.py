@@ -340,3 +340,12 @@ def test_job_forwards_epub_settings(tmp_path):
     tracker = ChapterTracker(job, tmp_path)
     asyncio.run(manager._run_capture(job, settings, tracker))
     assert seen["epub_style"] == "heiti" and seen["epub_font"] == "/tmp/font.ttf"
+
+
+def test_job_spec_epub_style_override():
+    """结果卡上选的版式随任务走；空值沿用设置里的默认版式。"""
+    base = {"kind": "novel", "url": "http://x.test/book/", "title": "书", "formats": ("epub",)}
+    assert JobSpec(**base).epub_style == ""
+    assert JobSpec(**base, epub_style="classic").epub_style == "classic"
+    with pytest.raises(ConfigError, match="EPUB 版式"):
+        JobSpec(**base, epub_style="fancy")

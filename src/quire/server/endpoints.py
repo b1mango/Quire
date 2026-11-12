@@ -180,6 +180,7 @@ def submit_job(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
         compress=compress,
         target_bytes=None if compress == "archive" else task_mb * 1_000_000,
         ocr=str(payload.get("ocr") or "auto"),
+        epub_style=str(payload.get("epub_style") or ""),
         series=payload.get("series", False),
         split_by=str(payload.get("split_by", "none")),
         volumes=_volumes(payload.get("volumes", [])),

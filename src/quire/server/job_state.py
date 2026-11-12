@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from ..assemble.epub_style import EPUB_STYLES
 from ..errors import ConfigError
 from ..export_options import validate_formats
 from ..image.options import PRESETS
@@ -42,6 +43,7 @@ class JobSpec:
     chapter_last: int = 0
     chapter_ranges: str = ""  # 多段范围表达式；非空时取代起止两章
     follow_prefix: int = 0  # 追更：导出时从旧任务缓存拼回的连续章节数
+    epub_style: str = ""  # 本次任务的 EPUB 版式；空 = 沿用设置里的默认版式
 
     def __post_init__(self) -> None:
         from .probe import validate_capture_mode, validate_task_url
@@ -107,6 +109,8 @@ class JobSpec:
             type(self.target_bytes) is not int or not 1 <= self.target_bytes <= 10**12
         ):
             raise ConfigError("目标体积须为 1 byte 至 1 TB 的整数字节")
+        if self.epub_style and self.epub_style not in EPUB_STYLES:
+            raise ConfigError("EPUB 版式须为 songti、heiti 或 classic")
         if self.ocr not in {"auto", "always", "never"}:
             raise ConfigError("OCR 模式须为 auto、always 或 never")
 
