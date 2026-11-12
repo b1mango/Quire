@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from ..errors import ConfigError, LedgerError, ParseError, QuireError
 from ..store.models import JsonValue
-from . import endpoints, files, follows, ocr_dl, recsites
+from . import endpoints, files, follows, ocr_dl, reader, recsites
 from .jobs import JobManager
 
 _LOG = logging.getLogger(__name__)
@@ -217,6 +217,8 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._events(job_id, query)
             if method == "GET" and len(parts) == 5 and parts[3] == "thumbs":
                 return self._thumb(job_id, parts[4])
+        if reader.route(self, method, parts):
+            return
         if method == "POST" and len(parts) == 3 and parts[:2] == ["api", "books"]:
             if parts[2] == "check-all-updates":
                 return self._stream_ndjson(lambda send: follows.check_all_stream(self.server, send))

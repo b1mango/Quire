@@ -299,6 +299,10 @@ def delete_book(data_root: Path, book_id: str) -> int:
             cover.unlink()
     with _open(root) as connection:
         connection.execute("DELETE FROM follows WHERE book_id = ?", (book_id,))
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'reading_progress'"
+        ).fetchone():
+            connection.execute("DELETE FROM reading_progress WHERE book_id = ?", (book_id,))
         connection.execute("DELETE FROM books WHERE id = ?", (book_id,))
     return freed
 
