@@ -14,12 +14,12 @@ from ..store.models import JsonValue
 
 #: (名称, 域名, 类型, 资源特点)
 RECOMMENDED_SITES: tuple[tuple[str, str, str, str], ...] = (
-    ("全本小说网", "quanben.io", "小说", "完结全本中文小说,库存大"),
-    ("无限小说", "8book.com", "小说", "繁体中文全本小说,需浏览器渲染"),
-    ("The Paper Books", "thepaperbooks.com", "小说", "英文小说"),
-    ("咚漫", "dongmanmanhua.cn", "漫画", "国产条漫与韩漫中译,更新快"),
-    ("B站漫画", "manga.bilibili.com", "漫画", "哔哩哔哩正版漫画,日漫国漫都有"),
-    ("腾讯动漫", "ac.qq.com", "漫画", "国漫正版平台,库存全"),
+    # 2026-11-12 实测：用 Quire 真实流程抓前 2 章并回读成品通过；无需浏览器渲染
+    ("全本小说网", "quanben.io", "小说", "完结全本多，目录完整，抓取最稳"),
+    ("读全本", "dquanben.com", "小说", "网文全本，章节齐全"),
+    ("新笔趣阁", "hafuklxt.cc", "小说", "笔趣阁镜像，连载网文更新快；镜像域名可能变动"),
+    ("无限小说", "8book.com", "小说", "繁体中文全本，需浏览器渲染"),
+    ("咚漫", "dongmanmanhua.cn", "漫画", "国产条漫与韩漫中译，目录页与单话页都可抓"),
 )
 
 _SITE_URLS: dict[str, str] = {host: f"https://{host}/" for _, host, _, _ in RECOMMENDED_SITES}

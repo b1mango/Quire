@@ -601,14 +601,9 @@ def test_sites_list_returns_recommended(server):
     status, data = _request(srv, "GET", "/api/sites")
     assert status == 200
     hosts = [site["host"] for site in data["sites"]]
-    assert hosts == [
-        "quanben.io",
-        "8book.com",
-        "thepaperbooks.com",
-        "dongmanmanhua.cn",
-        "manga.bilibili.com",
-        "ac.qq.com",
-    ]
+    assert hosts == ["quanben.io", "dquanben.com", "hafuklxt.cc", "8book.com", "dongmanmanhua.cn"]
+    # 实测下载不了的站不再推荐（用户反馈 2026-11-12）
+    assert not {"thepaperbooks.com", "manga.bilibili.com", "ac.qq.com"} & set(hosts)
     assert all(site["name"] and site["kind"] and site["note"] for site in data["sites"])
 
 
