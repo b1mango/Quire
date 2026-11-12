@@ -75,7 +75,7 @@ def _cache_path(task_id: str, relative: str, *, single: bool = False) -> PurePos
         or str(path) != relative
         or (single and len(path.parts) != 3)
     ):
-        raise LedgerError("Cache path must be relative to its task cache directory")
+        raise LedgerError("缓存路径须相对于任务缓存目录")
     return path
 
 
@@ -93,22 +93,22 @@ def _verified(
         with _open_entry(root, path) as (descriptor, directory, ancestors):
             before = os.fstat(descriptor)
             if not stat.S_ISREG(before.st_mode) or before.st_size < 1 or before.st_nlink != 1:
-                raise LedgerError("Cache entry must be a nonempty private regular file")
+                raise LedgerError("缓存项须为非空私有普通文件")
             if expected_size is not None and before.st_size != expected_size:
-                raise LedgerError("Cache file size does not match the ledger")
+                raise LedgerError("缓存文件大小与账本不符")
             digest = hashlib.sha256()
             blocks = []
             remaining = before.st_size
             while remaining:
                 block = os.read(descriptor, min(1024 * 1024, remaining))
                 if not block:
-                    raise LedgerError("Cache file changed while being verified")
+                    raise LedgerError("验证时缓存文件发生变化")
                 digest.update(block)
                 if collect:
                     blocks.append(block)
                 remaining -= len(block)
             if _identity(before) != _identity(os.fstat(descriptor)):
-                raise LedgerError("Cache file changed while being verified")
+                raise LedgerError("验证时缓存文件发生变化")
             if sync:
                 os.fsync(descriptor)
                 os.fsync(directory)
@@ -116,10 +116,10 @@ def _verified(
                 if current_ancestors != ancestors or _identity(os.fstat(current)) != _identity(
                     before
                 ):
-                    raise LedgerError("Cache path changed while being verified")
+                    raise LedgerError("验证时缓存路径发生变化")
             return FileStamp(relative, digest.hexdigest(), before.st_size), b"".join(blocks)
     except OSError as exc:
-        raise LedgerError("Cache file is missing, unsafe or unreadable") from exc
+        raise LedgerError("缓存文件缺失、不安全或无法读取") from exc
 
 
 def fingerprint(
@@ -132,10 +132,10 @@ def fingerprint(
 def read_cached(root: Path, task_id: str, relative: str, *, sha256: str, size: int) -> bytes:
     """Return bounded, verified bytes so consumers never reopen an unchecked path."""
     if size < 1 or not re.fullmatch(r"[0-9a-f]{64}", sha256):
-        raise LedgerError("Cache size and SHA-256 must describe a nonempty file")
+        raise LedgerError("缓存大小和 SHA-256 须对应非空文件")
     stamp, data = _verified(root, task_id, relative, expected_size=size, collect=True)
     if stamp.sha256 != sha256:
-        raise LedgerError("Cache file SHA-256 does not match the ledger")
+        raise LedgerError("缓存文件 SHA-256 与账本不符")
     return data
 
 
@@ -153,7 +153,7 @@ def _check_directories(root: Path, task_id: str, directories: list[int]) -> None
                 follow_symlinks=False,
             )
         if not stat.S_ISDIR(current.st_mode) or _inode(current) != _inode(os.fstat(descriptor)):
-            raise LedgerError("Cache directory changed while being accessed")
+            raise LedgerError("访问时缓存目录发生变化")
 
 
 @contextmanager
@@ -186,7 +186,7 @@ def _entry(directory: int, name: str) -> os.stat_result | None:
     except FileNotFoundError:
         return None
     if not stat.S_ISREG(value.st_mode) or value.st_nlink != 1:
-        raise LedgerError("Cache entry must be a private regular file")
+        raise LedgerError("缓存项须为私有普通文件")
     return value
 
 
@@ -195,7 +195,7 @@ def _unchanged(directory: int, name: str, before: os.stat_result | None) -> None
     if (None if current is None else _identity(current)) != (
         None if before is None else _identity(before)
     ):
-        raise LedgerError("Cache file changed while being accessed")
+        raise LedgerError("访问时缓存文件发生变化")
 
 
 def _discard(directory: int, name: str, owned: os.stat_result) -> None:
@@ -212,7 +212,7 @@ def _write_all(descriptor: int, data: bytes) -> None:
     while remaining:
         written = os.write(descriptor, remaining)
         if written <= 0:
-            raise LedgerError("Cache write made no progress")
+            raise LedgerError("缓存写入未取得进展")
         remaining = remaining[written:]
 
 
@@ -221,12 +221,12 @@ def _copy_backup(
 ) -> os.stat_result:
     # Bound corrupt cache copies by the core network layer's maximum response size.
     if before.st_size > _BACKUP_LIMIT:
-        raise LedgerError("Cache file exceeds the backup size limit")
+        raise LedgerError("缓存文件超过备份大小限制")
     with ExitStack() as stack:
         source = os.open(filename, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
         stack.callback(os.close, source)
         if _identity(os.fstat(source)) != _identity(before):
-            raise LedgerError("Cache file changed before being copied")
+            raise LedgerError("缓存文件复制前已变化")
         target = os.open(
             backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory
         )
@@ -238,11 +238,11 @@ def _copy_backup(
             while remaining:
                 block = os.read(source, min(1024 * 1024, remaining))
                 if not block:
-                    raise LedgerError("Cache file changed while being copied")
+                    raise LedgerError("复制时缓存文件发生变化")
                 _write_all(target, block)
                 remaining -= len(block)
             if _identity(os.fstat(source)) != _identity(before):
-                raise LedgerError("Cache file changed while being copied")
+                raise LedgerError("复制时缓存文件发生变化")
             _unchanged(directory, filename, before)
             os.fsync(target)
             saved = os.fstat(target)
@@ -257,7 +257,7 @@ def publish_bytes(root: Path, task_id: str, filename: str, data: bytes) -> str:
     """Durably publish one task file; the caller holds the Ledger writer lock."""
     path = _cache_path(task_id, f"cache/{task_id}/{filename}", single=True)
     if not data:
-        raise LedgerError("Cache data must not be empty")
+        raise LedgerError("缓存数据不能为空")
     try:
         with _task_directory(root, task_id, create=True) as directories:
             directory = directories[-1]
@@ -315,7 +315,7 @@ def publish_bytes(root: Path, task_id: str, filename: str, data: bytes) -> str:
                     _discard(directory, backup, saved)
             return str(path)
     except OSError as exc:
-        raise LedgerError("Cache file could not be published safely") from exc
+        raise LedgerError("无法安全发布缓存文件") from exc
 
 
 def remove_cached(
@@ -332,7 +332,7 @@ def remove_cached(
             if expected is not None:
                 actual = fingerprint(root, task_id, relative, expected_size=expected.size)
                 if actual != expected:
-                    raise LedgerError("Cache file changed; preserved instead of deleting")
+                    raise LedgerError("缓存文件已变化，已保留")
             _check_directories(root, task_id, directories)
             _unchanged(directory, path.name, before)
             os.unlink(path.name, dir_fd=directory)
@@ -341,4 +341,4 @@ def remove_cached(
     except FileNotFoundError:
         return
     except OSError as exc:
-        raise LedgerError("Cache file could not be removed safely") from exc
+        raise LedgerError("无法安全删除缓存文件") from exc

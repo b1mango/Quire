@@ -159,7 +159,7 @@ def _assemble(
 def _download_one(
     client: FetchPort, candidate: Candidate, cache: Path, index: int, opts: MangaOptions
 ) -> Path:
-    last: FetchError = FetchError("No usable image address")
+    last: FetchError = FetchError("没有可用的图片地址")
     for url in (candidate.url, *candidate.alternatives):
         try:
             response = client.get(url, referer=candidate.referer or None, robots=False)
@@ -173,7 +173,7 @@ def _download_one(
         extension = "." + ("jpg" if probe.format == "jpeg" else probe.format)
         path = cache / image_filename(index + 1, extension)
         if len(response.content) > opts.max_bytes:
-            raise FetchError("Image exceeds configured size limit")
+            raise FetchError("图片超过配置的大小限制")
         write_bytes(path, response.content)
         return path
     raise last

@@ -62,11 +62,11 @@ def _png_to_pdf_image(data: bytes) -> _PngImage:
         or bits not in allowed_bits.get(color_type, ())
         or ihdr[10:12] != b"\x00\x00"
     ):
-        raise UnsupportedError("Invalid or unsupported PNG header")
+        raise UnsupportedError("PNG 文件头无效或不受支持")
 
     idat = b"".join(chunks.get(b"IDAT", []))
     if b"tRNS" in chunks:
-        raise UnsupportedError("PNG transparent color requires the core image backend")
+        raise UnsupportedError("PNG 透明色需要 core 图像后端")
 
     # 非透明样本分块验证，不保留整张解压图；PDF 仍透传原始 IDAT。
     if color_type in (0, 2, 3):
@@ -81,7 +81,7 @@ def _png_to_pdf_image(data: bytes) -> _PngImage:
     if color_type == 3:  # 调色板
         plte = chunks.get(b"PLTE", [b""])[0]
         if not plte or len(plte) % 3 or len(plte) > 3 * (1 << bits):
-            raise UnsupportedError("Invalid PNG palette")
+            raise UnsupportedError("PNG 调色板无效")
         hival = len(plte) // 3 - 1
         cs = b"[/Indexed /DeviceRGB %d <%s>]" % (hival, plte.hex().upper().encode())
         return _PngImage(width, height, bits, 1, cs, idat, True)
@@ -96,7 +96,7 @@ def _validate_opaque(idat: bytes, stride: int, height: int) -> None:
     """Bound both compressed input slices and inflated blocks, including invalid streams."""
     expected = stride * height
     if expected > _DECODE_BUDGET:
-        raise UnsupportedError("PNG exceeds the micro decode budget")
+        raise UnsupportedError("PNG 超过 micro 解码限制")
     decoder = zlib.decompressobj()
     position = total = 0
     pending = b""
@@ -107,23 +107,23 @@ def _validate_opaque(idat: bytes, stride: int, height: int) -> None:
         raw = decoder.decompress(pending, min(_DECODE_BLOCK, expected - total + 1))
         pending = decoder.unconsumed_tail
         if total + len(raw) > expected or decoder.unused_data:
-            raise UnsupportedError("Invalid PNG compressed data length")
+            raise UnsupportedError("PNG 压缩数据长度无效")
         if any(raw[i] > 4 for i in range((-total) % stride, len(raw), stride)):
-            raise UnsupportedError("Invalid PNG scanline filter")
+            raise UnsupportedError("PNG 扫描行滤镜无效")
         total += len(raw)
         if decoder.eof:
             if position != len(idat) or pending:
-                raise UnsupportedError("Trailing PNG compressed data")
+                raise UnsupportedError("PNG 压缩数据末尾有多余内容")
             break
     if not decoder.eof or total != expected:
-        raise UnsupportedError("Incomplete PNG compressed data")
+        raise UnsupportedError("PNG 压缩数据不完整")
 
 
 def _unfilter(raw: bytes, width: int, height: int, bpp: int) -> bytearray:
     """PNG 反滤波。只在 alpha 合成这条慢路径上用到。"""
     stride = width * bpp
     if len(raw) != (stride + 1) * height:
-        raise UnsupportedError("Invalid PNG scanline length")
+        raise UnsupportedError("PNG 扫描行长度无效")
     out = bytearray(stride * height)
     prev = bytearray(stride)
     pos = 0
@@ -170,11 +170,11 @@ def _flatten_alpha_png(width: int, height: int, color_type: int, idat: bytes) ->
     bpp = 2 if color_type == 4 else 4
     expected = (width * bpp + 1) * height
     if expected > _DECODE_BUDGET:
-        raise UnsupportedError("Alpha PNG exceeds the micro decode budget")
+        raise UnsupportedError("带透明通道的 PNG 超过 micro 解码限制")
     decoder = zlib.decompressobj()
     raw = decoder.decompress(idat, expected + 1)
     if not decoder.eof or decoder.unused_data or len(raw) != expected:
-        raise UnsupportedError("Invalid PNG compressed data")
+        raise UnsupportedError("PNG 压缩数据无效")
     samples = _unfilter(raw, width, height, bpp)
 
     if color_type == 4:

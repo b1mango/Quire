@@ -42,13 +42,13 @@ def _clean_text(text: str) -> str:
 def _image_stream(page: ExportPage) -> DictionaryObject:
     with BytesIO(page.data) as buffer, closing(Image.open(buffer)) as image:
         if image.size != (page.width, page.height):
-            raise ValueError("Export page dimensions do not match the image")
+            raise ValueError("导出页面尺寸与图片不符")
         jpeg = image.format == "JPEG"
         modes = {"RGB", "L", "CMYK"} if jpeg else {"RGB", "L", "1"}
         if image.format not in {"JPEG", "PNG"} or image.mode not in modes:
-            raise ValueError("Expected a normalized RGB/L/1 PNG or RGB/L/CMYK JPEG")
+            raise ValueError("需要标准化的 RGB/L/1 PNG 或 RGB/L/CMYK JPEG")
         if not jpeg and "transparency" in image.info:
-            raise ValueError("PNG transparency must be flattened before PDF export")
+            raise ValueError("导出 PDF 前须合并 PNG 透明层")
         colorspace = {"RGB": "/DeviceRGB", "CMYK": "/DeviceCMYK"}.get(image.mode, "/DeviceGray")
         stream = DecodedStreamObject()
         stream.update(
@@ -92,9 +92,9 @@ class CorePdfWriter:
         paper: str = "original",
     ) -> None:
         if dpi <= 0:
-            raise ValueError("PDF dpi must be positive")
+            raise ValueError("PDF DPI 须为正数")
         if paper != "original" and paper not in _PAPER_SIZES:
-            raise ValueError("Unknown PDF paper size")
+            raise ValueError("未知的 PDF 纸张尺寸")
         self.path = path
         self.title = _clean_text(title)
         self.source_url = urlunsplit(
@@ -108,7 +108,7 @@ class CorePdfWriter:
 
     def __enter__(self) -> CorePdfWriter:
         if self._entered:
-            raise RuntimeError("PDF writer contexts cannot be reused")
+            raise RuntimeError("PDF 写入上下文不能重复使用")
         self._entered = True
         writer = PdfWriter()
         try:
@@ -146,13 +146,13 @@ class CorePdfWriter:
     def add_page(self, page: ExportPage) -> None:
         writer = self._writer
         if writer is None:
-            raise RuntimeError("PDF writer must be inside its context")
+            raise RuntimeError("PDF 写入器须在上下文中使用")
         if min(page.width, page.height, page.source_index, page.part) <= 0:
-            raise FetchError("Page dimensions, source index and part must be positive")
+            raise FetchError("页面尺寸、来源索引和分片须为正数")
         try:
             stream = _image_stream(page)
         except Exception:
-            raise FetchError("Invalid encoded page for PDF export") from None
+            raise FetchError("PDF 导出的编码页面无效") from None
         # pypdf registers a new clone only when this public attribute is present.
         stream.indirect_reference = None
         image = stream.clone(writer)

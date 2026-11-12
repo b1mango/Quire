@@ -72,7 +72,7 @@ def _split_top_level_commas(selector: str) -> list[str]:
         elif ch == "]":
             depth -= 1
         if depth < 0:
-            raise SelectorError("Unmatched attribute bracket")
+            raise SelectorError("属性括号不匹配")
         if ch == "," and depth == 0 and not quote:
             out.append("".join(buf))
             buf = []
@@ -80,7 +80,7 @@ def _split_top_level_commas(selector: str) -> list[str]:
             buf.append(ch)
     out.append("".join(buf))
     if depth or quote or any(not part.strip() for part in out):
-        raise SelectorError("Incomplete selector group")
+        raise SelectorError("选择器组不完整")
     return [part.strip() for part in out]
 
 
@@ -122,7 +122,7 @@ def _parse_group(text: str) -> list[tuple[str, _Compound]]:
         while m:
             if m.group("tag"):
                 if compound.tag is not None:
-                    raise SelectorError("Multiple tags in one compound selector")
+                    raise SelectorError("复合选择器中存在多个标签")
                 compound.tag = m.group("tag").lower()
             elif m.group("id"):
                 compound.id = m.group("id")
@@ -137,7 +137,7 @@ def _parse_group(text: str) -> list[tuple[str, _Compound]]:
         combinator = ""
 
     if combinator == ">":
-        raise SelectorError(f"Incomplete selector: {text!r}")
+        raise SelectorError(f"选择器不完整：{text!r}")
     return result
 
 

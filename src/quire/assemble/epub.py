@@ -143,7 +143,7 @@ class EpubWriter:
 
     def __enter__(self) -> EpubWriter:
         if self._used:
-            raise RuntimeError("EpubWriter contexts cannot be reused")
+            raise RuntimeError("EPUB 写入上下文不能重复使用")
         self._used = True
         archive = ZipFile(self._path, "x", compression=ZIP_STORED)
         try:
@@ -169,7 +169,7 @@ class EpubWriter:
             # 体内已有异常时只关句柄，不再追加任何条目。
             if exc_type is None:
                 if self._failed:
-                    raise RuntimeError("Cannot finalize an EPUB after a failed write")
+                    raise RuntimeError("写入失败后无法完成 EPUB")
                 for name, data in self._documents():
                     archive.writestr(_entry(name, ZIP_DEFLATED), data, compresslevel=6)
         except BaseException:
@@ -182,11 +182,11 @@ class EpubWriter:
         """写入一章 XHTML；顺序或类型不合法时抛 `ValueError`，且不产出条目。"""
         archive = self._archive
         if archive is None or self._failed:
-            raise RuntimeError("EpubWriter is not open for writing")
+            raise RuntimeError("EPUB 写入器未打开")
         if type(chapter.index) is not int or chapter.index <= 0:
-            raise ValueError("Chapter index must be a positive integer")
+            raise ValueError("章节索引须为正整数")
         if chapter.index != len(self._chapters) + 1:
-            raise ValueError("Chapters must start at 1 and increase by one")
+            raise ValueError("章节须从 1 开始依次递增")
         item_id = f"chapter-{chapter.index:04d}"
         href = f"text/{item_id}.xhtml"
         title = clean_metadata_text(chapter.title) or f"第 {chapter.index} 章"

@@ -36,16 +36,16 @@ async def read_body(response: httpx.Response, max_bytes: int) -> bytes:
     """读取完整响应体，声明或实际体积超限、截断都如实报错。"""
     declared = response.headers.get("content-length", "")
     if declared and (len(declared) > 20 or not declared.isascii() or not declared.isdigit()):
-        raise FetchError("Invalid Content-Length")
+        raise FetchError("Content-Length 无效")
     if declared and int(declared) > max_bytes:
-        raise FetchError("Response exceeds configured size limit")
+        raise FetchError("响应超过配置的大小限制")
     raw = bytearray()
     async for block in response.aiter_raw():
         if len(raw) + len(block) > max_bytes:
-            raise FetchError("Response exceeds configured size limit")
+            raise FetchError("响应超过配置的大小限制")
         raw.extend(block)
     if declared and len(raw) != int(declared):
-        raise FetchError("Incomplete response body")
+        raise FetchError("响应正文不完整")
     return decode_body(bytes(raw), response.headers.get("content-encoding", "").lower(), max_bytes)
 
 
@@ -57,14 +57,14 @@ def decode_body(raw: bytes, encoding: str, max_bytes: int) -> bytes:
     only an empty identity body; negative budgets raise FetchError.
     """
     if max_bytes < 0:
-        raise FetchError("Response size limit must be non-negative")
+        raise FetchError("响应大小限制不能为负数")
     if len(raw) > max_bytes:
-        raise FetchError("Response exceeds configured size limit")
+        raise FetchError("响应超过配置的大小限制")
     encoding = encoding.strip().lower()
     if encoding in {"", "identity"}:
         return raw
     if encoding not in {"gzip", "deflate"}:
-        raise FetchError(f"Unsupported content encoding: {encoding}")
+        raise FetchError(f"不支持的内容编码：{encoding}")
 
     modes = (_GZIP_WBITS,) if encoding == "gzip" else (zlib.MAX_WBITS, -zlib.MAX_WBITS)
     for index, mode in enumerate(modes):
@@ -72,8 +72,8 @@ def decode_body(raw: bytes, encoding: str, max_bytes: int) -> bytes:
             return _inflate(raw, mode, max_bytes)
         except zlib.error as exc:
             if index == len(modes) - 1:
-                raise FetchError("Invalid or incomplete compressed response") from exc
-    raise AssertionError("No compression mode attempted")
+                raise FetchError("压缩响应无效或不完整") from exc
+    raise AssertionError("未尝试压缩模式")
 
 
 def _inflate(raw: bytes, wbits: int, max_bytes: int) -> bytes:
@@ -92,7 +92,7 @@ def _inflate(raw: bytes, wbits: int, max_bytes: int) -> bytes:
         remaining = max_bytes - len(decoded)
         chunk = decoder.decompress(pending, min(_CHUNK_SIZE, remaining + 1))
         if len(chunk) > remaining:
-            raise FetchError("Decoded response exceeds configured size limit")
+            raise FetchError("解码后的响应超过配置的大小限制")
         decoded.extend(chunk)
 
         if decoder.eof:
@@ -104,7 +104,7 @@ def _inflate(raw: bytes, wbits: int, max_bytes: int) -> bytes:
             if wbits != _GZIP_WBITS:
                 raise zlib.error("Trailing data after compressed response")
             if members >= _MAX_GZIP_MEMBERS:
-                raise FetchError("Gzip response exceeds member limit (1024)")
+                raise FetchError("Gzip 响应超过成员数量限制（1024）")
             members += 1
             decoder = zlib.decompressobj(wbits)
         else:

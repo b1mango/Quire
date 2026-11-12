@@ -59,7 +59,7 @@ def _lz_decompress_base64(blob: str) -> str:
             position >>= 1
             if position == 0:
                 if index >= len(data):
-                    raise IndexError("dictionary string exhausted")
+                    raise IndexError("字典字符串已耗尽")
                 position, value, index = 32, data[index], index + 1
             bits |= (1 if bit else 0) * power
             power <<= 1

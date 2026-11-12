@@ -36,7 +36,7 @@ def _text(value: str) -> str:
             or 0xD800 <= code <= 0xDFFF
             or code in {0xFFFE, 0xFFFF}
         ):
-            raise ValueError("Archive metadata contains an invalid text character")
+            raise ValueError("压缩包元数据含无效字符")
     return value
 
 
@@ -64,7 +64,7 @@ class ArchiveWriter:
 
     def __init__(self, path: Path, *, format: str, title: str, source_url: str) -> None:
         if format not in {"cbz", "zip"}:
-            raise ValueError("Archive format must be cbz or zip")
+            raise ValueError("压缩包格式须为 cbz 或 zip")
         self._path = path
         self._format = format
         self._title = _text(title)
@@ -76,7 +76,7 @@ class ArchiveWriter:
 
     def __enter__(self) -> ArchiveWriter:
         if self._used:
-            raise RuntimeError("ArchiveWriter contexts cannot be reused")
+            raise RuntimeError("压缩包写入上下文不能重复使用")
         self._used = True
         self._archive = ZipFile(self._path, "w", compression=ZIP_STORED)
         return self
@@ -94,7 +94,7 @@ class ArchiveWriter:
         try:
             if exc_type is None:
                 if self._failed:
-                    raise RuntimeError("Cannot finalize an archive after a failed write")
+                    raise RuntimeError("写入失败后无法完成压缩包")
                 name, data = self._metadata()
                 archive.writestr(_entry(name, ZIP_DEFLATED), data, compresslevel=6)
         finally:
@@ -103,16 +103,16 @@ class ArchiveWriter:
     def add_page(self, page: ExportPage) -> None:
         archive = self._archive
         if archive is None or self._failed:
-            raise RuntimeError("ArchiveWriter is not open for writing")
+            raise RuntimeError("压缩包写入器未打开")
         for value in (page.width, page.height, page.source_index, page.part):
             if type(value) is not int or value <= 0:
-                raise ValueError("Page dimensions, source_index and part must be positive integers")
+                raise ValueError("页面尺寸、source_index 和 part 须为正整数")
         if len(self._pages) >= 999999:
-            raise ValueError("Archive exceeds the six-digit page limit")
+            raise ValueError("压缩包页数超过六位数限制")
         self._check_order(page)
         extension = {"jpeg": "jpg", "png": "png"}.get(sniff_format(page.data))
         if extension is None:
-            raise ValueError("Archive pages must contain JPEG or PNG bytes")
+            raise ValueError("压缩包页面须包含 JPEG 或 PNG 数据")
         metadata: _Page = {
             "file": f"{len(self._pages) + 1:06d}.{extension}",
             "width": page.width,
@@ -135,15 +135,15 @@ class ArchiveWriter:
     def _check_order(self, page: ExportPage) -> None:
         previous = self._pages[-1] if self._pages else None
         if previous is not None and page.source_index < previous["source_index"]:
-            raise ValueError("Source pages must be in increasing order")
+            raise ValueError("原始页面须按升序排列")
         if previous is not None and page.source_index == previous["source_index"]:
             if previous["missing_reason"] is not None or page.missing_reason is not None:
-                raise ValueError("A missing source must occupy a single placeholder page")
+                raise ValueError("缺失的原文件须对应一个占位页")
             expected_part = previous["part"] + 1
         else:
             expected_part = 1
         if page.part != expected_part:
-            raise ValueError("Source parts must start at 1 and be consecutive")
+            raise ValueError("原始分片须从 1 开始连续排列")
 
     def _metadata(self) -> tuple[str, bytes]:
         if self._format == "zip":

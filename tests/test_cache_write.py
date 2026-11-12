@@ -69,7 +69,7 @@ def test_remove_rejects_unowned_paths(tmp_path, relative):
 
 
 def test_empty_data_rejected_before_creating_directories(tmp_path):
-    with pytest.raises(LedgerError, match="empty"):
+    with pytest.raises(LedgerError, match="不能为空"):
         publish_bytes(tmp_path, TASK, "page.jpg", b"")
     assert list(tmp_path.iterdir()) == []
 
@@ -484,7 +484,7 @@ def test_backup_copy_is_bounded_and_oversized_source_is_not_read(tmp_path, monke
     with path.open("r+b") as handle:
         handle.truncate(128 * 1024 * 1024 + 1)
     sizes.clear()
-    with pytest.raises(LedgerError, match="backup size limit"):
+    with pytest.raises(LedgerError, match="备份大小限制"):
         publish_bytes(tmp_path, TASK, "page.jpg", b"new image")
     assert sizes == [] and path.stat().st_size == 128 * 1024 * 1024 + 1
     assert {p.name for p in path.parent.iterdir()} == {"page.jpg"}

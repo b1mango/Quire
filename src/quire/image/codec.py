@@ -28,7 +28,7 @@ def check_image_size(size: tuple[int, int]) -> None:
     """Reject dimensions before decoding or allocating transformed pixels."""
     width, height = size
     if not (0 < width <= MAX_DIM and 0 < height <= MAX_DIM and width * height <= MAX_PIXELS):
-        raise FetchError("Image exceeds the allowed dimensions or pixel count")
+        raise FetchError("图片尺寸或像素数超过限制")
 
 
 @contextmanager
@@ -56,7 +56,7 @@ def decoded_image(data: bytes) -> Iterator[tuple[Image.Image, ImageInfo]]:
         except FetchError:
             raise
         except Exception:
-            raise FetchError("Image validation or first-frame decoding failed") from None
+            raise FetchError("图片校验或首帧解码失败") from None
         yield image, info
 
 
@@ -69,16 +69,16 @@ def inspect_image(data: bytes) -> ImageInfo:
 def _srgb(image: Image.Image) -> Image.Image:
     profile = image.info["icc_profile"]
     if not isinstance(profile, bytes) or not profile:
-        raise FetchError("Invalid or unsupported embedded ICC profile")
+        raise FetchError("内嵌 ICC 配置无效或不受支持")
     try:
         source = ImageCms.ImageCmsProfile(BytesIO(profile))
         target = ImageCms.createProfile("sRGB")
         result = ImageCms.profileToProfile(image, source, target, outputMode="RGB")
         if result is None:
-            raise ValueError("Missing color transform output")
+            raise ValueError("缺少颜色转换结果")
         return result
     except Exception:
-        raise FetchError("Invalid or unsupported embedded ICC profile") from None
+        raise FetchError("内嵌 ICC 配置无效或不受支持") from None
 
 
 def _convert_owned(image: Image.Image, mode: str) -> Image.Image:
@@ -108,7 +108,7 @@ def _normalize(image: Image.Image) -> Image.Image:
             mode = "RGB"
         # Avoid silently clipping high-depth samples to 8 bits, including in lossless.
         if mode not in {"L", "RGB", "CMYK", "LAB"}:
-            raise FetchError("Unsupported image sample depth or color mode")
+            raise FetchError("不支持的图片采样深度或颜色模式")
         image = _convert_owned(image, mode)
         if "icc_profile" in image.info:
             converted = _srgb(image)
@@ -146,4 +146,4 @@ def _normalize_checked(source: Image.Image) -> Image.Image:
     except FetchError:
         raise
     except Exception:
-        raise FetchError("Image orientation or color normalization failed") from None
+        raise FetchError("图片方向或颜色标准化失败") from None

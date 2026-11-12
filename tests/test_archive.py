@@ -143,7 +143,7 @@ def test_empty_and_repeatable_archives(tmp_path: Path, page: ExportPage, fmt: st
 def test_invalid_format_does_not_touch_path(tmp_path: Path, invalid: str) -> None:
     path = tmp_path / "existing"
     path.write_bytes(b"original")
-    with pytest.raises(ValueError, match="format"):
+    with pytest.raises(ValueError, match="格式"):
         writer(path, invalid)
     assert path.read_bytes() == b"original"
 
@@ -170,13 +170,13 @@ def test_invalid_metadata_is_rejected(
 ) -> None:
     path = tmp_path / "temporary"
     if field in {"title", "source_url"}:
-        with pytest.raises(ValueError, match="invalid text"):
+        with pytest.raises(ValueError, match="无效字符"):
             writer(path, fmt, **{field: URL + char})
         assert not path.exists()
         return
     with writer(path, fmt) as output:
         changes = {"source_url" if field == "page_url" else field: URL + char}
-        with pytest.raises(ValueError, match="invalid text"):
+        with pytest.raises(ValueError, match="无效字符"):
             output.add_page(replace(page, **changes))
         output.add_page(page)
     with ZipFile(path) as result:
@@ -212,7 +212,7 @@ def test_unknown_bytes_are_rejected_before_writing(
 ) -> None:
     path = tmp_path / "temporary"
     with writer(path) as output:
-        with pytest.raises(ValueError, match="JPEG or PNG"):
+        with pytest.raises(ValueError, match="JPEG 或 PNG"):
             output.add_page(replace(page, data=data, source_url="https://example.test/pretend.jpg"))
         output.add_page(page)
     with ZipFile(path) as result:
@@ -223,7 +223,7 @@ def test_unknown_bytes_are_rejected_before_writing(
 @pytest.mark.parametrize("value", [0, -1, True, 1.5])
 def test_invalid_page_numbers(tmp_path: Path, page: ExportPage, field: str, value: object) -> None:
     with writer(tmp_path / "temporary") as output:
-        with pytest.raises(ValueError, match="positive integers"):
+        with pytest.raises(ValueError, match="正整数"):
             output.add_page(replace(page, **{field: value}))
 
 
@@ -248,7 +248,7 @@ def test_invalid_source_and_part_order(
                 replace(page, source_index=source_index, part=part, missing_reason=reason)
             )
         source_index, part, reason = sequence[-1]
-        with pytest.raises(ValueError, match="order|parts|placeholder"):
+        with pytest.raises(ValueError, match="升序|分片|占位页"):
             output.add_page(
                 replace(page, source_index=source_index, part=part, missing_reason=reason)
             )
@@ -269,15 +269,15 @@ def test_context_lifecycle(tmp_path: Path, page: ExportPage) -> None:
     path = tmp_path / "temporary"
     output = writer(path)
     assert not path.exists()
-    with pytest.raises(RuntimeError, match="not open"):
+    with pytest.raises(RuntimeError, match="未打开"):
         output.add_page(page)
     with output:
-        with pytest.raises(RuntimeError, match="reused"):
+        with pytest.raises(RuntimeError, match="不能重复使用"):
             output.__enter__()
         output.add_page(page)
-    with pytest.raises(RuntimeError, match="not open"):
+    with pytest.raises(RuntimeError, match="未打开"):
         output.add_page(page)
-    with pytest.raises(RuntimeError, match="reused"):
+    with pytest.raises(RuntimeError, match="不能重复使用"):
         output.__enter__()
     output.__exit__(None, None, None)
 
@@ -315,12 +315,12 @@ def test_write_exception_closes_handle(
     monkeypatch.setattr(ZipFile, "writestr", fail)
     output = writer(tmp_path / "temporary")
     error = RuntimeError if stage == "caught-image" else OSError
-    with pytest.raises(error, match="failed write|disk failure"):
+    with pytest.raises(error, match="写入失败|disk failure"):
         with output:
             if stage == "caught-image":
                 with pytest.raises(OSError, match="disk failure"):
                     output.add_page(page)
-                with pytest.raises(RuntimeError, match="not open"):
+                with pytest.raises(RuntimeError, match="未打开"):
                     output.add_page(page)
             else:
                 output.add_page(page)
@@ -375,5 +375,5 @@ def test_page_name_limit(tmp_path: Path, page: ExportPage, monkeypatch: pytest.M
     with writer(tmp_path / "temporary") as output:
         with monkeypatch.context() as patch:
             patch.setattr(output, "_pages", FullPages())
-            with pytest.raises(ValueError, match="six-digit"):
+            with pytest.raises(ValueError, match="六位数"):
                 output.add_page(page)

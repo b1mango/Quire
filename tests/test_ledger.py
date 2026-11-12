@@ -256,7 +256,7 @@ def test_read_error_does_not_expose_sql_or_paths(tmp_path):
         with pytest.raises(LedgerError):
             ledger.create_task(URL, {}, RESOURCES)
         ledger._db.execute("DROP TABLE tasks")
-        with pytest.raises(LedgerError, match="Cannot read ledger task"):
+        with pytest.raises(LedgerError, match="无法读取账本任务"):
             ledger.snapshot("unknown")
 
 
@@ -268,7 +268,7 @@ def test_complete_rejects_file_already_assigned_to_other_page(tmp_path):
         relative = save(tmp_path, task_id, 1)
         ledger.complete(task_id, 1, 1, relative)
         ledger.claim(task_id, 1, 2)
-        with pytest.raises(LedgerError, match="already assigned"):
+        with pytest.raises(LedgerError, match="已分配"):
             ledger.complete(task_id, 1, 2, relative)
         assert ledger.snapshot(task_id).resources[1].status == "downloading"
 
@@ -318,10 +318,10 @@ def test_wrong_thread_exit_keeps_connection_and_lock_for_owner(tmp_path):
     with ledger:
         task_id = ledger.create_task(URL, {}, RESOURCES[:1])
         with ThreadPoolExecutor(1) as pool:
-            with pytest.raises(LedgerError, match="owning thread"):
+            with pytest.raises(LedgerError, match="所属线程"):
                 pool.submit(ledger.__exit__, None, None, None).result()
         assert ledger.snapshot(task_id).status == "pending"
-        with pytest.raises(LedgerError, match="in use"):
+        with pytest.raises(LedgerError, match="使用中"):
             with Ledger(tmp_path):
                 pytest.fail("A wrong-thread exit released the owner lock")
     with Ledger(tmp_path) as reopened:

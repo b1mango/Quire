@@ -55,9 +55,9 @@ def test_blocked_hints_and_browser_like_default_headers(site):
 
 
 def test_response_and_decode_budgets(site):
-    with pytest.raises(FetchError, match="size limit"):
+    with pytest.raises(FetchError, match="大小限制"):
         Fetcher(max_bytes=80).get(site.url + "/comic")
-    with pytest.raises(FetchError, match="size limit"):
+    with pytest.raises(FetchError, match="大小限制"):
         Fetcher(max_bytes=1000).get(site.url + "/bomb")
 
 
@@ -90,7 +90,7 @@ def test_http_only(url):
 def test_cancel_stops_before_request():
     cancel = threading.Event()
     cancel.set()
-    with pytest.raises(FetchError, match="cancelled"):
+    with pytest.raises(FetchError, match="已取消"):
         Fetcher(cancel=cancel).get("https://example.org/")
 
 

@@ -30,28 +30,28 @@ class Stamp:
 
 def _key(key: str) -> None:
     if not re.fullmatch(r"[0-9a-f]{64}", key):
-        raise LedgerError("Export key must be 64 lowercase hexadecimal characters")
+        raise LedgerError("导出键须为 64 位小写十六进制字符")
 
 
 def _check_edges(edges: list[tuple[int, str, int]]) -> None:
     for parent, name, descriptor in edges:
         value = os.stat(name, dir_fd=parent, follow_symlinks=False)
         if not stat.S_ISDIR(value.st_mode) or _inode(value) != _inode(os.fstat(descriptor)):
-            raise LedgerError("Export directory identity changed")
+            raise LedgerError("导出目录标识已变化")
 
 
 def _open_directory(parent: int, name: str, stack: ExitStack) -> int:
     before = os.stat(name, dir_fd=parent, follow_symlinks=False)
     if not stat.S_ISDIR(before.st_mode):
-        raise LedgerError("Export directory must not be a link or non-directory")
+        raise LedgerError("导出目录不能是链接或非目录")
     try:
         descriptor = os.open(name, _DIRECTORY, dir_fd=parent)
         stack.callback(os.close, descriptor)
         if _inode(before) != _inode(os.fstat(descriptor)):
-            raise LedgerError("Export directory identity changed")
+            raise LedgerError("导出目录标识已变化")
         return descriptor
     except OSError as exc:
-        raise LedgerError("Export directory changed or is inaccessible") from exc
+        raise LedgerError("导出目录已变化或无法访问") from exc
 
 
 @contextmanager
@@ -65,14 +65,14 @@ def _directory(path: Path) -> Iterator[tuple[int, Callable[[], None]]]:
             try:
                 _check_edges(edges)
             except OSError as exc:
-                raise LedgerError("Export directory identity changed") from exc
+                raise LedgerError("导出目录标识已变化") from exc
 
         try:
             descriptor = os.open(absolute.anchor, _DIRECTORY)
             stack.callback(os.close, descriptor)
             for name in absolute.parts[1:]:
                 if name == "..":
-                    raise LedgerError("Export directory must not contain parent traversal")
+                    raise LedgerError("导出目录不能包含上级目录路径")
                 check()
                 try:
                     child = _open_directory(descriptor, name, stack)
@@ -85,12 +85,12 @@ def _directory(path: Path) -> Iterator[tuple[int, Callable[[], None]]]:
         except FileNotFoundError:
             raise
         except (OSError, ValueError) as exc:
-            raise LedgerError("Export directory is unsafe or inaccessible") from exc
+            raise LedgerError("导出目录不安全或无法访问") from exc
         try:
             yield descriptor, check
             check()
         except (OSError, ValueError) as exc:
-            raise LedgerError("Export file operation failed") from exc
+            raise LedgerError("导出文件操作失败") from exc
 
 
 def _read_file(
@@ -102,24 +102,24 @@ def _read_file(
         _unchanged(directory, name, None)
         return None
     if collect and before.st_size > _LIMIT:
-        raise LedgerError("Export record exceeds 8 MiB")
+        raise LedgerError("导出记录超过 8 MiB")
     descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
     try:
         if _identity(before) != _identity(os.fstat(descriptor)):
-            raise LedgerError("Export file changed before reading")
+            raise LedgerError("导出文件读取前已变化")
         digest = hashlib.sha256()
         blocks = []
         remaining = before.st_size
         while remaining:
             block = os.read(descriptor, min(_CHUNK, remaining))
             if not block:
-                raise LedgerError("Export file changed while reading")
+                raise LedgerError("读取时导出文件发生变化")
             digest.update(block)
             if collect:
                 blocks.append(block)
             remaining -= len(block)
         if _identity(before) != _identity(os.fstat(descriptor)):
-            raise LedgerError("Export file changed while reading")
+            raise LedgerError("读取时导出文件发生变化")
         check()
         _unchanged(directory, name, before)
         return Stamp(before.st_size, digest.hexdigest()), b"".join(blocks), before
@@ -130,7 +130,7 @@ def _read_file(
 def fingerprint(path: Path) -> Stamp | None:
     """Hash a stable, single-linked regular file, including an empty one."""
     if not path.name:
-        raise LedgerError("Export file must be a regular file")
+        raise LedgerError("导出文件须为普通文件")
     try:
         with _directory(path.parent) as (directory, check):
             result = _read_file(directory, path.name, check)
@@ -140,14 +140,14 @@ def fingerprint(path: Path) -> Stamp | None:
 
 
 def _reject_constant(value: str) -> object:
-    raise ValueError("Non-finite JSON number")
+    raise ValueError("JSON 数值不是有限数")
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError("Duplicate JSON key")
+            raise ValueError("JSON 键重复")
         result[key] = value
     return result
 
@@ -158,10 +158,10 @@ def _decode(data: bytes) -> dict[str, object]:
             data.decode("utf-8"), parse_constant=_reject_constant, object_pairs_hook=_unique_object
         )
         if not isinstance(payload, dict):
-            raise ValueError("Expected an object")
+            raise ValueError("需要对象")
         return cast(dict[str, object], payload)
     except (ValueError, RecursionError) as exc:
-        raise LedgerError("Export record is not a valid JSON object") from exc
+        raise LedgerError("导出记录不是有效的 JSON 对象") from exc
 
 
 def load_record(root: Path, key: str) -> dict[str, object] | None:
@@ -179,12 +179,12 @@ def save_record(root: Path, key: str, payload: dict[str, object]) -> None:
     _key(key)
     try:
         if not isinstance(payload, dict):
-            raise ValueError("Expected an object")
+            raise ValueError("需要对象")
         data = json.dumps(payload, ensure_ascii=True, allow_nan=False).encode("utf-8")
     except (TypeError, ValueError, RecursionError) as exc:
-        raise LedgerError("Export record must contain JSON values") from exc
+        raise LedgerError("导出记录须包含 JSON 值") from exc
     if len(data) > _LIMIT:
-        raise LedgerError("Export record exceeds 8 MiB")
+        raise LedgerError("导出记录超过 8 MiB")
     try:
         with _directory(root) as (parent, check_root), ExitStack() as stack:
             try:
@@ -205,7 +205,7 @@ def save_record(root: Path, key: str, payload: dict[str, object]) -> None:
                 _decode(result[1])
             _save(directory, f"{key}.json", data, before, check)
     except OSError as exc:
-        raise LedgerError("Export record could not be saved") from exc
+        raise LedgerError("无法保存导出记录") from exc
 
 
 def _save(
@@ -266,7 +266,7 @@ def _save(
 def _published(directory: int, name: str, owned: os.stat_result, expected: Stamp) -> None:
     result = _read_file(directory, name, lambda: None, collect=True)
     if result is None or result[0] != expected or _inode(result[2]) != _inode(owned):
-        raise LedgerError("Published export record changed")
+        raise LedgerError("已发布的导出记录发生变化")
 
 
 def make_workspace(parent: Path, key: str) -> tuple[Path, tuple[int, int]]:
@@ -281,7 +281,7 @@ def make_workspace(parent: Path, key: str) -> tuple[Path, tuple[int, int]]:
                 except FileExistsError:
                     continue
             else:
-                raise LedgerError("Could not allocate a unique export workspace")
+                raise LedgerError("无法分配唯一的导出工作目录")
             descriptor = _open_directory(directory, name, stack)
             check()
             _check_edges([(directory, name, descriptor)])
@@ -292,16 +292,16 @@ def make_workspace(parent: Path, key: str) -> tuple[Path, tuple[int, int]]:
             _check_edges([(directory, name, descriptor)])
             return parent / name, _inode(os.fstat(descriptor))
     except OSError as exc:
-        raise LedgerError("Export workspace could not be created") from exc
+        raise LedgerError("无法创建导出工作目录") from exc
 
 
 def check_workspace(path: Path, identity: tuple[int, int]) -> None:
     try:
         with _directory(path) as (directory, _):
             if _inode(os.fstat(directory)) != identity:
-                raise LedgerError("Export workspace identity changed")
+                raise LedgerError("导出工作目录标识已变化")
     except OSError as exc:
-        raise LedgerError("Export workspace is missing or unsafe") from exc
+        raise LedgerError("导出工作目录缺失或不安全") from exc
 
 
 def clean_workspace(path: Path, identity: tuple[int, int], formats: tuple[str, ...]) -> None:
@@ -309,7 +309,7 @@ def clean_workspace(path: Path, identity: tuple[int, int], formats: tuple[str, .
     if path.name in {"", ".."} or any(
         fmt not in {"pdf", "cbz", "zip", "epub", "txt"} for fmt in formats
     ):
-        raise LedgerError("Invalid export workspace or formats")
+        raise LedgerError("导出工作目录或格式无效")
     try:
         with _directory(path.parent) as (parent, check), ExitStack() as stack:
             try:
@@ -318,7 +318,7 @@ def clean_workspace(path: Path, identity: tuple[int, int], formats: tuple[str, .
                 check()
                 return
             if _inode(os.fstat(directory)) != identity:
-                raise LedgerError("Export workspace identity changed")
+                raise LedgerError("导出工作目录标识已变化")
             edges = [(parent, path.name, directory)]
             files: list[tuple[int, str, os.stat_result]] = []
             listings: dict[int, set[str]] = {}
@@ -333,7 +333,7 @@ def clean_workspace(path: Path, identity: tuple[int, int], formats: tuple[str, .
                 before = os.fstat(fd)
                 names = listings[fd] = set(os.listdir(fd))
                 if names - allowed - directories:
-                    raise LedgerError("Unknown export workspace entry")
+                    raise LedgerError("未知的导出工作目录条目")
                 for name in sorted(names):
                     if name in directories:
                         child = _open_directory(fd, name, stack)
@@ -342,17 +342,17 @@ def clean_workspace(path: Path, identity: tuple[int, int], formats: tuple[str, .
                     else:
                         value = _entry(fd, name)
                         if value is None:
-                            raise LedgerError("Export workspace entry disappeared")
+                            raise LedgerError("导出工作目录条目已消失")
                         files.append((fd, name, value))
                 if _identity(os.fstat(fd)) != _identity(before):
-                    raise LedgerError("Export workspace directory changed while scanning")
+                    raise LedgerError("扫描时导出工作目录发生变化")
 
             def validate() -> None:
                 check()
                 _check_edges(edges)
                 for fd, names in listings.items():
                     if set(os.listdir(fd)) != names:
-                        raise LedgerError("Export workspace entries changed")
+                        raise LedgerError("导出工作目录条目已变化")
                 for fd, name, value in files:
                     _unchanged(fd, name, value)
                 check()
@@ -382,4 +382,4 @@ def clean_workspace(path: Path, identity: tuple[int, int], formats: tuple[str, .
     except FileNotFoundError:
         return
     except OSError as exc:
-        raise LedgerError("Export workspace could not be cleaned safely") from exc
+        raise LedgerError("无法安全清理导出工作目录") from exc

@@ -44,7 +44,7 @@ class ExportReceipt:
 
 
 def _bad(field: str) -> NoReturn:
-    raise LedgerError(f"Invalid export receipt: {field}")
+    raise LedgerError(f"导出凭据无效：{field}")
 
 
 def _require(condition: bool, field: str) -> None:
@@ -54,19 +54,19 @@ def _require(condition: bool, field: str) -> None:
 
 def _object(value: object, names: Iterable[str]) -> dict[str, object]:
     if not isinstance(value, dict) or set(value) != set(names):
-        _bad("object fields")
+        _bad("对象字段")
     return cast(dict[str, object], value)
 
 
 def _list(value: object) -> list[object]:
     if not isinstance(value, list):
-        _bad("array")
+        _bad("数组")
     return cast(list[object], value)
 
 
 def _text(value: object) -> str:
     if not isinstance(value, str):
-        _bad("string")
+        _bad("字符串")
     return value
 
 
@@ -77,7 +77,7 @@ def _integer(value: object, minimum: int = 0, maximum: int | None = None) -> int
         or value < minimum
         or (maximum is not None and value > maximum)
     ):
-        _bad("integer range")
+        _bad("整数范围")
     return value
 
 
@@ -87,7 +87,7 @@ def _optional_integer(value: object, maximum: int | None = None) -> int | None:
 
 def _optional_bool(value: object) -> bool | None:
     if value is not None and not isinstance(value, bool):
-        _bad("boolean")
+        _bad("布尔值")
     return value
 
 
@@ -96,7 +96,7 @@ def _path(value: object) -> Path:
     path = Path(text)
     _require(
         path.is_absolute() and ".." not in path.parts and "\0" not in text and str(path) == text,
-        "absolute canonical path",
+        "规范的绝对路径",
     )
     return path
 
@@ -114,7 +114,7 @@ def _stamp(value: object) -> Stamp:
 
 def _sources(value: object, result: MangaResult) -> tuple[FileStamp, ...]:
     entries = _list(value)
-    _require(len(entries) <= result.source_resources, "source count")
+    _require(len(entries) <= result.source_resources, "原文件数量")
     sources = []
     seen: set[str] = set()
     for item in entries:
@@ -123,9 +123,9 @@ def _sources(value: object, result: MangaResult) -> tuple[FileStamp, ...]:
         _require(
             re.fullmatch(rf"cache/{result.task_id}/[a-z0-9._-]+", path) is not None
             and path.rsplit("/", 1)[-1] not in {".", ".."},
-            "source path",
+            "原文件路径",
         )
-        _require(path not in seen, "duplicate source path")
+        _require(path not in seen, "原文件路径重复")
         seen.add(path)
         sources.append(FileStamp(path, _digest(entry["sha256"]), _integer(entry["size"], 1)))
     return tuple(sources)
@@ -140,15 +140,15 @@ def _json(value: object) -> object:
         return [_json(item) for item in value]
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
-    _bad("JSON value")
+    _bad("JSON 值")
 
 
 def _destinations(output: Path, formats: tuple[str, ...]) -> tuple[Path, ...]:
-    _require(isinstance(formats, tuple) and all(isinstance(f, str) for f in formats), "formats")
+    _require(isinstance(formats, tuple) and all(isinstance(f, str) for f in formats), "格式")
     try:
         return output_paths(_path(str(output.absolute())), formats)
     except ConfigError as exc:
-        raise LedgerError("Invalid export receipt: output formats") from exc
+        raise LedgerError("导出凭据无效：输出格式") from exc
 
 
 def export_key(
@@ -174,7 +174,7 @@ def export_key(
     try:
         data = json.dumps(payload, sort_keys=True, ensure_ascii=True, allow_nan=False)
     except (TypeError, ValueError) as exc:
-        raise LedgerError("Invalid export identity") from exc
+        raise LedgerError("导出标识无效") from exc
     return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
@@ -183,11 +183,11 @@ def _result(
 ) -> MangaResult:
     data = _object(value, (field.name for field in fields(MangaResult)))
     output, report = _path(data["output"]), _path(data["report"])
-    _require(output == paths[0] and report == paths[0].with_suffix(".report.json"), "result paths")
+    _require(output == paths[0] and report == paths[0].with_suffix(".report.json"), "结果路径")
     task_id = _digest(data["task_id"])
     images = None if data["images_dir"] is None else _path(data["images_dir"])
     if images is not None:
-        _require(images == root.absolute() / "cache" / task_id, "images path")
+        _require(images == root.absolute() / "cache" / task_id, "图片路径")
     elapsed = data["elapsed_s"]
     if isinstance(elapsed, bool) or not isinstance(elapsed, (int, float)):
         _bad("elapsed_s")
@@ -197,29 +197,29 @@ def _result(
         _bad("elapsed_s")
     _require(math.isfinite(seconds) and seconds >= 0, "elapsed_s")
     compression = None if data["compression"] is None else _text(data["compression"])
-    _require(compression is None or compression in PRESETS, "compression")
+    _require(compression is None or compression in PRESETS, "压缩参数")
     target = _optional_integer(data["target_bytes"], 10**12)
     rejections = []
     for item in _list(data["rejections"]):
         entry = _object(item, ("url", "reason", "stage"))
         _require(
             _text(entry["stage"]) in {"url", "duplicate", "size", "format", "decode"},
-            "rejection stage",
+            "拒绝阶段",
         )
         rejections.append(Rejection(*(_text(entry[name]) for name in ("url", "reason", "stage"))))
     failures = []
     for item in _list(data["failures"]):
         pair = _list(item)
-        _require(len(pair) == 2, "failure pair")
+        _require(len(pair) == 2, "失败项")
         failures.append((_text(pair[0]), _text(pair[1])))
     artifacts = []
     entries = _list(data["artifacts"])
-    _require(len(entries) == len(formats), "artifact group")
+    _require(len(entries) == len(formats), "成品组")
     for item, fmt, path in zip(entries, formats, paths, strict=True):
         entry = _object(item, ("format", "path", "bytes", "target_met"))
-        _require(_text(entry["format"]) == fmt and _path(entry["path"]) == path, "artifact path")
+        _require(_text(entry["format"]) == fmt and _path(entry["path"]) == path, "成品路径")
         size, met = _integer(entry["bytes"]), _optional_bool(entry["target_met"])
-        _require(met is (None if target is None else size <= target), "artifact target_met")
+        _require(met is (None if target is None else size <= target), "成品 target_met")
         artifacts.append(ArtifactResult(fmt, path, size, met))
     met = _optional_bool(data["target_met"])
     _require(
@@ -227,18 +227,16 @@ def _result(
     )
     size = _integer(data["bytes_out"])
     _require(size == artifacts[0].bytes, "bytes_out")
-    _require(
-        data["artifacts_reused"] is False and data["export_recovered"] is False, "return flags"
-    )
+    _require(data["artifacts_reused"] is False and data["export_recovered"] is False, "返回标记")
     failed, rejected = _integer(data["pages_failed"]), _integer(data["pages_rejected"])
     sources, reused = _integer(data["source_resources"]), _integer(data["resources_reused"])
     written = _integer(data["pages_written"])
-    _require(failed == len(failures) and failed <= sources, "failure count")
+    _require(failed == len(failures) and failed <= sources, "失败数量")
     # Discovery rejections do not represent failed source pages in the selected export.
     filtered = sum(r.stage in {"size", "format", "decode"} for r in rejections)
-    _require(rejected == filtered and rejected <= failed, "rejection count")
-    _require(reused <= sources, "reused resource count")
-    _require(written >= sources - failed, "written page count")
+    _require(rejected == filtered and rejected <= failed, "拒绝数量")
+    _require(reused <= sources, "复用资源数量")
+    _require(written >= sources - failed, "写入页数")
     return MangaResult(
         output=output,
         pages_written=written,
@@ -269,53 +267,51 @@ def _decode(
     payload: object, key: str, output: Path, formats: tuple[str, ...], root: Path
 ) -> ExportReceipt:
     data = _object(payload, ("schema", *(field.name for field in fields(ExportReceipt))))
-    _require(type(data["schema"]) is int and data["schema"] == 1, "schema")
-    _require(_digest(data["key"]) == _digest(key), "key")
+    _require(type(data["schema"]) is int and data["schema"] == 1, "结构版本")
+    _require(_digest(data["key"]) == _digest(key), "键")
     state = _text(data["state"])
-    _require(state in {"building", "prepared", "complete"}, "state")
+    _require(state in {"building", "prepared", "complete"}, "状态")
     cleaned = data["cleaned"]
-    _require(isinstance(cleaned, bool), "cleaned boolean")
-    _require(state == "complete" or cleaned is False, "cleanup state")
+    _require(isinstance(cleaned, bool), "cleaned 布尔值")
+    _require(state == "complete" or cleaned is False, "清理状态")
     paths = _destinations(output, formats)
-    _require(tuple(_text(f) for f in _list(data["formats"])) == formats, "formats")
+    _require(tuple(_text(f) for f in _list(data["formats"])) == formats, "格式")
     prior = _list(data["previous"])
-    _require(not prior or len(prior) == len(formats) + 1, "previous file group")
+    _require(not prior or len(prior) == len(formats) + 1, "先前文件组")
     previous = tuple(None if item is None else _stamp(item) for item in prior)
     workspace = _path(data["workspace"])
     _require(
         workspace.parent == paths[0].parent
         and re.fullmatch(rf"\.quire-export-{key[:12]}-[A-Za-z0-9_-]+", workspace.name) is not None,
-        "workspace location",
+        "工作目录位置",
     )
     identity = _list(data["workspace_identity"])
-    _require(len(identity) == 2, "workspace identity")
+    _require(len(identity) == 2, "工作目录标识")
     inode = (_integer(identity[0]), _integer(identity[1]))
     entries = _list(data["files"])
     published: list[PublishedFile] = []
     sources: tuple[FileStamp, ...] = ()
     result = None
     if state == "building":
-        _require(
-            not entries and data["result"] is None and not _list(data["sources"]), "building state"
-        )
+        _require(not entries and data["result"] is None and not _list(data["sources"]), "构建状态")
     else:
         kinds, destinations = (*formats, "report"), (*paths, paths[0].with_suffix(".report.json"))
-        _require(len(entries) == len(kinds), "file group")
+        _require(len(entries) == len(kinds), "文件组")
         for item, kind, path in zip(entries, kinds, destinations, strict=True):
             entry = _object(item, (field.name for field in fields(PublishedFile)))
             _require(
-                _text(entry["kind"]) == kind and _path(entry["destination"]) == path, "file path"
+                _text(entry["kind"]) == kind and _path(entry["destination"]) == path, "文件路径"
             )
             candidate = _text(entry["candidate"])
             _require(
                 candidate == "book.report.json"
                 if kind == "report"
                 else re.fullmatch(rf"pass-[1-3]/book\.{kind}", candidate) is not None,
-                "candidate path",
+                "候选文件路径",
             )
             before = None if entry["before"] is None else _stamp(entry["before"])
             published.append(PublishedFile(kind, candidate, path, _stamp(entry["stamp"]), before))
-        _require(len({Path(f.candidate).parent for f in published[:-1]}) == 1, "candidate pass")
+        _require(len({Path(f.candidate).parent for f in published[:-1]}) == 1, "候选文件轮次")
         result = _result(data["result"], paths, formats, root)
         sources = _sources(data["sources"], result)
         _require(
@@ -323,7 +319,7 @@ def _decode(
                 f.stamp.size == a.bytes
                 for f, a in zip(published[:-1], result.artifacts, strict=True)
             ),
-            "artifact stamp size",
+            "成品标记大小",
         )
     return ExportReceipt(
         key,
@@ -345,7 +341,7 @@ def write_receipt(root: Path, receipt: ExportReceipt) -> None:
         _require(
             isinstance(receipt.previous, tuple)
             and all(item is None or isinstance(item, Stamp) for item in receipt.previous),
-            "previous tuple of stamps",
+            "先前文件标记",
         )
         payload = cast(dict[str, object], _json({"schema": 1, **asdict(receipt)}))
         output = (
@@ -355,7 +351,7 @@ def write_receipt(root: Path, receipt: ExportReceipt) -> None:
         )
         _decode(payload, receipt.key, output, receipt.formats, root)
     except (TypeError, ValueError, RecursionError, AttributeError) as exc:
-        raise LedgerError("Invalid export receipt") from exc
+        raise LedgerError("导出凭据无效") from exc
     save_record(root, receipt.key, payload)
 
 

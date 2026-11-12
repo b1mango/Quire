@@ -115,7 +115,7 @@ def test_opaque_png_validation_uses_bounded_memory():
 
 
 def test_opaque_png_budget_and_decompression_bomb():
-    with pytest.raises(UnsupportedError, match="budget"):
+    with pytest.raises(UnsupportedError, match="解码限制"):
         _png_to_pdf_image(_png(b"", width=100_000, height=100_000))
     bomb = _png(zlib.compress(bytes(2 * 1024 * 1024)), width=1, height=1)
     tracemalloc.start()

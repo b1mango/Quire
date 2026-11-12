@@ -60,7 +60,7 @@ def _check_file(path: Path, fd: int) -> None:
         or not stat.S_ISREG(current.st_mode)
         or (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino)
     ):
-        raise LedgerError("Ledger files must be ordinary private files")
+        raise LedgerError("账本文件须为私有普通文件")
 
 
 def _open_file(path: Path, *, create: bool = False) -> int:
@@ -88,7 +88,7 @@ def _connect(path: Path, *, readonly: bool = False) -> sqlite3.Connection:
 def _configure(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA foreign_keys = ON")
     if connection.execute("PRAGMA journal_mode = DELETE").fetchone()[0] != "delete":
-        raise LedgerError("Unsupported ledger journal mode")
+        raise LedgerError("不支持的账本日志模式")
     connection.execute("PRAGMA synchronous = FULL")
 
 
@@ -97,14 +97,14 @@ def _validate(connection: sqlite3.Connection) -> None:
         connection.execute("PRAGMA application_id").fetchone()[0] != _APPLICATION_ID
         or connection.execute("PRAGMA user_version").fetchone()[0] != _VERSION
     ):
-        raise LedgerError("Unsupported ledger database version")
+        raise LedgerError("不支持的账本数据库版本")
     schema = connection.execute("SELECT type, name, tbl_name, sql FROM sqlite_schema")
     if {tuple(row) for row in schema} != _SCHEMA:
-        raise LedgerError("Unsupported ledger database structure")
+        raise LedgerError("不支持的账本数据库结构")
     if [tuple(row) for row in connection.execute("PRAGMA quick_check")] != [("ok",)]:
-        raise LedgerError("Damaged ledger database")
+        raise LedgerError("账本数据库已损坏")
     if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
-        raise LedgerError("Damaged ledger references")
+        raise LedgerError("账本引用已损坏")
 
 
 def _copy_file(fd: int, target: Path) -> None:
@@ -117,7 +117,7 @@ def _copy_file(fd: int, target: Path) -> None:
 
 def _reject_wal(path: Path) -> None:
     if any(os.path.lexists(path.with_name(path.name + suffix)) for suffix in ("-wal", "-shm")):
-        raise LedgerError("Unsupported ledger journal mode")
+        raise LedgerError("不支持的账本日志模式")
 
 
 def _validate_existing(path: Path, fd: int) -> None:
@@ -206,7 +206,7 @@ def _prepare(root: Path) -> sqlite3.Connection:
         fd = _open_file(path)
     except FileNotFoundError:
         if any(root.glob("ledger.db-*")):
-            raise LedgerError("Ledger database has orphaned journal files") from None
+            raise LedgerError("账本数据库存在孤立的日志文件") from None
         fd = _initialize(path)
         created = True
     connection: sqlite3.Connection | None = None
@@ -240,16 +240,16 @@ def open_database(root: Path) -> Iterator[sqlite3.Connection]:
             root = root.absolute()
             root.mkdir(mode=0o700, parents=True, exist_ok=True)
             if not stat.S_ISDIR(root.lstat().st_mode):
-                raise LedgerError("Ledger root must be a directory")
+                raise LedgerError("账本根路径须为目录")
             lock_fd = _open_file(root / "ledger.lock", create=True)
             try:
                 fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                raise LedgerError("Ledger is already in use") from None
+                raise LedgerError("账本正在使用中") from None
             os.fchmod(lock_fd, 0o600)
             connection = _prepare(root)
         except (sqlite3.Error, OSError):
-            raise LedgerError("Cannot open ledger database") from None
+            raise LedgerError("无法打开账本数据库") from None
         except LedgerError as exc:
             raise exc from None
         yield connection
@@ -259,7 +259,7 @@ def open_database(root: Path) -> Iterator[sqlite3.Connection]:
                 try:
                     connection.close()
                 except sqlite3.Error:
-                    raise LedgerError("Cannot close ledger database") from None
+                    raise LedgerError("无法关闭账本数据库") from None
         finally:
             if lock_fd is not None:
                 os.close(lock_fd)

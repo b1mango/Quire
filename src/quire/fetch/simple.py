@@ -133,7 +133,7 @@ class _HttpOnlyRedirect(urllib.request.HTTPRedirectHandler):
         # urllib otherwise drains the entire redirect body with an unbounded read.
         fp.close()
         if not is_usable_url(newurl) or urlsplit(newurl).scheme not in {"http", "https"}:
-            raise NetworkError("Redirect target must be HTTP(S)")
+            raise NetworkError("重定向目标须为 HTTP(S) 地址")
         self.check(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -161,7 +161,7 @@ class Fetcher:
             or concurrency < 1
             or max_bytes < 1
         ):
-            raise ConfigError("Invalid HTTP timeout, rate, retry or size limit")
+            raise ConfigError("HTTP 超时、速率、重试或大小限制无效")
         self.timeout, self.retries = timeout, retries
         self.concurrency, self.max_bytes = concurrency, max_bytes
         self.user_agent = user_agent
@@ -191,7 +191,7 @@ class Fetcher:
 
     def _sleep(self, delay: float) -> None:
         if self.cancel.wait(delay):
-            raise FetchError("Task cancelled")
+            raise FetchError("任务已取消")
 
     def get(
         self,
@@ -202,7 +202,7 @@ class Fetcher:
         robots: bool = True,
     ) -> Response:
         if not is_usable_url(url) or urlsplit(url).scheme not in {"http", "https"}:
-            raise ConfigError("URL must be an absolute HTTP(S) address without credentials")
+            raise ConfigError("URL 须为不含凭据的绝对 HTTP(S) 地址")
         self._sleep(0)
         check = robots and self.respect_robots
         if check:
@@ -217,7 +217,7 @@ class Fetcher:
         self, url: str, *, referer: str | None = None, headers: Mapping[str, str] | None = None
     ) -> Response:
         if not is_usable_url(url) or urlsplit(url).scheme not in {"http", "https"}:
-            raise ConfigError("URL must be an absolute HTTP(S) address without credentials")
+            raise ConfigError("URL 须为不含凭据的绝对 HTTP(S) 地址")
         request_headers = {
             "User-Agent": self.user_agent,
             "Accept": DEFAULT_ACCEPT,
@@ -227,7 +227,7 @@ class Fetcher:
         if referer:
             request_headers["Referer"] = referer
         request_headers.update(headers or {})
-        last: FetchError = NetworkError(f"Request failed: {redact(url)}")
+        last: FetchError = NetworkError(f"请求失败：{redact(url)}")
         for attempt in range(self.retries + 1):
             self._sleep(0)
             self.limiter.acquire(url)
@@ -275,14 +275,14 @@ class Fetcher:
     def _read_body(self, response: http.client.HTTPResponse) -> bytes:
         declared = response.headers.get("Content-Length", "")
         if declared.isdigit() and int(declared) > self.max_bytes:
-            raise FetchError("Response exceeds configured size limit")
+            raise FetchError("响应超过配置的大小限制")
         raw = bytearray()
         deadline = time.monotonic() + self.timeout
 
         def check() -> None:
             self._sleep(0)
             if time.monotonic() > deadline:
-                raise TimeoutError("Response deadline exceeded")
+                raise TimeoutError("响应超时")
 
         if response.fp is not None:
             response.fp = io.BufferedReader(_CheckedReader(response.fp, check))
@@ -294,14 +294,14 @@ class Fetcher:
                 break
             raw.extend(chunk)
             if len(raw) > self.max_bytes:
-                raise FetchError("Response exceeds configured size limit")
+                raise FetchError("响应超过配置的大小限制")
         if declared.isdigit() and len(raw) != int(declared):
             raise http.client.IncompleteRead(bytes(raw), int(declared))
         encoding = response.headers.get("Content-Encoding", "").strip().lower()
         if encoding in {"gzip", "deflate"}:
             return self._decode(bytes(raw), encoding)
         if encoding not in {"", "identity"}:
-            raise FetchError(f"Unsupported content encoding: {encoding}")
+            raise FetchError(f"不支持的内容编码：{encoding}")
         return bytes(raw)
 
     def _decode(self, raw: bytes, encoding: str) -> bytes:
@@ -315,7 +315,7 @@ class Fetcher:
                     decoder = zlib.decompressobj(mode)
                     decoded.extend(decoder.decompress(pending, self.max_bytes + 1 - len(decoded)))
                     if len(decoded) > self.max_bytes:
-                        raise FetchError("Decoded response exceeds configured size limit")
+                        raise FetchError("解码后的响应超过配置的大小限制")
                     if not decoder.eof:
                         raise zlib.error("Incomplete compressed response")
                     pending = decoder.unused_data

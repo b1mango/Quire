@@ -565,7 +565,7 @@ def test_redirect_hop_limit_and_target_policy_denial():
             return answer(request, 302, headers={"Location": f"/{int(request.url.path[1:]) + 1}"})
 
         async with AsyncFetcher(transport=httpx.MockTransport(handler), rate=1e9) as client:
-            with pytest.raises(NetworkError, match="hop limit"):
+            with pytest.raises(NetworkError, match="次数限制"):
                 await client.get("https://example.test/0")
             with pytest.raises(BlockedError):
                 await client.get("https://example.test/blocked-redirect")

@@ -63,7 +63,7 @@ class AsyncFetcher:
             or type(max_bytes) is not int
             or not 1 <= max_bytes <= 128 * 1024 * 1024
         ):
-            raise ConfigError("Invalid core HTTP timeout, rate, concurrency, retry or size limit")
+            raise ConfigError("core HTTP 超时、速率、并发、重试或大小限制无效")
         self.timeout, self.retries, self.max_bytes = timeout, retries, max_bytes
         self.respect_robots = respect_robots
         self.cookie_hosts = {h.lower() for h in cookie_hosts}
@@ -81,7 +81,7 @@ class AsyncFetcher:
 
     async def __aenter__(self) -> AsyncFetcher:
         if self._loop is not None:
-            raise ConfigError("AsyncFetcher cannot be entered more than once")
+            raise ConfigError("AsyncFetcher 不能重复进入")
         self._loop = asyncio.get_running_loop()
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(self.timeout),
@@ -97,7 +97,7 @@ class AsyncFetcher:
 
     async def __aexit__(self, *exc: object) -> None:
         if self._loop is not asyncio.get_running_loop():
-            raise ConfigError("AsyncFetcher must close on its owning event loop")
+            raise ConfigError("AsyncFetcher 须在所属事件循环中关闭")
         self._closing = True
         current = asyncio.current_task()
         tasks = [task for task in self._active if task is not current]
@@ -142,7 +142,7 @@ class AsyncFetcher:
         robots: bool = True,
     ) -> Response:
         if self._client is None or self._closing or self._loop is not asyncio.get_running_loop():
-            raise ConfigError("AsyncFetcher must be used inside its owning async context")
+            raise ConfigError("AsyncFetcher 须在所属异步上下文中使用")
         request_url, request_headers = valid_url(url), public_headers(referer, headers)
         if agent := self._host_agents.get(request_url.host.lower()):
             request_headers["user-agent"] = agent
@@ -204,14 +204,14 @@ class AsyncFetcher:
             or target.host != "ocean.shuqireader.com"
             or method not in {"GET", "POST"}
         ):
-            raise ConfigError("Invalid Shuqi API target")
+            raise ConfigError("书旗 API 目标无效")
         public = {
             k.lower(): v
             for k, v in headers.items()
             if k.lower() in {"authorization", "origin", "content-type", "referer", "accept"}
         }
         if any(any(ord(c) < 32 or ord(c) > 126 for c in v) for v in public.values()):
-            raise ConfigError("Invalid page API headers")
+            raise ConfigError("页面 API 请求头无效")
         return await self._fetch(
             target,
             {**public_headers(None, None), **public},
@@ -225,7 +225,7 @@ class AsyncFetcher:
         allowed = {"origin", "access-control-request-method", "access-control-request-headers"}
         public = {k.lower(): v for k, v in headers.items() if k.lower() in allowed}
         if any(any(ord(c) < 32 or ord(c) > 126 for c in v) for v in public.values()):
-            raise ConfigError("Invalid CORS preflight headers")
+            raise ConfigError("CORS 预检请求头无效")
         return await self._fetch(
             valid_url(url), {**public_headers(None, None), **public}, policy=False, method="OPTIONS"
         )
@@ -242,7 +242,7 @@ class AsyncFetcher:
         if len(body) > 2 * 1024 * 1024:
             raise ConfigError("POST 请求体超过 2 MiB 限制")
         if self._client is None or self._closing or self._loop is not asyncio.get_running_loop():
-            raise ConfigError("AsyncFetcher must be used inside its owning async context")
+            raise ConfigError("AsyncFetcher 须在所属异步上下文中使用")
         request_url = valid_url(url)
         request_headers = {**public_headers(referer, None), "content-type": content_type}
         task = asyncio.current_task()
@@ -290,7 +290,7 @@ class AsyncFetcher:
                             url, headers, method=method, content=content
                         )
                         if time.monotonic() > deadline:
-                            raise TimeoutError("Response deadline exceeded")
+                            raise TimeoutError("响应超时")
             except (httpx.HTTPError, TimeoutError) as exc:
                 if attempt >= self.retries:
                     raise NetworkError(
@@ -302,9 +302,9 @@ class AsyncFetcher:
                         raise NetworkError("POST 请求不允许跟随重定向")
                     target = redirect_target(url, location)
                     if url.scheme == "https" and target.scheme != "https":
-                        raise BlockedError("HTTPS redirect downgrade is not allowed")
+                        raise BlockedError("不允许 HTTPS 重定向降级")
                     if str(target) in seen or redirects >= 10:
-                        raise NetworkError("Redirect loop or hop limit exceeded")
+                        raise NetworkError("重定向循环或超过次数限制")
                     if (url.scheme, url.host, url.port) != (
                         target.scheme,
                         target.host,
@@ -350,7 +350,7 @@ class AsyncFetcher:
         try:
             location = response.headers.get("location", "")
             if response.status_code in _REDIRECTS and not location:
-                raise NetworkError("Redirect response is missing Location")
+                raise NetworkError("重定向响应缺少 Location")
             body = b""
             if 200 <= response.status_code < 300:
                 body = await read_body(response, self.max_bytes)
