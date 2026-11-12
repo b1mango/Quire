@@ -131,12 +131,19 @@ function jobActions(j) {
   return [b("resubmit", "重试", "primary"), b("hide", "移除")];
 }
 
+/* 章节 id 形如 "<任务指纹>:<目录序号>"；取末段序号排序 */
+function chapterOrder(c) {
+  const n = Number(String(c.id).split(":").pop());
+  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+}
+
 function chapterRows(j) {
-  const rows = [...j.chapters.values()].reverse();
+  const rows = [...j.chapters.values()].sort((a, b) => chapterOrder(a) - chapterOrder(b)); // 并发完成顺序是乱的，按目录顺序列
   const pending = j.kind === "novel" && j.total ? Math.max(0, j.total - j.done) : 0;
   return html`${rows.slice(0, 400).map((c) => html`<div class="ch ${c.status === "failed" ? "miss" : c.reused ? "reused done" : "done"}">
       <span class="st"><i></i></span><span class="t">${c.title}</span>
-      <span class="x num">${c.status === "failed" ? `缺 ${c.failed_pages}/${c.pages} 页` : j.kind === "manga" ? `${c.pages} 页` : ""}${c.reused ? " · 缓存" : ""}</span></div>`)}
+      <span class="x num">${[c.status === "failed" ? `缺 ${c.failed_pages}/${c.pages} 页` : j.kind === "manga" ? `${c.pages} 页` : "",
+        c.reused ? "缓存" : ""].filter(Boolean).join(" · ")}</span></div>`)}
     ${rows.length > 400 ? html`<div class="ch"><span class="st"><i></i></span><span style="color:var(--text-3)">还有 ${rows.length - 400} 章已完成</span></div>` : ""}
     ${LIVE.has(j.status) && pending ? html`<div class="ch"><span class="st"><i></i></span><span style="color:var(--text-3)">还有 ${pending} 章等待下载</span></div>` : ""}`;
 }
