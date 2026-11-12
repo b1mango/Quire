@@ -77,7 +77,8 @@ def test_modes_default_and_progress(server):
     )
     assert status == 200
     _, _, raw = request(server, "GET", "/api/books/b1/read")
-    assert json.loads(raw)["progress"]["position"] == "3:0.42"
+    saved = json.loads(raw)["progress"]
+    assert (saved["format"], saved["position"]) == ("epub", "3:0.42")  # 前端按格式决定是否沿用位置
     assert (
         request(
             server,

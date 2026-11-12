@@ -41,6 +41,8 @@ html[data-shell] .rd-top{padding-left:84px}
 .rd-flow blockquote{margin:1em 2em;color:var(--rd-dim)}
 .rd-flow hr{border:0;border-top:1px solid var(--rd-line);margin:1.5em 20%}
 .rd-flow a{color:inherit}
+.rd-flow.solo{display:flex;align-items:center;justify-content:center}
+.rd-flow.solo img{max-height:calc(100vh - 150px);margin:0 auto;box-shadow:0 6px 30px rgba(0,0,0,.18)}
 .reader[data-flow="scroll"] .rd-view{overflow:auto;inset:46px 0 42px;padding:40px max(7vw,calc(50% - 360px)) 80px}
 .reader[data-flow="scroll"] .rd-flow{columns:auto!important;height:auto;transform:none!important;max-width:720px;margin:0 auto}
 .reader[data-flow="paged"] .rd-view{-webkit-user-select:text;user-select:text}

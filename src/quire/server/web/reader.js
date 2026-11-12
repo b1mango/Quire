@@ -39,7 +39,9 @@ async function openReader(bookId, format) {
   rdq(".rd-top .t").textContent = rd.meta.title || book.title;
   rdq("[data-rd=toc]").hidden = !(rd.meta.toc || []).length;
   rdq("[data-rd=look]").hidden = rd.meta.mode === "pdf";
-  const pos = (rd.meta.progress && rd.meta.progress.position) || "";
+  // 进度按格式记：换个格式打开时位置含义不同（段号 ≠ 页码），从头开始
+  const saved = rd.meta.progress;
+  const pos = (saved && (!saved.format || saved.format === rd.meta.format) && saved.position) || "";
   if (rd.meta.mode === "text") {
     const [s, f] = pos.split(":");
     rd.section = Math.min(Math.max(0, parseInt(s, 10) || 0), Math.max(0, rd.meta.sections - 1));
@@ -48,7 +50,7 @@ async function openReader(bookId, format) {
     rd.page = Math.min(Math.max(0, parseInt(pos, 10) || 0), Math.max(0, rd.meta.pages - 1));
     renderPages();
   } else {
-    rdq(".rd-stage").innerHTML = html`<iframe class="rd-pdf" title="${rd.meta.title}" src="${withToken(`/api/books/${bookId}/read/pdf`)}"></iframe>`;
+    rdq(".rd-stage").innerHTML = html`<iframe class="rd-pdf" title="${rd.meta.title}" src="${withToken(`/api/books/${bookId}/read/pdf?format=pdf`)}"></iframe>`;
     rdq(".rd-bot").hidden = true;
     saveProgress("0", 0);
   }

@@ -24,6 +24,9 @@ async function loadSection(index, fraction = 0, fromEnd = false) {
     <div class="rd-hot l" aria-hidden="true"></div><div class="rd-hot r" aria-hidden="true"></div>`;
   rdq(".rd-flow").querySelectorAll("img").forEach((img) => { img.src = withToken(img.getAttribute("src")); img.loading = "eager"; });
   rdq(".rd-view").addEventListener("scroll", onTextScroll, { passive: true });
+  // 只有一张图、几乎没有文字的段（封面、插图页）：单栏居中整页显示
+  const flow = rdq(".rd-flow");
+  flow.classList.toggle("solo", flow.querySelectorAll("img").length === 1 && flow.textContent.trim().length < 20);
   rd.frac = fraction;
   relayout(fromEnd);
 }
@@ -52,7 +55,7 @@ function measure() {
   flow.style.setProperty("--rd-gap", `${gap}px`);
   // column-width 只是下限：两栏差一个亚像素就会退成一整栏，所以直接定栏数
   flow.style.columnWidth = "auto";
-  flow.style.columnCount = two ? "2" : "1";
+  flow.style.columnCount = two && !flow.classList.contains("solo") ? "2" : "1";
   rd.step = w + gap;
   rd.pages = Math.max(1, Math.round((flow.scrollWidth + gap) / rd.step));
 }
@@ -96,6 +99,7 @@ function onTextScroll() {
 function sectionTitle(index) {
   let title = "";
   (rd.meta.toc || []).forEach((t) => { if (t.section <= index) title = t.title; });
+  if (!title && index === 0 && rdq(".rd-flow.solo")) return "封面";
   return title;
 }
 

@@ -124,7 +124,12 @@ def _read(
         mode = "text" if fmt in ("epub", "txt") else "pages" if fmt in ("cbz", "zip") else "pdf"
         saved = progress.get(handler.server.data_root, book.id)
         state: JsonValue = (
-            {"position": saved.position, "percent": saved.percent, "updated_at": saved.updated_at}
+            {
+                "format": saved.format,
+                "position": saved.position,
+                "percent": saved.percent,
+                "updated_at": saved.updated_at,
+            }
             if saved
             else None
         )
