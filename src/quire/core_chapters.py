@@ -339,7 +339,7 @@ async def _capture_one(
         ledger.fail(task_id, chapter, 1, failure)
         return
     cleaned = clean_paragraphs(tuple(paragraphs), title=title)
-    if not cleaned:
+    if not cleaned.paragraphs:
         ledger.fail(task_id, chapter, 1, "invalid_text")
         return
     payload = json.dumps(
@@ -349,9 +349,10 @@ async def _capture_one(
             "url": link.url,
             "pages": max(1, pages),
             "truncated": truncated,
-            "paragraphs": list(cleaned),
+            "paragraphs": list(cleaned.paragraphs),
             "source": "ocr" if ocr_used else "html",
             "review": [[text, confidence] for text, confidence in review],
+            "removed": list(cleaned.removed),
         },
         ensure_ascii=False,
         sort_keys=True,

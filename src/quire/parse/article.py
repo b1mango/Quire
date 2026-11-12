@@ -373,7 +373,7 @@ def validate_article(article: Article, *, continuation: bool = False) -> tuple[b
     if size < MIN_ARTICLE_CHARS:
         if not continuation or not has_chapter_mark(article.title):
             return False, "too_short"
-        text = "\n".join(clean_paragraphs(article.paragraphs, title=article.title))
+        text = "\n".join(clean_paragraphs(article.paragraphs, title=article.title).paragraphs)
         size = len(_WS.sub("", text))
         if any(_ERROR_NOTICE.fullmatch(line.strip()) for line in text.splitlines()):
             return False, "error_page"

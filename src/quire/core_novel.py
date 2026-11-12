@@ -13,7 +13,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .assemble.models import NovelChapter
-from .core_chapter_cache import decode_chapter
+from .core_chapter_cache import chapter_with_removed, decode_chapter
 from .core_chapters import (
     FAILURE_TEXT,
     TRUNCATION_NOTE,
@@ -45,6 +45,8 @@ from .sites.registry import cookie_hosts_for
 from .store.cache import read_cached
 from .store.ledger import Ledger
 from .store.models import JsonValue, ResourceSpec, task_identity
+from .text.clean import normalize_line
+from .text.noise import is_site_signature, repeated_site_signatures
 from .utils.urls import redact
 
 
@@ -90,18 +92,7 @@ def load_chapters(
                 size=record.size or 0,
             )
             cached = decode_chapter(data)
-            chapters.append(
-                NovelChapter(
-                    index,
-                    cached.title,
-                    cached.paragraphs,
-                    source_url=link.url,
-                    pages=cached.pages,
-                    truncated=cached.truncated,
-                    source=cached.source,
-                    review=cached.review,
-                )
-            )
+            chapters.append(cached.to_chapter(index, link.url))
             continue
         reason = FAILURE_TEXT.get(record.error_code or "", "未完成")
         chapters.append(
@@ -111,25 +102,37 @@ def load_chapters(
 
 
 def export_chapters(chapters: tuple[NovelChapter, ...]) -> tuple[NovelChapter, ...]:
-    """导出用章节：被分页上限截断的章追加一行说明，读者不会以为书是完整的。
-
-    OCR 章节另做跨页去重：整书超过 60% 的章都出现的短行是页眉页脚，
-    删掉（§6.7 后处理）；HTML 章节已由正文清洗处理，不在此列。
-    """
-    noted = tuple(
-        replace(chapter, paragraphs=(*chapter.paragraphs, TRUNCATION_NOTE))
-        if chapter.truncated and chapter.missing_reason is None
-        else chapter
+    """追加截断说明，清除明确的跨章站点签名并记录。"""
+    html = [
+        tuple(normalize_line(line) for line in chapter.paragraphs)
         for chapter in chapters
-    )
-    ocr_paragraphs = drop_repeated_short_lines(
-        [chapter.paragraphs for chapter in noted if chapter.source == "ocr"]
-    )
-    deduped = iter(ocr_paragraphs)
-    return tuple(
-        replace(chapter, paragraphs=next(deduped)) if chapter.source == "ocr" else chapter
-        for chapter in noted
-    )
+        if chapter.source == "html" and chapter.missing_reason is None
+    ]
+    ocr = [chapter.paragraphs for chapter in chapters if chapter.source == "ocr"]
+    signatures = repeated_site_signatures(html, len(chapters))
+    ocr_repeated = {line for lines in ocr for line in lines} - {
+        line for lines in drop_repeated_short_lines(ocr) for line in lines
+    }
+    result: list[NovelChapter] = []
+    for chapter in chapters:
+        if chapter.missing_reason is not None:
+            result.append(chapter)
+            continue
+        removed: list[tuple[str, str]] = []
+        paragraphs = []
+        for line in chapter.paragraphs:
+            ocr_header = (
+                chapter.source == "ocr" and line in ocr_repeated and is_site_signature(line)
+            )
+            html_signature = chapter.source == "html" and normalize_line(line) in signatures
+            if ocr_header or html_signature:
+                removed.append(("OCR页眉页脚" if chapter.source == "ocr" else "跨章站点签名", line))
+            else:
+                paragraphs.append(line)
+        if chapter.truncated:
+            paragraphs.append(TRUNCATION_NOTE)
+        result.append(chapter_with_removed(chapter, tuple(paragraphs), tuple(removed)))
+    return tuple(result)
 
 
 def _chapter_result(chapter: NovelChapter, reused: frozenset[int]) -> ChapterResult:
