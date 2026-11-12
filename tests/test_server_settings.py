@@ -33,7 +33,35 @@ def test_legacy_compress_presets_are_mapped(legacy, preset):
 
 
 def test_load_missing_returns_defaults(tmp_path):
-    assert settings_mod.load(tmp_path / "none.json", tmp_path).theme == "paper:light"
+    loaded = settings_mod.load(tmp_path / "none.json", tmp_path)
+    assert (loaded.theme, loaded.accent) == ("system", "cinnabar")
+
+
+@pytest.mark.parametrize(
+    ("legacy", "mode", "accent"),
+    [
+        ("paper:light", "light", "cinnabar"),
+        ("darkroom:dark", "dark", "indigo"),
+        ("darkroom:light", "light", "indigo"),
+        ("swiss:light", "light", "ink"),
+    ],
+)
+def test_legacy_four_themes_migrate_to_mode_and_accent(legacy, mode, accent):
+    """旧四主题合并为明暗 × 强调色；旧值读进来即迁移，不报未知主题。"""
+    parsed = settings_mod.parse({"output_dir": "/tmp/x", "theme": legacy})
+    assert (parsed.theme, parsed.accent) == (mode, accent)
+
+
+def test_explicit_accent_wins_over_legacy_theme_mapping():
+    parsed = settings_mod.parse(
+        {"output_dir": "/tmp/x", "theme": "swiss:light", "accent": "indigo"}
+    )
+    assert (parsed.theme, parsed.accent) == ("light", "indigo")
+
+
+def test_unknown_accent_rejected():
+    with pytest.raises(ConfigError, match="强调色"):
+        settings_mod.parse({"output_dir": "/tmp/x", "accent": "neon"})
 
 
 @pytest.mark.parametrize(
@@ -186,8 +214,7 @@ def test_concurrent_settings_saves_use_distinct_staging_files(tmp_path, monkeypa
 
     monkeypatch.setattr(workspace.os, "replace", synchronized_replace)
     candidates = [
-        settings_mod.UiSettings(str(tmp_path / "books"), theme=theme)
-        for theme in ("darkroom:dark", "swiss:light")
+        settings_mod.UiSettings(str(tmp_path / "books"), theme=theme) for theme in ("dark", "light")
     ]
     with ThreadPoolExecutor(max_workers=2) as executor:
         list(executor.map(lambda settings: settings_mod.save(path, settings), candidates))
@@ -232,15 +259,15 @@ def test_concurrent_put_settings_no_lost_update(tmp_path, monkeypatch):
 
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
-            results = list(executor.map(put, ({"theme": "swiss:light"}, {"compress": "small"})))
+            results = list(executor.map(put, ({"theme": "dark"}, {"compress": "small"})))
     finally:
         server.shutdown()
         server.server_close()
     assert all(status == 200 for status, _ in results)
-    assert results[0][1]["theme"] == "swiss:light"  # 各自响应都含自己刚写的值
+    assert results[0][1]["theme"] == "dark"  # 各自响应都含自己刚写的值
     assert results[1][1]["compress"] == "small"
     final = settings_mod.load(server.settings_path, tmp_path)
-    assert final.theme == "swiss:light"
+    assert final.theme == "dark"
     assert final.compress == "small"
 
 
@@ -256,6 +283,6 @@ def test_settings_failed_replace_preserves_original_and_cleans_staging(tmp_path,
 
     monkeypatch.setattr(workspace.os, "replace", fail_replace)
     with pytest.raises(OSError):
-        settings_mod.save(path, settings_mod.UiSettings(str(tmp_path), theme="swiss:light"))
+        settings_mod.save(path, settings_mod.UiSettings(str(tmp_path), theme="dark"))
     assert settings_mod.load(path, tmp_path) == original
     assert not list(tmp_path.glob(".settings.json.*"))

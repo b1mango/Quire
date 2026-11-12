@@ -58,8 +58,9 @@ final class WindowDragView: NSView {
 
     static let geometryScript = #"""
         (() => {
-          const toolbar = document.querySelector('.toolbar');
-          if (!toolbar) return;
+          // 顶部 52px 整条是拖拽带：侧栏顶部 + 当前视图工具条；其中的控件照常可点。
+          const zones = () => [...document.querySelectorAll('.sb-top, .toolbar')]
+            .filter((el) => el.getClientRects().length > 0);
           const selector = '.seg, button, a, input, textarea, select, label, '
             + '[contenteditable], [role="button"], [data-no-drag]';
           const rect = (element) => {
@@ -72,14 +73,16 @@ final class WindowDragView: NSView {
             pending = true;
             requestAnimationFrame(() => {
               pending = false;
-              const visible = toolbar.isConnected && getComputedStyle(toolbar).visibility !== 'hidden';
+              const visible = zones();
+              const height = Math.max(0, ...visible.map((el) => el.getBoundingClientRect().bottom));
               window.webkit.messageHandlers.windowDrag.postMessage({
-                toolbar: visible ? rect(toolbar) : [0, 0, 0, 0],
-                controls: [...toolbar.querySelectorAll(selector)].map(rect)
+                toolbar: visible.length ? [0, 0, window.innerWidth, height] : [0, 0, 0, 0],
+                controls: visible.flatMap((el) => [...el.querySelectorAll(selector)]).map(rect)
+                  .filter((r) => r[2] > 0 && r[3] > 0).slice(0, 256)
               });
             });
           };
-          new ResizeObserver(update).observe(toolbar);
+          new ResizeObserver(update).observe(document.documentElement);
           new MutationObserver(update).observe(document.documentElement, {
             attributes: true, childList: true, subtree: true, characterData: true
           });

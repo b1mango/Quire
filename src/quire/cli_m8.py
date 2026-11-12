@@ -182,7 +182,10 @@ def cmd_profile(args: argparse.Namespace) -> int:
         values = payload["settings"]
         if not isinstance(values, dict) or "output_dir" in values:
             raise ConfigError("profile 不能修改本机输出目录")
-        merged = {**asdict(settings.load(settings_path, root)), **values}
+        current = asdict(settings.load(settings_path, root))
+        if values.get("theme") in settings.LEGACY_THEMES and "accent" not in values:
+            current.pop("accent", None)  # 旧版档案的四主题值决定强调色，不沿用本机当前值
+        merged = {**current, **values}
         settings.save(settings_path, settings.parse(merged))
     info(f"profile {args.action} 完成")
     return 0

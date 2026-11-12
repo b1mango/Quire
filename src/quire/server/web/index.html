@@ -1,373 +1,181 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="paper" data-mode="light">
+<html lang="zh-CN" data-mode="light" data-accent="cinnabar">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>卷帙 Quire</title>
 <link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/views.css">
 </head>
 <body>
+<div class="app" id="app">
+  <!-- ================= 侧栏 ================= -->
+  <aside class="sb" aria-label="导航">
+    <div class="sb-top">
+      <span class="brand">卷帙<small>Quire</small></span>
+      <button class="btn quiet icon-btn" id="paletteBtn" aria-label="命令面板 ⌘K" title="⌘K">
+        <svg class="i" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+      </button>
+    </div>
+    <div class="sb-scroll">
+      <nav class="sb-nav">
+        <button class="nav" data-go="capture" title="⌘N"><svg class="i" viewBox="0 0 16 16"><path d="M8 2.5v8M4.8 7.3 8 10.5l3.2-3.2"/><path d="M2.5 11v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V11"/></svg><span>采集</span></button>
+        <button class="nav" data-go="library" data-group="all" title="⌘1"><svg class="i" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="3" height="11" rx=".6"/><rect x="6.5" y="2.5" width="3" height="11" rx=".6"/><path d="m11 3.2 2.6-.7 2 10.6"/></svg><span>书库</span><span class="count num" id="cntAll"></span></button>
+        <button class="nav" data-go="tasks" title="⌘2"><svg class="i" viewBox="0 0 16 16"><path d="M3 4h10M3 8h10M3 12h6"/></svg><span>任务</span><span class="badge num" id="taskBadge" hidden></span><span class="qdot" id="runDot" hidden></span></button>
+      </nav>
+      <div class="sb-groups">
+        <div class="sb-label">书架</div>
+        <nav class="sb-nav">
+          <button class="nav" data-go="library" data-group="updates"><span class="dot" style="background:var(--accent)"></span><span>有更新</span><span class="count num" id="cntUpd"></span></button>
+          <button class="nav" data-go="library" data-group="following"><svg class="i" viewBox="0 0 16 16"><path d="M8 13.2 3.3 8.6a2.8 2.8 0 0 1 4-4L8 5.3l.7-.7a2.8 2.8 0 0 1 4 4Z"/></svg><span>追更中</span><span class="count num" id="cntFol"></span></button>
+        </nav>
+        <div class="sb-label">分组 <button id="addGroupBtn" aria-label="新建分组" title="新建分组">＋</button></div>
+        <nav class="sb-nav" id="groupNav" aria-label="分组"></nav>
+      </div>
+    </div>
+    <div class="sb-foot">
+      <button class="mini-job" id="miniJob" hidden data-go="tasks"></button>
+      <button class="nav" data-go="settings" title="⌘,"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1"/></svg><span>设置</span></button>
+    </div>
+  </aside>
 
-<header class="toolbar">
-  <div class="brand"><b>卷帙</b><span>Quire</span></div>
-  <div class="spacer"></div>
-  <div class="seg" id="themeSeg" role="group" aria-label="UI 主题">
-    <button data-preset="paper:light" aria-pressed="true">纸感 · 浅</button>
-    <button data-preset="darkroom:light" aria-pressed="false">暗房 · 浅</button>
-    <button data-preset="darkroom:dark" aria-pressed="false">暗房 · 深</button>
-    <button data-preset="swiss:light" aria-pressed="false">瑞士网格 · 浅</button>
-  </div>
-</header>
+  <!-- ================= 内容 ================= -->
+  <main class="main">
 
-<main>
-  <div class="win-body">
-      <aside class="sidebar">
-        <button class="side-item" data-view-btn="new" aria-current="true">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3.5v9M3.5 8h9"/></svg>采集台
-        </button>
-        <button class="side-item" data-view-btn="run" aria-current="false">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.5 3v2.6h2.6"/></svg>任务队列<span class="run-dot" id="runDot" hidden></span>
-        </button>
-        <button class="side-item" data-view-btn="lib" aria-current="false">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="2.5" width="4.6" height="11"/><rect x="8.9" y="2.5" width="4.6" height="11"/></svg>书库
-        </button>
-        <button class="side-item" data-view-btn="rec" aria-current="false">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c1.8 1.6 2.7 3.4 2.7 5.5s-.9 3.9-2.7 5.5c-1.8-1.6-2.7-3.4-2.7-5.5s.9-3.9 2.7-5.5Z"/></svg>推荐站点
-        </button>
-        <button class="side-item side-settings" data-view-btn="set" aria-current="false">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 2v1.4M8 12.6V14M2 8h1.4M12.6 8H14M3.8 3.8l1 1M11.2 11.2l1 1M12.2 3.8l-1 1M4.8 11.2l-1 1"/></svg>设置
-        </button>
-      </aside>
-
-      <section class="content">
-
-        <!-- ============ 采集台 ============ -->
-        <div class="view" data-view="new">
-          <div class="workspace">
-            <div class="ws-head">
-              <div>
-                <h1>采集台</h1>
-              </div>
-              <div class="segmented" id="kindSeg" role="group" aria-label="内容类型">
-                <button data-kind="novel" aria-pressed="true">小说</button>
-                <button data-kind="manga" aria-pressed="false">漫画</button>
-              </div>
-            </div>
-
-            <div class="ws-card">
-              <div class="ws-modes">
-                <div class="segmented" id="captureSeg" role="group" aria-label="采集方式">
-                  <button data-capture="catalogue" aria-pressed="true">识别目录 · 批量抓取</button>
-                  <button data-capture="single" aria-pressed="false">单章抓取</button>
-                </div>
-              </div>
-
-              <div class="ws-url">
-                <input class="input" id="urlInput" placeholder="粘贴作品目录或章节链接，如 https://" aria-label="作品目录或章节链接" spellcheck="false" autocomplete="off">
-                <button class="btn ghost ws-paste" id="pasteBtn" type="button">粘贴</button>
-              </div>
-              <div class="hint" id="probeHint" role="status" aria-live="polite" hidden></div>
-              <div class="meter" id="probeMeter" hidden><div class="meter-fill" id="probeMeterFill"></div></div>
-
-              <div class="ws-options">
-                <div class="field" id="formatField" hidden>
-                  <label>输出格式</label>
-                  <div class="chips" id="formatChips"></div>
-                  <div class="hint warn-hint" id="chromeHint" hidden>转 PDF 需要 Chrome，这台机器上没找到。安装 Chrome 后再试。</div>
-                </div>
-
-                <div class="field" id="compressField" hidden>
-                  <label>画质与体积</label>
-                  <div class="segmented" id="compressSeg">
-                    <button data-compress="archive" aria-pressed="false">原画</button>
-                    <button data-compress="balanced" aria-pressed="true">均衡</button>
-                    <button data-compress="small" aria-pressed="false">压缩</button>
-                  </div>
-                  <div class="hint" id="compressDesc">日常阅读推荐</div>
-                  <div class="hint" id="sizeEstimate">识别后可估</div>
-                </div>
-
-                <div class="field" id="ocrField" hidden>
-                  <label>图片正文 OCR</label>
-                  <div class="segmented" id="ocrSeg">
-                    <button data-ocr="auto" aria-pressed="true">自动</button>
-                    <button data-ocr="always" aria-pressed="false">强制</button>
-                    <button data-ocr="never" aria-pressed="false">关闭</button>
-                  </div>
-                </div>
-
-                <div class="hint" id="ocrAvailability" role="status"></div>
-                <div class="field" id="rangeField" hidden>
-                  <label for="rangeExpr">章节范围</label>
-                  <input class="input" id="rangeExpr" placeholder="留空为全部；如 1-10,15-20,103 或 200-" spellcheck="false" autocomplete="off">
-                  <div class="range-row">
-                    <select class="input nofx" id="rangeFirst" aria-label="起始章节"></select>
-                    <span class="range-sep">至</span>
-                    <select class="input nofx" id="rangeLast" aria-label="结束章节"></select>
-                  </div>
-                  <p class="hint" id="rangeSummary"></p>
-                </div>
-
-                <div class="field" id="seriesField" hidden>
-                  <label for="splitMode">分卷方式</label>
-                  <div class="hint">
-                    <select class="input" id="splitMode">
-                      <option value="volume">按站点卷结构</option>
-                      <option value="chapters 20">每 20 章一卷</option>
-                      <option value="chapters 1">每章一卷</option>
-                      <option value="size 500MB" id="splitSizeOpt">每卷不超过 500 MB</option>
-                      <option value="none">合为一卷</option>
-                    </select>
-                  </div>
-                  <div id="volumeList" class="volume-list" aria-label="选择需要的卷"></div>
-                  <p class="hint">页数与体积在读取章节后确定。每卷完成后即可从书库打开。</p>
-                </div>
-              </div>
-
-              <div class="ws-foot">
-                <span class="ws-status" id="wsStatus" hidden></span>
-                <span class="meta" id="startMeta"></span>
-                <button class="btn primary ws-go" id="startBtn" disabled>开始抓取</button>
-              </div>
-            </div>
+    <!-- 采集 -->
+    <section class="view" data-view="capture" aria-labelledby="capTitle">
+      <div class="toolbar"><h1 id="capTitle">采集</h1><div class="grow"></div>
+        <button class="btn quiet" id="resetCap" hidden>重新开始</button></div>
+      <div class="scroll" id="capScroll">
+        <div class="capture" id="capture">
+          <div class="cap-hero"><h2>收一本书进来</h2><p>粘贴作品目录页或章节页的链接，类型和章节会自动识别</p></div>
+          <form class="omni" id="omniForm" role="search">
+            <svg class="i" viewBox="0 0 16 16"><path d="M6.6 9.4 9.4 6.6M7.2 4.2l1.2-1.2a2.8 2.8 0 0 1 4 4l-1.2 1.2M8.8 11.8l-1.2 1.2a2.8 2.8 0 0 1-4-4l1.2-1.2"/></svg>
+            <label class="sr" for="urlIn">作品链接</label>
+            <input id="urlIn" placeholder="https://" autocomplete="off" spellcheck="false" inputmode="url">
+            <button type="button" class="btn quiet" id="pasteBtn">粘贴 <span class="kbd">⌘V</span></button>
+            <button class="btn primary" id="probeBtn" disabled>识别</button>
+          </form>
+          <ol class="steps" id="steps" hidden aria-live="polite">
+            <li data-s="fetch">连接站点</li><li data-s="parse">读取目录</li><li data-s="estimate">抽样估算体积</li>
+          </ol>
+          <div id="capErr"></div>
+          <div id="result"></div>
+          <div id="capHome">
+            <div class="sites" id="sitesBox" hidden><h3>从这些站点找书</h3><div class="site-grid" id="siteGrid"></div></div>
           </div>
         </div>
+      </div>
+      <div class="dock" id="dock" hidden><div class="dock-in">
+        <div class="sum num" id="dockSum" aria-live="polite"></div>
+        <button class="btn primary lg" id="startBtn">开始采集 <span class="kbd">⌘↵</span></button>
+      </div></div>
+    </section>
 
-        <!-- ============ 进行中 ============ -->
-        <div class="view" data-view="run" hidden>
-          <div class="vhead row">
-            <div>
-              <h1 id="runTitle">准备中</h1>
-              <p class="sub" id="runSub">正在连接……</p>
-            </div>
-            <div class="actions" style="margin:0">
-              <button class="btn ghost" id="pauseBtn">暂停</button>
-              <button class="btn danger" id="cancelBtn">取消</button>
-            </div>
-          </div>
-
-          <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
-
-          <div class="stats">
-            <div><span class="k">已完成</span><span class="v" id="statDone">0</span></div>
-            <div><span class="k">缺页</span><span class="v warn" id="statFailed">0</span></div>
-            <div><span class="k">总数</span><span class="v" id="statTotal">—</span></div>
-            <div><span class="k">用时</span><span class="v" id="statElapsed">0.0 s</span></div>
-          </div>
-
-          <div class="chapters" id="chapterPanel" hidden>
-            <div class="chapters-head">
-              <span class="k">章节进度</span>
-              <span class="meta" id="chapterMeta"></span>
-              <button class="chapter-order" id="chapterOrderBtn" type="button" aria-label="切换章节列表顺序">正序</button>
-            </div>
-            <div class="chapter-list" id="chapterList"></div>
-          </div>
-
-          <div class="notice warn" id="partialNote" hidden></div>
-          <div class="notice error" id="failedNote" hidden></div>
-          <div class="actions" id="runDoneActions" hidden>
-            <button class="btn primary" id="openBookBtn">打开成品</button>
-            <button class="btn ghost" id="goLibBtn">去书库看看</button>
-            <button class="btn ghost" id="resumeBtn" hidden>继续</button>
-            <button class="btn ghost" id="retryBtn" hidden>重试</button>
-          </div>
-
-          <div class="stream" id="stream"></div>
-          <div class="empty-note" id="runEmpty">缩略图会随下载逐页出现在这里。</div>
+    <!-- 书库 -->
+    <section class="view" data-view="library" hidden aria-labelledby="libTitle">
+      <div class="toolbar" id="libBar">
+        <h1 id="libTitle">书库</h1><span class="sub num" id="libSub"></span>
+        <div class="grow"></div>
+        <div class="search"><svg class="i" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+          <label class="sr" for="libSearch">搜索书名或作者</label><input id="libSearch" placeholder="搜索书名、作者" autocomplete="off"></div>
+        <div class="seg" role="group" aria-label="显示方式" id="layoutSeg">
+          <button aria-pressed="true" data-layout="grid" aria-label="封面" title="封面"><svg class="i" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg></button>
+          <button aria-pressed="false" data-layout="list" aria-label="列表" title="列表"><svg class="i" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h0M2.5 8h0M2.5 12h0"/></svg></button>
         </div>
+        <button class="btn quiet" id="checkAll" hidden><svg class="i" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.8v2.6h-2.6"/></svg><span id="checkAllTxt">检查更新</span></button>
+      </div>
+      <div class="lib-wrap" id="libWrap">
+        <div class="scroll" id="libScroll"><div id="libMsg"></div><div id="shelf"></div></div>
+        <aside class="insp" id="insp" aria-label="书籍详情"><div class="insp-in" id="inspIn"></div></aside>
+      </div>
+    </section>
 
-        <!-- ============ 书库 ============ -->
-        <div class="view" data-view="lib" id="libView" hidden>
-          <div class="lib-head">
-            <div class="lib-title">
-              <button class="lib-back" id="libBackBtn" hidden>‹ 书库</button>
-              <div>
-                <h1 id="libTitle">书库</h1>
-                <p class="sub" id="libSub"></p>
-              </div>
-            </div>
-            <div class="lib-tools">
-              <input class="input nofx" id="searchInput" placeholder="搜索书名或作者" aria-label="搜索书名或作者">
-              <button class="btn ghost" id="checkAllBtn" hidden>全部检查</button>
-              <button class="btn ghost" id="newGroupBtn">+ 分组</button>
-              <button class="btn ghost" id="libRetryBtn" hidden>重试加载</button>
-            </div>
-          </div>
-          <div class="batch-bar" id="batchBar" hidden>
-            <span class="meta" id="batchMeta" role="status" aria-live="polite">已选 0 本</span>
-            <button class="btn ghost" id="selectAllBtn">全选当前结果</button>
-            <button class="btn ghost" id="batchMoveBtn" aria-expanded="false" aria-controls="groupMenu">移动到分组</button>
-            <button class="btn danger" id="batchDeleteBtn">删除</button>
-            <button class="btn ghost" id="clearSelBtn">取消选择</button>
-          </div>
-          <div class="lib-check" id="libCheckBar" hidden>
-            <div class="meter"><div class="meter-fill" id="libCheckFill"></div></div>
-            <span class="meta" id="libCheckText"></span>
-          </div>
-          <div class="menu" id="bookActions" role="menu" popover>
-            <button role="menuitem" id="bookOpenBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3h5.5A1.5 1.5 0 0 1 13 4.5v7a1.5 1.5 0 0 1-1.5 1.5H6"/><path d="M6 3v10M6 3H4.5A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H6"/></svg>打开</button>
-            <button role="menuitem" id="bookRevealBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/></svg>在 Finder 中显示</button>
-            <button role="menuitem" id="bookCheckBtn" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 3v2.6h-2.6"/></svg>检查更新</button>
-            <button role="menuitem" id="bookFollowBtn" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3.5v9M3.5 8h9"/></svg>追更</button>
-            <button role="menuitem" id="bookMoveBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h3l1.5 2h4.5A1.5 1.5 0 0 1 14 7.5v4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5v-6Z"/><path d="M8 8.5v3M6.5 10 8 11.5 9.5 10"/></svg>移动到分组</button>
-            <hr class="menu-sep">
-            <button role="menuitem" class="danger" id="bookDeleteBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 4h11M6.5 4V2.8A.8.8 0 0 1 7.3 2h1.4a.8.8 0 0 1 .8.8V4M4.5 4l.6 8.6a1.5 1.5 0 0 0 1.5 1.4h2.8a1.5 1.5 0 0 0 1.5-1.4L11.5 4"/></svg>删除</button>
-          </div>
-          <div class="menu" id="groupMenu" role="menu" aria-label="选择分组" popover></div>
-          <div class="grid" id="grid"></div>
-          <div class="empty-state" id="libEmpty" hidden>
-            <p id="libEmptyText">还没有书。贴一个链接试试。</p>
-            <button class="btn primary" id="emptyNewBtn">采集台</button>
-            <button class="btn ghost" id="emptyClearBtn" hidden>清除搜索</button>
-          </div>
+    <!-- 任务 -->
+    <section class="view" data-view="tasks" hidden aria-labelledby="taskTitle">
+      <div class="toolbar"><h1 id="taskTitle">任务</h1><span class="sub" id="taskSub"></span><div class="grow"></div>
+        <button class="btn quiet" id="clearDone" hidden>清除已结束</button></div>
+      <div class="tasks" id="tasksWrap">
+        <div class="tlist" id="tlist" role="list" aria-label="任务列表"></div>
+        <div class="tdetail" id="tdetail"></div>
+      </div>
+    </section>
+
+    <!-- 设置 -->
+    <section class="view" data-view="settings" hidden aria-labelledby="setTitle">
+      <div class="toolbar"><h1 id="setTitle">设置</h1><div class="grow"></div><span class="saved" id="saved" role="status"><i></i><span id="savedTxt">已保存</span></span></div>
+      <div class="scroll"><div class="settings" id="settings">
+        <h3>外观</h3>
+        <div class="group">
+          <div class="srow"><div class="txt"><span class="lab">明暗</span></div>
+            <div class="appear" id="appear" role="group" aria-label="明暗">
+              <button data-mode-set="light" aria-pressed="false"><div class="sw" style="background:#F7F6F3"><i style="background:#EFEDE8"></i></div>浅色</button>
+              <button data-mode-set="dark" aria-pressed="false"><div class="sw" style="background:#151413"><i style="background:#1B1A18"></i></div>深色</button>
+              <button data-mode-set="system" aria-pressed="false"><div class="sw" style="background:linear-gradient(135deg,#F7F6F3 50%,#151413 50%)"><i style="background:transparent"></i></div>跟随系统</button>
+            </div></div>
+          <div class="srow"><div class="txt"><span class="lab">强调色</span></div>
+            <div class="accents" id="accents" role="group" aria-label="强调色">
+              <button style="background:#B0402F;color:#B0402F" data-accent-set="cinnabar" aria-pressed="false" aria-label="朱砂" title="朱砂"></button>
+              <button style="background:#2F5D8A;color:#2F5D8A" data-accent-set="indigo" aria-pressed="false" aria-label="青黛" title="青黛"></button>
+              <button style="background:#1D1B18;color:#1D1B18" data-accent-set="ink" aria-pressed="false" aria-label="墨" title="墨"></button>
+            </div></div>
         </div>
-
-        <!-- ============ 推荐站点 ============ -->
-        <div class="view" data-view="rec" hidden>
-          <div class="vhead">
-            <h1>推荐站点</h1>
-          </div>
-          <div class="rec-cols" id="recCols"></div>
+        <h3>输出</h3>
+        <div class="group">
+          <div class="srow"><div class="txt"><label for="setOutput">保存位置</label><div class="field-err" id="errOutput" hidden></div></div>
+            <input class="field-input path-in" id="setOutput" spellcheck="false" data-key="output_dir"><button class="btn" id="browseOutputBtn" hidden>更改…</button></div>
+          <div class="srow"><div class="txt"><span class="lab">漫画默认画质</span><small id="qDesc"></small></div>
+            <div class="seg" id="qSeg" role="group" aria-label="漫画默认画质"><button aria-pressed="false" data-v="archive">原画</button><button aria-pressed="false" data-v="balanced">均衡</button><button aria-pressed="false" data-v="small">压缩</button></div></div>
+          <div class="srow"><div class="txt"><label for="setTaskNovel">单本体积上限</label><small>超出时自动降低画质或分卷；原画不受限</small><div class="field-err" id="errTask" hidden></div></div>
+            <span class="unit" style="margin:0">小说</span><input class="field-input sm num" id="setTaskNovel" inputmode="numeric" data-key="task_novel_mb"><span class="unit">MB</span>
+            <span class="unit" style="margin:0 0 0 8px">漫画</span><input class="field-input sm num" id="setTaskManga" aria-label="漫画体积上限" inputmode="numeric" data-key="task_manga_mb"><span class="unit">MB</span></div>
         </div>
-
-        <!-- ============ 设置 ============ -->
-        <div class="view" data-view="set" hidden>
-          <div class="vhead">
-            <h1>设置</h1>
-          </div>
-          <section class="set-group">
-            <h2>输出</h2>
-            <div class="field">
-              <label for="setOutput">输出目录</label>
-              <div class="output-row">
-                <input class="input" id="setOutput" spellcheck="false">
-                <button class="btn ghost" id="browseOutputBtn" type="button" hidden>选择目录…</button>
-              </div>
-            </div>
-            <div class="field">
-              <label>默认画质与体积</label>
-              <div class="segmented" id="setCompressSeg">
-                <button data-compress="archive" aria-pressed="false">原画</button>
-                <button data-compress="balanced" aria-pressed="true">均衡</button>
-                <button data-compress="small" aria-pressed="false">压缩</button>
-              </div>
-              <div class="hint" id="setCompressDesc">日常阅读推荐</div>
-            </div>
-            <div class="field">
-              <label id="taskSizeLabel">任务体积上限</label>
-              <div class="hint" role="group" aria-labelledby="taskSizeLabel">
-                <label>小说 <input class="input sm nofx" id="setTaskNovel" inputmode="numeric"> MB</label>
-                <label>漫画 <input class="input sm nofx" id="setTaskManga" inputmode="numeric"> MB</label>
-                <div>默认小说 100、漫画 500；超出上限时自动降低画质（原画档保留原图不受限），漫画按体积分卷时每卷不超过漫画上限。</div>
-              </div>
-            </div>
-          </section>
-          <section class="set-group">
-            <h2>网络</h2>
-            <div class="field">
-              <label for="setBrowserNative"><input type="checkbox" id="setBrowserNative"> 使用真实浏览器网络</label>
-              <label for="setCdpEndpoint">已登录 Chrome 的 CDP 地址（可选）</label>
-              <input class="input" id="setCdpEndpoint" placeholder="http://127.0.0.1:9222" autocomplete="off">
-              <div class="hint">连接本机已开启远程调试的 Chrome，用于需要登录或反爬严格的站点；留空则使用内置隔离浏览器。</div>
-            </div>
-            <div class="field">
-              <label id="netLimitLabel">并发与限速</label>
-              <div class="hint" role="group" aria-labelledby="netLimitLabel">
-                <label>并发 <input class="input sm nofx" id="setConcurrency" inputmode="numeric"></label>
-                <label>每站限速 <input class="input sm nofx" id="setRate" inputmode="decimal"> req/s</label>
-                <div>默认并发 16、每站 6 次/秒；遇限流请调低。</div>
-                <div class="hint invalid" id="setFieldError" role="alert" hidden></div>
-              </div>
-            </div>
-            <div class="field">
-              <label>robots.txt</label>
-              <div class="hint">
-                <label><input type="checkbox" id="setRobots"> 遵守站点的 robots.txt（无法获取时按不限制继续）</label>
-              </div>
-            </div>
-          </section>
-          <section class="set-group">
-            <h2>文字识别</h2>
-            <div class="field">
-              <label>图片正文 OCR</label>
-              <div class="segmented" id="setOcrSeg">
-                <button data-ocr="auto" aria-pressed="true">自动</button>
-                <button data-ocr="always" aria-pressed="false">强制</button>
-                <button data-ocr="never" aria-pressed="false">关闭</button>
-              </div>
-            </div>
-            <div class="field">
-              <label>OCR 模块</label>
-              <div class="ocr-module">
-                <span class="meta" id="ocrModuleStatus">正在检查…</span>
-                <button class="btn ghost" id="ocrDownloadBtn" type="button" hidden>下载 OCR 模块</button>
-              </div>
-              <div class="meter" id="ocrMeter" hidden><div class="meter-fill" id="ocrMeterFill"></div></div>
-              <div class="hint">识别"正文是图片"的小说时需要；普通文字站用不到。</div>
-            </div>
-          </section>
-          <section class="set-group">
-            <h2>追更</h2>
-            <div class="field">
-              <label>启动检查</label>
-              <div class="hint">
-                <label><input type="checkbox" id="setAutoCheck"> 启动时自动检查可追更的书籍</label>
-              </div>
-            </div>
-          </section>
-          <section class="set-group">
-            <h2>运行环境</h2>
-            <div class="field">
-              <dl class="doctor" id="doctorList"></dl>
-            </div>
-          </section>
-          <div class="actions">
-            <button class="btn primary" id="saveSettingsBtn">保存设置</button>
-            <span class="meta" id="settingsMeta" aria-live="polite"></span>
-          </div>
+        <h3>网络</h3>
+        <div class="group">
+          <div class="srow"><div class="txt"><label for="setConcurrency">同时下载</label><small>1–32；遇到站点限流时调低</small><div class="field-err" id="errConcurrency" hidden></div></div><input class="field-input sm num" id="setConcurrency" inputmode="numeric" data-key="concurrency"></div>
+          <div class="srow"><div class="txt"><label for="setRate">每站请求上限</label><small>0–10 次/秒</small><div class="field-err" id="errRate" hidden></div></div><input class="field-input sm num" id="setRate" inputmode="decimal" data-key="rate"><span class="unit">次/秒</span></div>
+          <div class="srow"><div class="txt"><label for="setRobots">遵守 robots.txt</label><small>无法获取时按不限制处理</small></div><input type="checkbox" class="switch" id="setRobots" data-key="obey_robots"></div>
+          <div class="srow"><div class="txt"><label for="setBrowserNative">使用真实浏览器</label><small>用于需要登录或反爬严格的站点</small></div><input type="checkbox" class="switch" id="setBrowserNative" data-key="browser_native"></div>
+          <div class="srow" id="cdpRow" hidden><div class="txt"><label for="setCdpEndpoint">已登录 Chrome 的调试地址</label><small>留空则使用内置隔离浏览器</small><div class="field-err" id="errCdp" hidden></div></div><input class="field-input" id="setCdpEndpoint" placeholder="http://127.0.0.1:9222" style="width:220px" spellcheck="false" data-key="cdp_endpoint"></div>
         </div>
+        <h3>文字识别</h3>
+        <div class="group">
+          <div class="srow"><div class="txt"><span class="lab">图片正文</span><small>正文是图片的小说才需要</small></div>
+            <div class="seg" id="ocrSeg" role="group" aria-label="图片正文识别"><button aria-pressed="false" data-v="auto">自动</button><button aria-pressed="false" data-v="always">总是</button><button aria-pressed="false" data-v="never">关闭</button></div></div>
+          <div class="srow"><div class="txt"><span class="lab">OCR 模块</span><small id="ocrModuleStatus">正在检查…</small></div>
+            <div class="meter" id="ocrMeter" hidden><i id="ocrMeterFill"></i></div><button class="btn" id="ocrDownloadBtn" hidden>下载模型（约 16 MB）</button></div>
+        </div>
+        <h3>追更</h3>
+        <div class="group">
+          <div class="srow"><div class="txt"><label for="setAutoCheck">启动时检查更新</label><small>只检查已登记追更的书</small></div><input type="checkbox" class="switch" id="setAutoCheck" data-key="auto_check_updates"></div>
+        </div>
+        <h3>关于</h3>
+        <div class="group" id="aboutGroup"></div>
+      </div></div>
+    </section>
+  </main>
+</div>
 
-      </section>
-  </div>
-</main>
+<dialog id="palette" aria-label="命令面板"><div class="palette">
+  <div class="omni"><svg class="i" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+    <label class="sr" for="palIn">搜索书籍、命令，或粘贴链接</label>
+    <input id="palIn" placeholder="搜索书籍、命令，或粘贴链接" autocomplete="off" role="combobox" aria-controls="palList" aria-expanded="true"><span class="kbd">esc</span></div>
+  <ul id="palList" role="listbox"></ul>
+</div></dialog>
+<dialog id="confirm" aria-labelledby="confirmTitle"><div class="confirm" id="confirmIn"></div></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTxt"></span><button id="toastAct" hidden></button></div>
 
-<dialog id="deleteBookDialog" class="delete-book-dialog" aria-labelledby="deleteBookTitle">
-  <h2 id="deleteBookTitle">删除书籍</h2>
-  <p id="deleteBookMessage"></p>
-  <p class="hint">成品文件会一起删除，此操作无法撤销。</p>
-  <p id="deleteBookError" role="alert"></p>
-  <div class="dialog-actions"><button class="btn" id="deleteBookCancel">保留</button><button class="btn danger" id="deleteBookConfirm">删除</button></div>
-</dialog>
-<dialog id="groupDialog" class="delete-book-dialog" aria-labelledby="groupDialogTitle">
-  <h2 id="groupDialogTitle">新建分组</h2>
-  <input class="input" id="groupNameInput" maxlength="50" placeholder="分组名" aria-label="分组名" spellcheck="false">
-  <p id="groupDialogError" role="alert"></p>
-  <div class="dialog-actions"><button class="btn" id="groupDialogCancel">取消</button><button class="btn primary" id="groupDialogConfirm">创建</button></div>
-</dialog>
-<dialog id="updateDialog" class="delete-book-dialog" aria-labelledby="updateDialogTitle">
-  <h2 id="updateDialogTitle">检查更新</h2>
-  <div id="updateDialogBody"></div>
-  <div class="dialog-actions">
-    <button class="btn" id="updateDialogClose">关闭</button>
-    <button class="btn primary" id="updateDialogGo" hidden>去采集续更</button>
-  </div>
-</dialog>
-<dialog id="commandMenu" class="command-menu">
-  <form method="dialog"><button class="btn ghost" aria-label="关闭命令面板">关闭 · Esc</button></form>
-  <h2>前往</h2>
-  <button class="btn" data-command="new">采集台</button>
-  <button class="btn" data-command="lib">书库</button>
-  <button class="btn" data-command="rec">推荐站点</button>
-  <button class="btn" data-command="set">设置</button>
-</dialog>
-<div id="marquee" hidden></div>
+<script src="/static/app.js"></script>
+<script src="/static/covers.js"></script>
+<script src="/static/follows.js"></script>
+<script src="/static/chapters.js"></script>
 <script src="/static/capture.js"></script>
 <script src="/static/run-events.js"></script>
-<script src="/static/app.js"></script>
+<script src="/static/tasks.js"></script>
 <script src="/static/queue-status.js"></script>
 <script src="/static/library.js"></script>
-<script src="/static/chapters.js"></script>
-<script src="/static/follows.js"></script>
+<script src="/static/inspector.js"></script>
+<script src="/static/settings.js"></script>
+<script src="/static/palette.js"></script>
 </body>
 </html>

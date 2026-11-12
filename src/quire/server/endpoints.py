@@ -207,6 +207,7 @@ def _book_json(ctx: QuireServer, book: library.Book) -> dict[str, JsonValue]:
         "kind": book.kind,
         "source_url": book.source_url,
         "formats": [a.format for a in book.files],
+        "files": [{"format": a.format, "bytes": a.bytes, "name": a.path.name} for a in book.files],
         "bytes": sum(a.bytes for a in book.files),
         "compress": book.compress,
         "created_at": book.created_at,
@@ -293,22 +294,33 @@ def delete_book(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
     return {"deleted": True, "bytes": freed}
 
 
-def open_book(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
+def _book_file(book: library.Book, payload: Any) -> Path:
+    """按请求的格式取成品；未指定时取第一件（add_book 保证至少一件）。"""
+    wanted = payload.get("format") if isinstance(payload, dict) else None
+    if wanted is None:
+        return book.files[0].path
+    for artifact in book.files:
+        if artifact.format == wanted:
+            return artifact.path
+    raise ConfigError(f"这本书没有 {wanted} 格式的成品")
+
+
+def open_book(ctx: QuireServer, book_id: str, payload: Any = None) -> dict[str, JsonValue]:
     book = library.get_book(ctx.data_root, book_id)
-    target = book.files[0].path  # add_book 保证至少一件成品
+    target = _book_file(book, payload)
     if not target.is_file():
         raise ConfigError("成品文件已不在原位置", hint="可以在书库里删除这条记录。")
     ctx.opener(target)
     return {"opened": str(target)}
 
 
-def reveal_book(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
+def reveal_book(ctx: QuireServer, book_id: str, payload: Any = None) -> dict[str, JsonValue]:
     """在 Finder 中显示成品：只允许定位当前输出目录内的真实文件。
 
     路径经 realpath 归一后再判断包含关系，``..`` 与符号链接逃逸一律拒绝。
     """
     book = library.get_book(ctx.data_root, book_id)
-    target = book.files[0].path
+    target = _book_file(book, payload)
     if not target.is_file():
         raise ConfigError("成品文件已不在原位置", hint="可以在书库里删除这条记录。")
     output = settings_mod.load(ctx.settings_path, ctx.data_root).output_path

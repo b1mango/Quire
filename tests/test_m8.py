@@ -336,10 +336,12 @@ def test_profile_and_sites_cli(tmp_path, capsys):
     assert main(["profile", "--data-dir", root, "export", str(profile)]) == 0
     data = json.loads(profile.read_text())
     assert "output_dir" not in data["settings"]
+    data["settings"].pop("accent", None)  # 模拟旧版档案：只有四主题值，没有强调色
     data["settings"]["theme"] = "darkroom:dark"
     profile.write_text(json.dumps(data))
     assert main(["profile", "--data-dir", root, "import", str(profile)]) == 0
-    assert json.loads((tmp_path / "settings.json").read_text())["theme"] == "darkroom:dark"
+    saved = json.loads((tmp_path / "settings.json").read_text())
+    assert (saved["theme"], saved["accent"]) == ("dark", "indigo")
     data["settings"]["output_dir"] = "/tmp/forbidden"
     profile.write_text(json.dumps(data))
     assert main(["profile", "--data-dir", root, "import", str(profile)]) == 1

@@ -1,63 +1,7 @@
-/* 章节功能：新建任务的范围选择、进行中页面的已落定章节列表。
-   依赖 app.js 的 $ 与 state；列表只增不改，快照恢复按 300 条/帧分块追加。 */
+/* 章节范围：结果卡上的「起–止」下拉、目录正倒序、自定义表达式。
+   表达式是唯一事实源（空 = 全部）；下拉只是快捷方式，改动即写回表达式。
+   依赖 app.js 的 $ / html / state；结果卡渲染后调用 bindRange()。 */
 "use strict";
-
-/* ------------------------------------------------------------ 章节范围 */
-
-/* 四个采集标签各自记住显示顺序，不进入任务参数或改动目录数据。 */
-const rangeOrders = new Map();
-let rangeOrderKey = "";
-let rangeOrderButton = null;
-
-function applyRangeOrder() {
-  const descending = rangeOrders.get(rangeOrderKey) === "desc";
-  for (const id of ["rangeFirst", "rangeLast"]) {
-    const select = $(id), selected = select.value;
-    const options = [...select.children].sort((a, b) =>
-      descending ? Number(b.value) - Number(a.value) : Number(a.value) - Number(b.value));
-    options.forEach((option) => select.appendChild(option));
-    select.value = selected;
-  }
-  rangeOrderButton.textContent = descending ? "目录倒序" : "目录正序";
-  rangeOrderButton.setAttribute("aria-pressed", String(descending));
-}
-
-function renderRange(result) {
-  const chapters = result.chapters || [];
-  if (state.captureMode === "single" || chapters.length < 2) {
-    $("rangeField").hidden = true;
-    return;
-  }
-  $("rangeField").hidden = false;
-  rangeOrderKey = `${result.kind || state.kind}:${state.captureMode}`;
-  if (!rangeOrderButton) {
-    rangeOrderButton = document.createElement("button");
-    rangeOrderButton.id = "rangeOrderBtn";
-    rangeOrderButton.type = "button";
-    rangeOrderButton.className = "chapter-order";
-    rangeOrderButton.setAttribute("aria-label", "倒序显示目录章节");
-    rangeOrderButton.setAttribute("aria-controls", "rangeFirst rangeLast");
-    rangeOrderButton.addEventListener("click", () => {
-      rangeOrders.set(rangeOrderKey, rangeOrders.get(rangeOrderKey) === "desc" ? "asc" : "desc");
-      applyRangeOrder();
-    });
-    $("rangeField").appendChild(rangeOrderButton);
-  }
-  const first = $("rangeFirst"), last = $("rangeLast");
-  const owned = Math.min((result.library && result.library.chapters) || 0, chapters.length);
-  first.textContent = ""; last.textContent = "";
-  chapters.forEach((chapter, index) => {
-    const option = document.createElement("option");
-    option.value = String(index + 1);
-    option.textContent = `${index + 1} · ${chapter.title}${index < owned ? "（已在库）" : ""}`;
-    first.appendChild(option);
-    last.appendChild(option.cloneNode(true));
-  });
-  first.value = owned ? String(owned + 1) : "1";
-  last.value = String(chapters.length);
-  applyRangeOrder();
-  syncExprFromSelects();
-}
 
 /* 与后端 parse/chapter_range.py 同规则：逗号分段、连字符区间、单章、开放尾 200-。
    返回 [[first, last|null], …]；不合法抛 Error（message 为用户可读中文）。 */
@@ -105,200 +49,138 @@ function resolveRangeSegments(segments, total) {
   return numbers;
 }
 
-function rangeState() {
-  const total = ((state.probe && state.probe.chapters) || []).length;
-  const expr = $("rangeExpr").value.trim();
-  if (!expr) return { expr: "", custom: false, segments: [], numbers: [], total };
-  const segments = parseRangeExpr(expr);
-  return { expr, custom: true, segments, numbers: resolveRangeSegments(segments, total), total };
-}
-
 function segmentLabel([first, last]) {
   if (last === null) return `${first}-`;
   return first === last ? `${first}` : `${first}-${last}`;
 }
 
-function updateRangeSummary() {
-  updateSizeEstimate();
-  if ($("rangeField").hidden || !state.probe) return;
-  const chapters = state.probe.chapters || [];
-  const summary = $("rangeSummary");
-  summary.classList.remove("invalid");
-  try {
-    const sel = rangeState();
-    if (!sel.custom) {
-      summary.textContent = `全部 ${sel.total} 章`;
-      if (state.probe) $("startBtn").disabled = false;
-      return;
-    }
-    const preview = sel.numbers.length
-      ? ` ·「${chapters[sel.numbers[0] - 1].title}」` +
-        (sel.numbers.length > 1 ? ` …「${chapters[sel.numbers[sel.numbers.length - 1] - 1].title}」` : "")
-      : "";
-    summary.textContent =
-      `已选 ${sel.numbers.length} 章：${sel.segments.map(segmentLabel).join("、")}` +
-      preview + "（按所选范围重新分卷）";
-    if (state.probe) $("startBtn").disabled = false;
-  } catch (err) {
-    summary.classList.add("invalid");
-    summary.textContent = err.message;
-    $("startBtn").disabled = true;
+/* ------------------------------------------------------------ 结果卡上的范围控件 */
+
+const rangeOrders = new Map(); // 小说 / 漫画各自记住目录显示顺序，不进任务参数
+let rangeKind = "novel";
+let onRangeChange = () => {};
+
+function probeChapters() { return (state.probe && state.probe.chapters) || []; }
+function ownedChapters() {
+  const lib = state.probe && state.probe.library;
+  return Math.min((lib && lib.chapters) || 0, probeChapters().length);
+}
+
+/* 目录少于 2 章（单章页 / 单话漫画）不出范围行 */
+function rangeRowHTML() {
+  const chapters = probeChapters();
+  if (chapters.length < 2) return "";
+  const owned = ownedChapters();
+  const opts = chapters.map((c, i) => html`<option value="${i + 1}">${i + 1} · ${c.title}${i < owned ? "（已在库）" : ""}</option>`);
+  return html`<div class="row"><span class="lab" id="rngLab">章节</span><div class="ctl range" role="group" aria-labelledby="rngLab">
+    <select class="field-input" id="rangeFirst" aria-label="起始章节">${opts}</select><span class="to">至</span>
+    <select class="field-input" id="rangeLast" aria-label="结束章节">${opts}</select>
+    <button type="button" class="btn quiet" id="rangeAll">全部</button>
+    <button type="button" class="btn quiet order" id="rangeOrderBtn" aria-controls="rangeFirst rangeLast" aria-pressed="false">目录正序</button>
+    <div class="range-expr"><label class="sr" for="rangeExpr">自定义章节范围</label>
+      <input class="field-input num" id="rangeExpr" placeholder="自定义，如 1-10,15,200-" spellcheck="false" autocomplete="off"></div>
+    <div class="range-sum" id="rangeSum" aria-live="polite"></div></div></div>`;
+}
+
+function applyRangeOrder() {
+  const descending = rangeOrders.get(rangeKind) === "desc";
+  for (const id of ["rangeFirst", "rangeLast"]) {
+    const select = $(id), selected = select.value;
+    [...select.children]
+      .sort((a, b) => (descending ? b.value - a.value : a.value - b.value))
+      .forEach((option) => select.appendChild(option));
+    select.value = selected;
   }
+  const btn = $("rangeOrderBtn");
+  btn.textContent = descending ? "目录倒序" : "目录正序";
+  btn.setAttribute("aria-pressed", String(descending));
 }
 
-/* 自定义范围与分卷互斥（与后端一致）：选了范围就隐藏分卷设置 */
-function syncSeriesAvailability() {
-  const probe = state.probe;
-  let custom = false;
-  try {
-    custom = !$("rangeField").hidden && probe && rangeState().custom;
-  } catch (err) {
-    custom = true; // 表达式非法时也按自定义处理，避免同时勾选分卷
-  }
-  $("seriesField").hidden = Boolean(custom) || !(probe && probe.series);
+function bindRange(kind, onChange) {
+  rangeKind = kind;
+  onRangeChange = onChange || (() => {});
+  if (!$("rangeFirst")) return;
+  const total = probeChapters().length, owned = ownedChapters();
+  const start = owned && owned < total ? owned + 1 : 1;
+  $("rangeFirst").value = String(start);
+  $("rangeLast").value = String(total);
+  $("rangeExpr").value = start === 1 ? "" : `${start}-${total}`;
+  applyRangeOrder();
+  $("rangeFirst").addEventListener("change", () => {
+    if (+$("rangeLast").value < +$("rangeFirst").value) $("rangeLast").value = $("rangeFirst").value;
+    syncExprFromSelects();
+  });
+  $("rangeLast").addEventListener("change", () => {
+    if (+$("rangeFirst").value > +$("rangeLast").value) $("rangeFirst").value = $("rangeLast").value;
+    syncExprFromSelects();
+  });
+  $("rangeAll").addEventListener("click", () => {
+    $("rangeFirst").value = "1"; $("rangeLast").value = String(total); syncExprFromSelects();
+  });
+  $("rangeOrderBtn").addEventListener("click", () => {
+    rangeOrders.set(rangeKind, rangeOrders.get(rangeKind) === "desc" ? "asc" : "desc");
+    applyRangeOrder();
+  });
+  $("rangeExpr").addEventListener("input", () => { syncSelectsFromExpr(); updateRangeSummary(); });
+  updateRangeSummary();
 }
 
-/* 提交用：未选范围返回全量默认（1 / 0 = 到末尾） */
-function chapterRangeSpec() {
-  if ($("rangeField").hidden || !state.probe)
-    return { chapter_first: 1, chapter_last: 0, chapter_ranges: "" };
-  return { chapter_first: 1, chapter_last: 0, chapter_ranges: $("rangeExpr").value.trim() };
-}
-
-/* 下拉是快捷方式：改动即写回表达式（全选则清空），与输入框单一事实源 */
 function syncExprFromSelects() {
-  const total = ((state.probe && state.probe.chapters) || []).length;
+  const total = probeChapters().length;
   const first = parseInt($("rangeFirst").value, 10) || 1;
   const last = parseInt($("rangeLast").value, 10) || total;
-  $("rangeExpr").value = first === 1 && last === total
-    ? ""
-    : first === last ? String(first) : `${first}-${last}`;
-  updateRangeSummary(); syncSeriesAvailability();
+  $("rangeExpr").value = first === 1 && last === total ? "" : first === last ? String(first) : `${first}-${last}`;
+  updateRangeSummary();
 }
 
-$("rangeFirst").addEventListener("change", () => {
-  const first = $("rangeFirst"), last = $("rangeLast");
-  if (parseInt(last.value, 10) < parseInt(first.value, 10)) last.value = first.value;
-  syncExprFromSelects();
-});
-$("rangeLast").addEventListener("change", () => {
-  const first = $("rangeFirst"), last = $("rangeLast");
-  if (parseInt(first.value, 10) > parseInt(last.value, 10)) first.value = last.value;
-  syncExprFromSelects();
-});
-/* 表达式 → 下拉回显:单段闭区间时同步,多段/开放尾保持下拉不动 */
+/* 表达式 → 下拉回显：单段闭区间时同步，多段 / 开放尾保持下拉不动 */
 function syncSelectsFromExpr() {
   try {
     const sel = rangeState();
-    if (sel.segments.length === 1 && sel.segments[0][1] !== null) {
-      const [first, last] = sel.segments[0];
-      if (last <= sel.total) { $("rangeFirst").value = String(first); $("rangeLast").value = String(last); }
+    if (sel.segments.length === 1 && sel.segments[0][1] !== null && sel.segments[0][1] <= sel.total) {
+      $("rangeFirst").value = String(sel.segments[0][0]);
+      $("rangeLast").value = String(sel.segments[0][1]);
     }
-  } catch (err) { /* 输入中途，等完整表达式 */ }
+  } catch (_) { /* 输入中途，等完整表达式 */ }
 }
 
-$("rangeExpr").addEventListener("input", () => {
-  syncSelectsFromExpr();
-  updateRangeSummary(); syncSeriesAvailability();
-});
+function rangeState() {
+  const total = probeChapters().length;
+  const input = $("rangeExpr");
+  const expr = input ? input.value.trim() : "";
+  if (!expr) return { expr: "", custom: false, segments: [], numbers: [], total };
+  const segments = parseRangeExpr(expr);
+  return { expr, custom: true, segments, numbers: resolveRangeSegments(segments, total), total };
+}
 
-/* ------------------------------------------------------------ 已落定章节 */
-
-const chapterState = { seen: new Set(), done: 0, failed: 0, order: "asc" };
-const thumbnailGroups = new Map();
-function thumbnailGroup(id = "single") {
-  if (!thumbnailGroups.has(id)) {
-    const group = document.createElement("details");
-    group.className = "thumbnail-chapter";
-    group.open = !chapterState.seen.has(String(id));
-    const heading = document.createElement("summary");
-    heading.textContent = "正在采集 · 章节预览";
-    const grid = document.createElement("div");
-    grid.className = "stream";
-    group.append(heading, grid);
-    $("stream").appendChild(group);
-    thumbnailGroups.set(id, { group, heading, grid });
+/* 摘要：合法时返回 {count, label}；非法时 {error} */
+function rangeSummary() {
+  const total = probeChapters().length;
+  if (!$("rangeExpr")) return { count: state.probe ? state.probe.count : 0, label: "" };
+  try {
+    const sel = rangeState();
+    if (!sel.custom) return { count: total, label: `全部 ${total} 章` };
+    const label = sel.segments.length === 1 && sel.segments[0][1] !== null
+      ? `第 ${segmentLabel(sel.segments[0]).replace("-", "–")} 章`
+      : `第 ${sel.segments.map(segmentLabel).join("、")} 章`;
+    return { count: sel.numbers.length, label };
+  } catch (err) {
+    return { error: err.message };
   }
-  return thumbnailGroups.get(id).grid;
 }
 
-
-function resetChapters() {
-  thumbnailGroups.clear();
-  chapterState.seen = new Set();
-  chapterState.done = 0;
-  chapterState.failed = 0;
-  chapterState.order = "asc";
-  syncChapterOrderBtn();
-  $("chapterPanel").hidden = true;
-  $("chapterList").textContent = "";
-  $("chapterMeta").textContent = "";
+function updateRangeSummary() {
+  const sum = $("rangeSum");
+  const s = rangeSummary();
+  if (sum) {
+    sum.classList.toggle("invalid", Boolean(s.error));
+    sum.textContent = s.error || (s.label.startsWith("全部") ? "" : `已选 ${s.count} 章`);
+  }
+  onRangeChange(s);
 }
 
-function syncChapterOrderBtn() {
-  $("chapterOrderBtn").textContent = chapterState.order === "asc" ? "正序" : "倒序";
-}
-
-$("chapterOrderBtn").addEventListener("click", () => {
-  chapterState.order = chapterState.order === "asc" ? "desc" : "asc";
-  syncChapterOrderBtn();
-  const list = $("chapterList");
-  const rows = [...list.children];
-  list.textContent = "";
-  rows.reverse().forEach((row) => list.appendChild(row));
-});
-
-function chapterRow(chapter) {
-  const row = document.createElement("div");
-  row.className = "chapter-row";
-  const dot = document.createElement("span");
-  dot.className = "cdot " +
-    (chapter.status === "failed" ? "failed" : chapter.reused ? "reused" : "done");
-  const title = document.createElement("span");
-  title.className = "chapter-title";
-  title.textContent = chapter.title;
-  const meta = document.createElement("span");
-  meta.className = "chapter-meta";
-  meta.textContent = chapter.status === "failed"
-    ? `失败 ${chapter.failed_pages}/${chapter.pages} 页`
-    : `${chapter.pages} 页${chapter.reused ? " · 缓存复用" : ""}`;
-  row.append(dot, title, meta);
-  return row;
-}
-
-function updateChapterMeta() {
-  $("chapterMeta").textContent =
-    `已落定 ${chapterState.done + chapterState.failed} 章` +
-    (chapterState.failed ? ` · ${chapterState.failed} 章失败` : "");
-}
-
-function appendChapters(chapters) {
-  const fresh = chapters.filter((c) => !chapterState.seen.has(String(c.id)));
-  if (!fresh.length) return;
-  fresh.forEach((c) => {
-    chapterState.seen.add(String(c.id));
-    thumbnailGroup(c.id);
-    const preview = thumbnailGroups.get(c.id);
-    preview.group.open = false;
-    preview.heading.textContent = `${c.title} · ${c.pages} 页${c.status === "failed" ? " · 有缺页" : " · 已完成"}`;
-    if (c.status === "failed") chapterState.failed += 1; else chapterState.done += 1;
-  });
-  $("chapterPanel").hidden = false;
-  const list = $("chapterList");
-  let index = 0;
-  const flush = () => {
-    if (chapterState.order === "desc") {
-      /* 倒序逐条前插：批次内保持 新→旧，且整批排在已有行之前 */
-      const end = Math.min(index + 300, fresh.length);
-      for (; index < end; index += 1) list.prepend(chapterRow(fresh[index]));
-    } else {
-      const fragment = document.createDocumentFragment();
-      const end = Math.min(index + 300, fresh.length);
-      for (; index < end; index += 1) fragment.appendChild(chapterRow(fresh[index]));
-      list.appendChild(fragment);
-    }
-    if (index < fresh.length) setTimeout(flush, 0);
-  };
-  flush();
-  updateChapterMeta();
+/* 提交用：未选范围返回全量（1 / 0 = 到末尾） */
+function chapterRangeSpec() {
+  const input = $("rangeExpr");
+  return { chapter_first: 1, chapter_last: 0, chapter_ranges: input ? input.value.trim() : "" };
 }

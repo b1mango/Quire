@@ -18,7 +18,15 @@ from ..fetch.browser_endpoint import validate_endpoint
 from ..image.options import PRESETS
 from ..workspace import atomic_output
 
-THEMES = ("paper:light", "darkroom:light", "darkroom:dark", "swiss:light")
+THEMES = ("light", "dark", "system")
+ACCENTS = ("cinnabar", "indigo", "ink")
+# 2026-11 主题收敛：旧四主题 → 明暗 + 强调色（项目设计.md §3.3）
+LEGACY_THEMES = {
+    "paper:light": ("light", "cinnabar"),
+    "darkroom:dark": ("dark", "indigo"),
+    "darkroom:light": ("light", "indigo"),
+    "swiss:light": ("light", "ink"),
+}
 MAX_RATE = 10.0  # 应用默认策略上限，并非站点承载能力测量值
 OCR_MODES = ("auto", "always", "never")
 
@@ -32,7 +40,8 @@ class UiSettings:
     concurrency: int = 16
     rate: float = 6.0
     ocr: str = "auto"
-    theme: str = "paper:light"
+    theme: str = "system"
+    accent: str = "cinnabar"
     auto_check_updates: bool = False
     obey_robots: bool = False
     browser_native: bool = False
@@ -66,6 +75,8 @@ class UiSettings:
             raise ConfigError("OCR 模式须为 auto、always 或 never")
         if self.theme not in THEMES:
             raise ConfigError("未知主题")
+        if self.accent not in ACCENTS:
+            raise ConfigError("未知强调色")
         if type(self.auto_check_updates) is not bool:
             raise ConfigError("自动检查追更开关须为布尔值")
         if type(self.obey_robots) is not bool:
@@ -97,6 +108,9 @@ def parse(payload: Any) -> UiSettings:
     legacy_presets = {"lossless": "archive", "high": "balanced", "tiny": "small"}
     if payload.get("compress") in legacy_presets:
         payload = {**payload, "compress": legacy_presets[payload["compress"]]}
+    if payload.get("theme") in LEGACY_THEMES:
+        mode, accent = LEGACY_THEMES[payload["theme"]]
+        payload = {"accent": accent, **payload, "theme": mode}
     known = {
         "output_dir",
         "compress",
@@ -106,6 +120,7 @@ def parse(payload: Any) -> UiSettings:
         "rate",
         "ocr",
         "theme",
+        "accent",
         "auto_check_updates",
         "obey_robots",
         "browser_native",

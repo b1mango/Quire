@@ -40,6 +40,7 @@ async function refreshQueueStatus() {
     queueStatuses.clear();
     (data.jobs || []).forEach((job) => queueStatuses.set(job.id, job.status));
     paintQueueStatus();
+    if (typeof onJobsPolled === "function") onJobsPolled(data.jobs || []);
   } catch (_) { /* 网络失败时保留最后确认的状态。 */ }
   finally {
     queuePolling = false;

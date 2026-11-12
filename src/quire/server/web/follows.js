@@ -1,34 +1,12 @@
-/* 追更：检查更新 / 全部检查 / 一键追更。依赖 app.js 的 api/state/loadBooks/attachJob。 */
+/* 追更：NDJSON 流读取、单本检查、全部检查、续抓。依赖 app.js / library.js / capture.js。 */
 "use strict";
 
-function followBadge(book) {
-  if (!book.follow) return null;
-  const badge = document.createElement("span");
-  if (book.follow.changed) {
-    badge.className = "badge changed";
-    badge.textContent = "目录变动";
-  } else if (book.follow.update > 0) {
-    badge.className = "badge";
-    badge.textContent = `+${book.follow.update} 章`;
-  } else {
-    return null;
-  }
-  return badge;
-}
-
-function updateFollowButtons(book) {
-  const follow = book && book.follow;
-  $("bookCheckBtn").hidden = !follow;
-  $("bookFollowBtn").hidden = !(follow && follow.update > 0 && !follow.changed);
-  if (follow && follow.update > 0) $("bookFollowBtn").textContent = `追更 +${follow.update} 章`;
-}
-
-/* NDJSON 流读取（与 probe 同协议）：阶段/进度帧回调，result/error 帧收尾 */
-function streamFrames(url, onFrame) {
+/* NDJSON 流（probe / 检查更新 / OCR 下载同协议）：普通帧回调，result/error 帧收尾 */
+function streamFrames(url, onFrame, body = {}) {
   return fetch(url, {
     method: "POST",
     headers: { "X-Quire-Token": TOKEN, "Content-Type": "application/json" },
-    body: "{}",
+    body: JSON.stringify(body),
   }).then(async (res) => {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -62,168 +40,79 @@ function streamFrames(url, onFrame) {
   });
 }
 
-function showLibCheck(text, fraction) {
-  $("libCheckBar").hidden = false;
-  $("libCheckText").textContent = text;
-  if (fraction != null) $("libCheckFill").style.width = `${Math.round(fraction * 100)}%`;
-}
-
-function hideLibCheck() {
-  $("libCheckBar").hidden = true;
-  $("libCheckFill").style.width = "0";
-}
-
-/* ------------------------------------------------------------ 检查结果弹窗 */
-
-let updateDialogBook = null;
-
-function showUpdateDialog(build) {
-  const body = $("updateDialogBody");
-  body.textContent = "";
-  build(body);
-  $("updateDialog").showModal();
-}
-
-/* 跳转采集台续解析：带上原链接立即识别，章节列表会标注已在库进度（probe 的 library 字段） */
-function resumeInCapture(bookId) {
-  const book = (state.books || []).find((item) => item.id === bookId);
+/* 跳到采集页，用原链接重新识别；probe 的 library 字段会把起点放在已抓章节之后 */
+function resumeInCapture(book) {
   if (!book || !book.source_url) return;
-  $("updateDialog").close();
-  saveTabState(tabKey());
-  state.kind = book.kind;
-  state.captureMode = "catalogue";
-  switchTab();
-  showView("new");
-  setSeg($("kindSeg"), "kind", book.kind);
-  setSeg($("captureSeg"), "capture", "catalogue");
-  $("urlInput").value = book.source_url;
-  recheckUrl();
+  go("capture");
+  captureUrl(book.source_url);
 }
 
-function openBookUpdateDialog(book, data) {
-  showUpdateDialog((body) => {
-    const title = document.createElement("p");
-    title.textContent = `《${book.title}》`;
-    const counts = document.createElement("p");
-    counts.textContent = `书库已抓到第 ${data.chapters} 章 · 来源更新到第 ${data.remote_count} 章`;
-    const note = document.createElement("p");
-    note.className = "hint";
-    note.textContent = data.changed
-      ? "来源目录在已抓末章处对不上，可能是站点改号或插章，建议去采集整本重抓。"
-      : data.update > 0
-        ? `有 ${data.update} 章新内容，去采集会从第 ${data.chapters + 1} 章续起。`
-        : "已是最新，没有新章节。";
-    body.append(title, counts, note);
+function updateLine(r) {
+  if (r.error) return html`<small class="bad">检查失败：${r.error}</small>`;
+  const tail = r.changed ? "目录有变动，建议整本重抓" : r.update ? `新增 ${r.update} 章` : "已是最新";
+  return html`<small class="num">书库第 ${r.chapters} 章 → 来源第 ${r.remote_count} 章 · ${tail}</small>`;
+}
+
+/* 单本检查：结果写回 book.follow 并刷新检查器；有更新时给出续抓入口 */
+async function checkBookUpdate(book, onStage) {
+  const data = await streamFrames(`/api/books/${book.id}/check-update`, (frame) => {
+    if (frame.stage && onStage) onStage(frame.stage);
   });
+  book.follow = { chapters: data.chapters, update: data.update, changed: data.changed };
+  renderSidebar();
+  if (data.changed) toast(`《${book.title}》目录有变动，建议整本重抓`, "去重抓", () => resumeInCapture(book));
+  else if (data.update > 0) toast(`《${book.title}》新增 ${data.update} 章`, "续抓", () => followBook(book));
+  else toast(`《${book.title}》已是最新`);
+  return data;
 }
 
-function openCheckAllDialog(results) {
-  showUpdateDialog((body) => {
-    const summary = document.createElement("p");
-    if (!results.length) {
-      summary.textContent = "书库里没有可追更的书。";
-      body.append(summary);
-      return;
-    }
-    const updates = results.filter((r) => r.update > 0).length;
-    const failed = results.filter((r) => r.error).length;
-    summary.textContent = `共检查 ${results.length} 本：${updates} 本有更新` +
-      (failed ? `，${failed} 本检查失败` : updates ? "" : "，全部已是最新");
-    body.append(summary);
-    const rows = document.createElement("div");
-    rows.className = "update-rows";
-    results.forEach((r) => {
-      const row = document.createElement("div");
-      row.className = "update-row";
-      const text = document.createElement("span");
-      text.className = "umeta";
-      text.textContent = r.error
-        ? `${r.title} · 检查失败：${r.error}`
-        : `${r.title} · 库中第 ${r.chapters} 章 → 来源第 ${r.remote_count} 章` +
-          (r.changed ? "（目录变动）" : r.update ? `（+${r.update} 章）` : "");
-      row.append(text);
-      if (!r.error) {
-        const go = document.createElement("button");
-        go.className = "btn ghost";
-        go.textContent = r.changed ? "去重抓" : r.update ? "去续更" : "去解析";
-        go.addEventListener("click", () => resumeInCapture(r.book_id));
-        row.append(go);
-      }
-      rows.append(row);
-    });
-    body.append(rows);
-  });
+/* 一键续抓：服务端按追更进度只抓新章节并合并进原书 */
+function followBook(book) {
+  return api(`/api/books/${book.id}/follow`, { method: "POST" }).then((job) => {
+    trackJob(job, true);
+    toast(`已开始续抓《${book.title}》`, "查看", () => go("tasks"));
+  }).catch((err) => toast(errText(err)));
 }
 
-function checkBookUpdate() {
-  const book = state.selectedBook;
-  if (!book) return;
-  $("bookCheckBtn").disabled = true;
-  showLibCheck(`《${book.title}》 ${PROBE_STAGES.fetch}`, 0.05);
-  streamFrames(`/api/books/${book.id}/check-update`, (frame) => {
-    if (frame.stage)
-      showLibCheck(
-        `《${book.title}》 ${PROBE_STAGES[frame.stage] || frame.stage}`,
-        (PROBE_STAGE_PROGRESS[frame.stage] || 30) / 100
-      );
-  }).then((data) => {
-    hideLibCheck();
-    book.follow = {
-      chapters: data.chapters,
-      update: data.update,
-      changed: data.changed,
-      remote_count: data.remote_count,
-    };
-    updateFollowButtons(book);
-    updateDialogBook = book;
-    $("updateDialogGo").hidden = false;
-    $("updateDialogGo").textContent = data.changed ? "去采集重抓" : "去采集续更";
-    openBookUpdateDialog(book, data);
-    loadBooks();
-  }).catch((err) => {
-    hideLibCheck();
-    $("libSub").textContent = err.hint ? `${err.message} ${err.hint}` : err.message;
-  }).finally(() => { $("bookCheckBtn").disabled = false; });
-}
-
-function followBook() {
-  const book = state.selectedBook;
-  if (!book) return;
-  $("bookFollowBtn").disabled = true;
-  api(`/api/books/${book.id}/follow`, { method: "POST" }).then((job) => {
-    attachJob(job);
-    showView("run");
-  }).catch((err) => {
-    $("libSub").textContent = err.hint ? `${err.message} ${err.hint}` : err.message;
-  }).finally(() => { $("bookFollowBtn").disabled = false; });
-}
-
+let checkingAll = false;
 function checkAllUpdates(silent) {
-  $("checkAllBtn").disabled = true;
-  showLibCheck("正在准备检查……", 0);
+  if (checkingAll) return;
+  checkingAll = true;
+  const btn = $("checkAll"), label = $("checkAllTxt");
+  btn.disabled = true;
+  label.textContent = "检查中…";
   streamFrames("/api/books/check-all-updates", (frame) => {
-    if (typeof frame.total === "number" && typeof frame.done !== "number") {
-      showLibCheck(frame.total ? `开始检查 ${frame.total} 本……` : "书库里没有可追更的书", 0);
-    } else if (typeof frame.done === "number") {
-      showLibCheck(
-        `正在检查 ${frame.done}/${frame.total} · 《${frame.title}》`,
-        frame.total ? frame.done / frame.total : 1
-      );
-    }
+    if (typeof frame.done === "number") label.textContent = `检查中 ${frame.done}/${frame.total}`;
   }).then((data) => {
-    hideLibCheck();
-    const updates = data.results.filter((r) => r.update > 0).length;
-    updateDialogBook = null;
-    $("updateDialogGo").hidden = true;
-    if (!silent || updates) openCheckAllDialog(data.results);
+    const results = data.results || [];
+    const updates = results.filter((r) => r.update > 0 || r.changed);
     loadBooks();
-  }).catch(() => { hideLibCheck(); }).finally(() => { $("checkAllBtn").disabled = false; });
+    if (silent && !updates.length) return;
+    if (!results.length) { toast("书库里没有追更中的书"); return; }
+    if (!updates.length) { toast(`已检查 ${results.length} 本，全部是最新`); return; }
+    toast(`${updates.length} 本有更新`, "查看", () => showCheckResults(results));
+    if (!silent) showCheckResults(results);
+  }).catch((err) => { if (!silent) toast(errText(err)); })
+    .finally(() => { checkingAll = false; btn.disabled = false; label.textContent = "检查更新"; });
 }
 
-$("bookCheckBtn").addEventListener("click", checkBookUpdate);
-$("bookFollowBtn").addEventListener("click", followBook);
-$("checkAllBtn").addEventListener("click", () => checkAllUpdates(false));
-$("updateDialogClose").addEventListener("click", () => $("updateDialog").close());
-$("updateDialogGo").addEventListener("click", () => {
-  if (updateDialogBook) resumeInCapture(updateDialogBook.id);
-});
+function showCheckResults(results) {
+  const failed = results.filter((r) => r.error).length;
+  const body = html`<p>共检查 ${results.length} 本${failed ? `，${failed} 本失败` : ""}</p>
+    <div class="rows">${results.map((r) => html`<div><div class="t"><b>${r.title}</b>${updateLine(r)}</div>
+      ${!r.error && (r.update > 0 || r.changed)
+        ? html`<button class="btn ${r.changed ? "" : "primary"}" data-follow="${r.book_id}" data-changed="${r.changed ? 1 : ""}">${r.changed ? "去重抓" : "续抓"}</button>` : ""}</div>`)}</div>`;
+  confirmBox({
+    title: "追更检查结果", body, ok: "", cancel: "关闭", wide: true,
+    onClick: (e, done) => {
+      const b = e.target.closest("[data-follow]");
+      if (!b) return false;
+      const book = state.books.find((x) => x.id === b.dataset.follow);
+      done(false);
+      if (book) (b.dataset.changed ? resumeInCapture : followBook)(book);
+      return true;
+    },
+  });
+}
+
+$("checkAll").addEventListener("click", () => checkAllUpdates(false));

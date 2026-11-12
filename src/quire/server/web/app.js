@@ -1,64 +1,20 @@
-/* 卷帙 Quire Web UI — 零构建原生 JS。所有动态文本走 textContent，不拼 HTML。 */
+/* 卷帙 quire Web UI — 零构建原生 JS。
+   核心：令牌与请求、转义模板、导航、主题、Toast/确认框、全局快捷键、启动。
+   动态文本一律经 html`` 模板转义后再写入 DOM（站点标题、书名都可能含标记）。 */
 "use strict";
 
 const TOKEN = new URLSearchParams(location.search).get("token") || "";
 const $ = (id) => document.getElementById(id);
 
-const FORMATS = { manga: [["pdf", "PDF"], ["cbz", "CBZ"], ["zip", "原图 ZIP"]],
-                  novel: [["epub", "EPUB"], ["txt", "TXT"], ["pdf", "PDF"]] };
-
 const state = {
-  caps: null, settings: null, probe: null, kind: "novel", captureMode: "catalogue",
-  job: null, events: null, lastSeq: 0, startedAt: 0, timer: null,
-  bookId: null, books: [], selectedBook: null, lastSpec: null,
-  groups: [], filterGroup: null, managing: false, selected: new Set(),
-  booksSeq: 0, booksError: false,
+  view: "capture", group: "all", layout: "grid", search: "",
+  caps: null, settings: null, sites: [],
+  books: [], groups: [], booksLoaded: false, booksError: null,
+  sel: new Set(), anchor: null,
+  probe: null, jobs: new Map(), job: null,
 };
 
-/* ------------------------------------------------------------ 标签页状态
-   采集台四个标签(小说/漫画 × 目录/单章)各自独立保留 URL 输入、识别结果
-   与章节选择;切走再切回看到原样。进行中的识别不后台继续,只保留已渲染结果。 */
-
-const tabStates = {};
-function tabKey() { return `${state.kind}:${state.captureMode}`; }
-
-function saveTabState(key) {
-  tabStates[key] = {
-    url: $("urlInput").value,
-    probe: state.probe,
-    rangeExpr: $("rangeExpr").value,
-    splitMode: $("splitMode").value,
-    volumes: [...$("volumeList").querySelectorAll("input")].map((x) => x.checked),
-  };
-}
-
-function switchTab() {
-  /* 调用方已更新 state.kind / state.captureMode;先作废旧标签在途的识别 */
-  state.probeRequest = Symbol();
-  clearTimeout(probeTimer);
-  const saved = tabStates[tabKey()];
-  resetProbe();
-  if (!saved) {
-    $("urlInput").value = "";
-    renderFormatChips(); updateKindFields();
-    return;
-  }
-  $("urlInput").value = saved.url;
-  $("splitMode").value = saved.splitMode;
-  if (saved.probe) {
-    renderProbeResult(saved.probe);
-    [...$("volumeList").querySelectorAll("input")].forEach((x, i) => {
-      if (i < saved.volumes.length) x.checked = saved.volumes[i];
-    });
-    $("rangeExpr").value = saved.rangeExpr;
-    syncSelectsFromExpr();
-    updateRangeSummary(); syncSeriesAvailability();
-  } else {
-    renderFormatChips(); updateKindFields();
-  }
-}
-
-/* ------------------------------------------------------------ 基础 */
+/* ------------------------------------------------------------ 请求 */
 
 function api(path, options = {}) {
   const init = { headers: { "X-Quire-Token": TOKEN }, ...options };
@@ -77,8 +33,15 @@ function api(path, options = {}) {
   });
 }
 
+function errText(err) { return err.hint ? `${err.message} ${err.hint}` : err.message; }
+/* 后端个别底层报错还是英文：标题换成中文，原文降为补充说明 */
+function readableError(message, fallback = "任务没有完成") {
+  const text = String(message || "");
+  return /[\u4e00-\u9fff]/.test(text) ? { title: text, detail: "" } : { title: fallback, detail: text };
+}
+
 function humanSize(num) {
-  let value = num;
+  let value = num || 0;
   for (const unit of ["B", "KB", "MB", "GB"]) {
     if (value < 1024 || unit === "GB") return `${value.toFixed(unit === "B" ? 0 : 1)} ${unit}`;
     value /= 1024;
@@ -86,549 +49,180 @@ function humanSize(num) {
   return `${num} B`;
 }
 
+/* ------------------------------------------------------------ 转义模板
+   html`<b>${title}</b>` 对插值逐个转义；嵌套 html`` 或数组原样拼接。 */
 
-function setSeg(seg, attr, value) {
-  seg.querySelectorAll("button").forEach((b) =>
-    b.setAttribute("aria-pressed", String(b.dataset[attr] === value)));
+function raw(text) { const s = String(text); return { raw: s, toString: () => s }; }
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
-function segValue(seg, attr) {
-  const pressed = seg.querySelector('button[aria-pressed="true"]');
-  return pressed ? pressed.dataset[attr] : null;
+function fmtPart(value) {
+  if (value == null || value === false) return "";
+  if (Array.isArray(value)) return value.map(fmtPart).join("");
+  if (typeof value === "object" && typeof value.raw === "string") return value.raw;
+  return esc(value);
 }
-function bindSeg(seg, attr, onChange) {
-  seg.addEventListener("click", (e) => {
-    const b = e.target.closest("button");
-    if (!b) return;
-    setSeg(seg, attr, b.dataset[attr]);
-    if (onChange) onChange(b.dataset[attr]);
+function html(strings, ...values) {
+  let out = strings[0];
+  values.forEach((value, i) => { out += fmtPart(value) + strings[i + 1]; });
+  return raw(out);
+}
+
+/* ------------------------------------------------------------ 导航 */
+
+const VIEW_HOOKS = {};
+function go(view, group) {
+  state.view = view;
+  if (group) state.group = group;
+  document.querySelectorAll("[data-view]").forEach((v) => { v.hidden = v.dataset.view !== view; });
+  paintNav();
+  if (VIEW_HOOKS[view]) VIEW_HOOKS[view]();
+}
+function paintNav() {
+  document.querySelectorAll(".nav[data-go]").forEach((n) => {
+    const on = n.dataset.go === state.view
+      && (state.view !== "library" || (n.dataset.group || "all") === state.group);
+    if (on) n.setAttribute("aria-current", "page"); else n.removeAttribute("aria-current");
   });
 }
+document.addEventListener("click", (e) => {
+  const n = e.target.closest("[data-go]");
+  if (n) go(n.dataset.go, n.dataset.group);
+});
 
-function showView(name) {
-  document.querySelectorAll("[data-view-btn]").forEach((x) =>
-    x.setAttribute("aria-current", String(x.dataset.viewBtn === name)));
-  document.querySelectorAll(".view").forEach((x) => { x.hidden = x.dataset.view !== name; });
-  if (name === "lib") loadBooks();
+/* ------------------------------------------------------------ 主题：明暗 × 强调色 */
+
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+function applyTheme(theme, accent) {
+  const t = ["light", "dark", "system"].includes(theme) ? theme : "system";
+  const a = ["cinnabar", "indigo", "ink"].includes(accent) ? accent : "cinnabar";
+  document.documentElement.dataset.mode = t === "system" ? (darkQuery.matches ? "dark" : "light") : t;
+  document.documentElement.dataset.accent = a;
+  document.documentElement.dataset.theme = t;
+  localStorage.setItem("quire-look", JSON.stringify([t, a]));
+  document.querySelectorAll("[data-mode-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.modeSet === t)));
+  document.querySelectorAll("[data-accent-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.accentSet === a)));
 }
+darkQuery.addEventListener("change", () => {
+  if (document.documentElement.dataset.theme === "system")
+    applyTheme("system", document.documentElement.dataset.accent);
+});
+try { applyTheme(...JSON.parse(localStorage.getItem("quire-look") || "[]")); } catch (_) { applyTheme(); }
 
-/* ------------------------------------------------------------ 主题 */
+/* ------------------------------------------------------------ Toast 与确认框 */
 
-const PRESETS = {
-  "paper:light": ["paper", "light"], "darkroom:light": ["darkroom", "light"],
-  "darkroom:dark": ["darkroom", "dark"], "swiss:light": ["swiss", "light"],
-};
-function applyPreset(key, persist) {
-  const [theme, mode] = PRESETS[key] || PRESETS["paper:light"];
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.dataset.mode = mode;
-  document.querySelectorAll("[data-preset]").forEach((x) =>
-    x.setAttribute("aria-pressed", String(x.dataset.preset === key)));
-  localStorage.setItem("quire-theme", key);
-  if (persist) api("/api/settings", { method: "PUT", body: { theme: key } }).catch(() => {});
-}
-document.querySelectorAll("[data-preset]").forEach((b) =>
-  b.addEventListener("click", () => applyPreset(b.dataset.preset, true)));
-
-/* ------------------------------------------------------------ 新建任务 */
-
-/* ------------------------------------------------------------ 进行中 */
-
-function attachJob(job) {
-  if (state.events) { state.events.close(); state.events = null; }
-  state.job = job;
-  state.bookId = job.book_id || null;
-  state.lastSeq = 0;
-  state.startedAt = Date.now();
-  resetRunView(job);
-  if (typeof updateQueueJob === "function") updateQueueJob(job);
-  appendChapters(job.chapters || []);
-  if (job.status === "pending" || job.status === "running") {
-    if (job.status === "pending") $("runSub").textContent = "排队中，等前面的任务完成……";
-    const source = new EventSource(`/api/jobs/${job.id}/events?token=${encodeURIComponent(TOKEN)}`);
-    state.events = source;
-    ["phase", "progress", "thumb", "volume", "chapter", "done", "failed", "cancelled", "paused"].forEach((kind) =>
-      source.addEventListener(kind, (e) => {
-        state.lastSeq = parseInt(e.lastEventId, 10) || state.lastSeq;
-        onJobEvent(kind, JSON.parse(e.data));
-      }));
-  } else {
-    finishRunView(job.status, { message: job.error, hint: job.hint, book_id: job.book_id,
-      failures: job.failed_pages, partial: job.status === "partial", title: job.title });
+let toastTimer = null;
+function toast(message, action, onAction) {
+  $("toastTxt").textContent = message;
+  const btn = $("toastAct");
+  btn.hidden = !action;
+  if (action) {
+    btn.textContent = action;
+    btn.onclick = () => { $("toast").classList.remove("on"); onAction(); };
   }
+  $("toast").classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.remove("on"), action ? 6000 : 3600);
 }
 
-
-function finishRunView(status, data) {
-  if (state.job) state.job.status = status;
-  if (state.events) { state.events.close(); state.events = null; }
-  if (state.timer) { clearInterval(state.timer); state.timer = null; }
-  if (typeof updateQueueJob === "function") updateQueueJob(state.job);
-  $("cancelBtn").hidden = true;
-  $("pauseBtn").hidden = true;
-  $("runDoneActions").hidden = false;
-  state.bookId = data.book_id || null;
-  $("openBookBtn").hidden = !state.bookId;
-  $("goLibBtn").hidden = !state.bookId;
-  $("resumeBtn").hidden = true;
-  $("retryBtn").hidden = !(state.lastSpec || (state.job && state.job.spec));
-  if (Number.isFinite(data.failures)) {
-    $("statFailed").textContent = data.failures;
-    $("statDone").textContent = Math.max(0, Number($("statTotal").textContent) - data.failures);
-  }
-  if (status === "done") {
-    $("runTitle").textContent = data.title || $("runTitle").textContent;
-    $("runSub").textContent = `完成 · ${humanSize(data.bytes || 0)} · ${data.elapsed_s ?? "—"} 秒`;
-    $("meterFill").style.width = "100%";
-  } else if (status === "partial") {
-    $("runTitle").textContent = data.title || $("runTitle").textContent;
-    const cancelled = (data.warnings || []).some((w) => String(w).includes("已取消"));
-    $("runSub").textContent = cancelled
-      ? "已取消：已抓取的部分已导出为半成品，点「重试」从缓存续抓，不重头"
-      : "已完成，但有缺页";
-    $("partialNote").hidden = false;
-    $("partialNote").textContent =
-      `${data.failures} 页缺失，已用占位页补齐。修正链接后点「重试」可以只补缺失的部分。` +
-      (data.warnings && data.warnings.length ? " " + data.warnings[0] : "");
-    $("meterFill").style.width = "100%";
-  } else if (status === "cancelled") {
-    $("runSub").textContent = "已取消，已下载的部分会保留";
-  } else if (status === "paused") {
-    $("runSub").textContent = "已暂停，已抓取的部分保留在缓存里，点「继续」接着抓";
-    $("resumeBtn").hidden = !(state.lastSpec || (state.job && state.job.spec));
-    $("retryBtn").hidden = true;
-  } else {
-    $("runSub").textContent = "没有完成";
-    $("failedNote").hidden = false;
-    $("failedNote").textContent = data.hint ? `${data.message} ${data.hint}` : (data.message || "任务失败");
-  }
-}
-
-/* ------------------------------------------------------------ 书库 */
-
-/* 封面规则:有真实封面用真实封面(漫画=首章首页);没有则生成文字封面——
-   书名前 8 字分两行居中,细线内框 + 双色渐变(按书名散列,与主题协调)。 */
-function coverPlaceholder(title, seedText) {
-  let seed = 0;
-  for (const ch of seedText) seed = (seed * 31 + ch.codePointAt(0)) >>> 0;
-  const colors = document.documentElement.dataset.theme === "paper" ? ["#625B50", "#746B5D", "#514D45"] : ["#1F3A5F", "#5B2A2A", "#243B32", "#3A2F52", "#4A3A1E", "#1E3B45", "#432B3B", "#2C3A20"];
-  const c = colors[seed % colors.length], c2 = colors[(seed >> 3) % colors.length];
-  const chars = (title || "书").slice(0, 8);
-  const lines = [];
-  for (let i = 0; i < chars.length; i += 4) lines.push(chars.slice(i, i + 4));
-  const fontSize = lines.length > 1 ? 52 : 64;
-  const startY = 210 - (lines.length - 1) * (fontSize * 0.72);
-  const text = lines.map((line, i) =>
-    `<text x="150" y="${startY + i * fontSize * 1.35}" font-size="${fontSize}" font-family="Songti SC,STSong,serif" fill="#fff" opacity=".94" text-anchor="middle" letter-spacing="4">${line}</text>`
-  ).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="420" viewBox="0 0 300 420">` +
-    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>` +
-    `<rect width="300" height="420" fill="url(#g)"/>` +
-    `<rect x="16" y="16" width="268" height="388" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="1"/>` +
-    text +
-    `<line x1="110" y1="330" x2="190" y2="330" stroke="#fff" stroke-opacity=".5" stroke-width="1"/>` +
-    `</svg>`;
-  return "data:image/svg+xml," + encodeURIComponent(svg);
-}
-
-function loadBooks() {
-  const search = $("searchInput").value.trim();
-  const seq = ++state.booksSeq;
-  state.booksError = false;
-  syncLibRetry();
-  return api("/api/books" + (search ? `?search=${encodeURIComponent(search)}` : "")).then((data) => {
-    if (seq !== state.booksSeq) return;
-    state.books = data.books;
-    state.groups = data.groups || [];
-    state.selectedBook = null;
-    state.selected = new Set();
-    closeBookMenu(false);
-    $("checkAllBtn").hidden = !data.books.some((b) => b.follow);
-    renderLibrary(search);
-  }).catch((err) => {
-    if (seq !== state.booksSeq) return;
-    state.booksError = true;
-    syncLibRetry();
-    $("libSub").textContent = `书库加载失败：${err.message || "网络错误"}，请重试`;
+/* 通用确认：body 为 html``；返回 Promise<boolean>。onClick(e, done) 返回 true 表示已处理。 */
+function confirmBox({ title, body = "", ok = "确定", cancel = "取消", danger = false, wide = false, onClick = null }) {
+  const box = $("confirmIn");
+  box.className = wide ? "confirm wide" : "confirm";
+  box.innerHTML = html`<h2 id="confirmTitle">${title}</h2>${body}
+    <div class="acts">${cancel ? html`<button class="btn" data-r="0">${cancel}</button>` : ""}
+    ${ok ? html`<button class="btn ${danger ? "danger" : "primary"}" data-r="1">${ok}</button>` : ""}</div>`;
+  const dialog = $("confirm");
+  return new Promise((resolve) => {
+    const done = (value) => { dialog.onclose = null; if (dialog.open) dialog.close(); resolve(value); };
+    box.onclick = (e) => {
+      if (onClick && onClick(e, done)) return;
+      const b = e.target.closest("[data-r]");
+      if (b) done(b.dataset.r === "1");
+    };
+    dialog.onclose = () => resolve(false);
+    dialog.showModal();
+    box.querySelector('[data-r="0"]')?.focus();
   });
 }
 
-function syncLibRetry() {
-  $("libRetryBtn").hidden = !state.booksError;
+/* ------------------------------------------------------------ 侧栏 */
+
+const GROUP_COLORS = ["#3D5A4C", "#8A5A3B", "#2E4A62", "#7A3B3B", "#4A4458", "#55636B", "#6B4A2E", "#3F5E5A"];
+function groupColor(group) { return GROUP_COLORS[state.groups.indexOf(group) % GROUP_COLORS.length]; }
+function hasUpdate(book) { return Boolean(book.follow && (book.follow.update > 0 || book.follow.changed)); }
+
+function renderSidebar() {
+  const books = state.books;
+  const count = (n) => (n ? String(n) : "");
+  $("cntAll").textContent = count(books.length);
+  $("cntUpd").textContent = count(books.filter(hasUpdate).length);
+  $("cntFol").textContent = count(books.filter((b) => b.follow).length);
+  $("groupNav").innerHTML = html`${state.groups.map((g) => html`<button class="nav" data-go="library" data-group="${g.id}" data-drop="${g.id}"
+    ><span class="dot" style="background:${groupColor(g)}"></span><span>${g.name}</span><span class="count num">${count(books.filter((b) => b.group === g.id).length)}</span></button>`)}`;
+  paintNav();
 }
 
-/* ------------------------------------------------------------ 设置 */
+/* ------------------------------------------------------------ 全局快捷键 */
 
-function loadSettingsView() {
-  api("/api/settings").then((settings) => {
-    state.settings = settings;
-    $("setOutput").value = settings.output_dir;
-    setSeg($("setCompressSeg"), "compress", settings.compress);
-    syncCompressDesc($("setCompressSeg"), "setCompressDesc");
-    setSeg($("setOcrSeg"), "ocr", settings.ocr);
-    $("setTaskNovel").value = settings.task_novel_mb;
-    $("setTaskManga").value = settings.task_manga_mb;
-    syncSplitSizeOption();
-    $("setConcurrency").value = settings.concurrency;
-    $("setRate").value = settings.rate;
-    $("setAutoCheck").checked = !!settings.auto_check_updates;
-    $("setRobots").checked = !!settings.obey_robots;
-    $("setBrowserNative").checked = !!settings.browser_native;
-    $("setCdpEndpoint").value = settings.cdp_endpoint || "";
-  }).catch((err) => { $("settingsMeta").textContent = err.message; });
-  api("/api/capabilities").then(renderDoctor).catch(() => {});
+function typing() {
+  const el = document.activeElement;
+  return Boolean(el && (el.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)));
 }
-
-function updateOcrModule(caps) {
-  const ocr = (caps && caps.ocr) || {};
-  const status = $("ocrModuleStatus");
-  $("ocrDownloadBtn").hidden = true;
-  if (ocr.tesseract) {
-    status.textContent = "tesseract 已就绪，图片正文可直接识别";
-  } else if (!ocr.onnxruntime) {
-    status.textContent = "没有 OCR 引擎（应用未含内置引擎；也可以安装 tesseract）";
-  } else if (ocr.models_ready) {
-    status.textContent = "内置 OCR 已就绪";
-  } else {
-    status.textContent = "内置引擎就绪，模型未下载（约 16 MB）";
-    $("ocrDownloadBtn").hidden = false;
-  }
-}
-
-function renderDoctor(caps) {
-  state.caps = caps;
-  syncOcrAvailability();
-  updateChromeHint();
-  const dl = $("doctorList");
-  dl.textContent = "";
-  const rows = [
-    ["版本", `quire ${caps.version}`],
-    ["Chrome", caps.chrome || "未找到（小说转 PDF 需要）"],
-    ["tesseract", caps.ocr.tesseract ? "已安装" : "未安装"],
-    ["内置 OCR", caps.ocr.onnxruntime ? (caps.ocr.models_ready ? "模型已就绪" : "模型未下载") : "未安装（quire-local[ocr]）"],
-    ["数据目录", caps.data_dir],
-    ["输出目录", caps.output_dir],
-  ];
-  rows.forEach(([key, value]) => {
-    const dt = document.createElement("dt");
-    dt.textContent = key;
-    const dd = document.createElement("dd");
-    dd.textContent = value;
-    dl.append(dt, dd);
-  });
-  updateOcrModule(caps);
-}
-
-function saveSettings() {
-  const concurrency = parseInt($("setConcurrency").value, 10);
-  const rate = parseFloat($("setRate").value);
-  const taskNovel = parseInt($("setTaskNovel").value, 10);
-  const taskManga = parseInt($("setTaskManga").value, 10);
-  const fieldError = $("setFieldError");
-  if (!Number.isFinite(concurrency) || concurrency < 1 || concurrency > 32) {
-    fieldError.textContent = "并发须为 1–32 的整数";
-    fieldError.hidden = false;
-    $("setConcurrency").focus();
-    return;
-  }
-  if (!Number.isFinite(rate) || rate <= 0 || rate > 10) {
-    fieldError.textContent = "每站限速须为 0–10 之间的数值";
-    fieldError.hidden = false;
-    $("setRate").focus();
-    return;
-  }
-  const checkTaskSize = (value, input) => {
-    if (Number.isFinite(value) && value >= 1 && value <= 1000000) return true;
-    fieldError.textContent = "任务体积上限须为 1-1000000 MB 的整数";
-    fieldError.hidden = false;
-    input.focus();
-    return false;
-  };
-  if (!checkTaskSize(taskNovel, $("setTaskNovel")) || !checkTaskSize(taskManga, $("setTaskManga"))) return;
-  fieldError.hidden = true;
-  const payload = {
-    output_dir: $("setOutput").value.trim(),
-    compress: segValue($("setCompressSeg"), "compress"),
-    ocr: segValue($("setOcrSeg"), "ocr"),
-    task_novel_mb: taskNovel,
-    task_manga_mb: taskManga,
-    concurrency,
-    rate,
-    auto_check_updates: $("setAutoCheck").checked,
-    obey_robots: $("setRobots").checked,
-    browser_native: $("setBrowserNative").checked,
-    cdp_endpoint: $("setCdpEndpoint").value.trim(),
-  };
-  const btn = $("saveSettingsBtn");
-  btn.disabled = true;
-  $("settingsMeta").textContent = "保存中…";
-  api("/api/settings", { method: "PUT", body: payload }).then((settings) => {
-    state.settings = settings;
-    syncSplitSizeOption();
-    $("settingsMeta").textContent = "已保存";
-  }).catch((err) => {
-    $("settingsMeta").textContent = `保存失败：${err.message}`;
-  }).finally(() => { btn.disabled = false; });
-}
-
-/* OCR 模块按需下载（模型文件，约 16 MB）；引擎本身随应用分发，不能页面下载 */
-$("ocrDownloadBtn").addEventListener("click", () => {
-  const btn = $("ocrDownloadBtn"), status = $("ocrModuleStatus");
-  btn.disabled = true;
-  $("ocrMeter").hidden = false;
-  $("ocrMeterFill").style.width = "5%";
-  streamFrames("/api/ocr/models/download", (frame) => {
-    if (typeof frame.done === "number") {
-      $("ocrMeterFill").style.width = `${Math.round((frame.done / (frame.total || 1)) * 100)}%`;
-      status.textContent = `正在下载 ${frame.done}/${frame.total} · ${frame.file}`;
-    } else if (frame.total) {
-      status.textContent = `准备下载 ${frame.total} 个文件…`;
-    }
-  }).then(() => api("/api/capabilities")).then((caps) => {
-    $("ocrMeter").hidden = true;
-    renderDoctor(caps);
-  }).catch((err) => {
-    $("ocrMeter").hidden = true;
-    status.textContent = err.hint ? `${err.message} ${err.hint}` : `下载失败：${err.message}`;
-  }).finally(() => { btn.disabled = false; });
-});
-
-/* 原生壳里通过 NSOpenPanel 选目录（chooseDirectory 桥）；纯浏览器运行没有该桥，按钮保持隐藏 */
-const dirBridge = window.webkit && window.webkit.messageHandlers
-  && window.webkit.messageHandlers.chooseDirectory;
-if (dirBridge) {
-  $("browseOutputBtn").hidden = false;
-  $("browseOutputBtn").addEventListener("click", async () => {
-    try {
-      const path = await dirBridge.postMessage({});
-      if (path && typeof path === "string") {
-        $("setOutput").value = path;
-        $("settingsMeta").textContent = "";
-      }
-    } catch (_) { /* 面板不可用时仍走手动输入 */ }
-  });
-}
-
-/* 重新编辑任一设置字段后，撤去旧的“已保存/保存失败”状态 */
-["setOutput", "setConcurrency", "setRate", "setCdpEndpoint", "setTaskNovel", "setTaskManga"].forEach((id) => {
-  $(id).addEventListener("input", () => { $("settingsMeta").textContent = ""; });
-});
-["setRobots", "setAutoCheck", "setBrowserNative"].forEach((id) => {
-  $(id).addEventListener("change", () => { $("settingsMeta").textContent = ""; });
-});
-
-/* ------------------------------------------------------------ 事件绑定 */
-
-document.querySelectorAll("[data-view-btn]").forEach((b) =>
-  b.addEventListener("click", () => showView(b.dataset.viewBtn)));
-bindSeg($("kindSeg"), "kind", (kind) => {
-  saveTabState(tabKey());
-  state.kind = kind; switchTab();
-});
-bindSeg($("captureSeg"), "capture", (mode) => {
-  saveTabState(tabKey());
-  state.captureMode = mode; switchTab();
-});
-$("splitMode").addEventListener("change", recheckUrl);
-document.querySelectorAll("[data-command]").forEach(button => button.addEventListener("click", () => {
-  $("commandMenu").close(); showView(button.dataset.command);
-}));
-bindSeg($("compressSeg"), "compress", () => syncCompressDesc($("compressSeg"), "compressDesc"));
-bindSeg($("ocrSeg"), "ocr", syncOcrAvailability);
-bindSeg($("setCompressSeg"), "compress", () => syncCompressDesc($("setCompressSeg"), "setCompressDesc"));
-bindSeg($("setOcrSeg"), "ocr");
-
-$("pasteBtn").addEventListener("click", pasteUrl);
-let probeTimer = null;
-$("urlInput").addEventListener("input", () => {
-  resetProbe(); clearTimeout(probeTimer);
-  const url = $("urlInput").value.trim();
-  if (/^https?:\/\/.+/.test(url)) probeTimer = setTimeout(() => probeUrl(url), 500);
-});
-$("startBtn").addEventListener("click", startJob);
-$("cancelBtn").addEventListener("click", () => {
-  if (state.job) api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" }).catch(() => {});
-});
-$("pauseBtn").addEventListener("click", () => {
-  if (!state.job) return;
-  /* 暂停是协作式收尾，落定需要几秒；立即给出反馈，免得误以为没生效 */
-  $("pauseBtn").disabled = true;
-  $("pauseBtn").textContent = "暂停中…";
-  $("runSub").textContent = "正在暂停：进行中的页面先收尾，已抓取的部分保留在缓存里";
-  api(`/api/jobs/${state.job.id}/pause`, { method: "POST" }).catch(() => {
-    $("pauseBtn").disabled = false;
-    $("pauseBtn").textContent = "暂停";
-    $("runSub").textContent = "暂停请求没发出去，请再试一次";
-  });
-});
-function resubmitSpec() {
-  const spec = state.lastSpec || (state.job && state.job.spec);
-  if (!spec) return;
-  api("/api/jobs", { method: "POST", body: spec }).then((job) => attachJob(job)).catch((err) => {
-    $("failedNote").hidden = false;
-    $("failedNote").textContent = err.message;
-  });
-}
-$("resumeBtn").addEventListener("click", resubmitSpec);
-$("goLibBtn").addEventListener("click", () => showView("lib"));
-$("emptyNewBtn").addEventListener("click", () => showView("new"));
-$("openBookBtn").addEventListener("click", () => {
-  if (state.bookId) api(`/api/books/${state.bookId}/open`, { method: "POST" }).catch(() => {});
-});
-$("retryBtn").addEventListener("click", resubmitSpec);
-$("bookOpenBtn").addEventListener("click", () => {
-  if (state.selectedBook) openLibraryBook(state.selectedBook);
-});
-$("bookRevealBtn").addEventListener("click", () => {
-  if (!state.selectedBook) return;
-  api(`/api/books/${state.selectedBook.id}/reveal`, { method: "POST" }).catch((err) => {
-    $("libSub").textContent = err.hint ? `${err.message} ${err.hint}` : err.message;
-  });
-});
-let searchTimer = null;
-$("searchInput").addEventListener("input", () => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(loadBooks, 250);
-});
-$("libRetryBtn").addEventListener("click", loadBooks);
-$("emptyClearBtn").addEventListener("click", () => {
-  $("searchInput").value = "";
-  state.filterGroup = null;
-  loadBooks();
-});
-$("saveSettingsBtn").addEventListener("click", saveSettings);
-document.addEventListener("keydown", (e) => {
+function onShortcut(e) {
   if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-    e.preventDefault(); $("commandMenu").showModal(); return;
-  }
+  const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase();
+  if (mod && key === "k") { e.preventDefault(); openPalette(); return; }
+  if (document.querySelector("dialog[open]")) return;
+  const run = (fn) => { e.preventDefault(); fn(); };
+  if (mod && key === "n") run(() => { resetCapture(); go("capture"); });
+  else if (mod && key === "1") run(() => go("library", "all"));
+  else if (mod && key === "2") run(() => go("tasks"));
+  else if (mod && key === ",") run(() => go("settings"));
+  else if (mod && key === "enter" && state.view === "capture" && state.probe) run(startJob);
+  else if (mod && key === "f" && state.view === "library") run(() => $("libSearch").focus());
+  else if (mod && key === "a" && state.view === "library" && !typing()) run(selectAllBooks);
+  else if (mod && key === "backspace" && state.view === "library" && !typing() && state.sel.size) run(askDelete);
+  else if (key === "escape" && state.view === "library" && state.sel.size && !typing()) run(() => setSelection([]));
+}
+document.addEventListener("keydown", onShortcut);
+
+/* 任务页按 Esc 取消正在查看的任务（输入中、输入法组字、对话框打开时不触发）。 */
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
   if (document.querySelector("dialog[open]")) return;
   if (e.target.isContentEditable || e.target.closest?.("input, textarea, select")) return;
-  if (document.querySelector('.view[data-view="run"]').hidden) return;
-  if (e.key === "Escape" && state.job && (state.job.status === "running" || state.job.status === "pending")) {
+  if (document.querySelector('.view[data-view="tasks"]').hidden) return;
+  if (state.job && (state.job.status === "running" || state.job.status === "pending")) {
     api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" }).catch(() => {});
   }
 });
 
+/* 不在输入框时 ⌘V 一个链接：直接去采集并识别 */
+document.addEventListener("paste", (e) => {
+  if (typing() || document.querySelector("dialog[open]")) return;
+  const text = (e.clipboardData.getData("text") || "").trim();
+  if (/^https?:\/\/\S+$/.test(text)) { e.preventDefault(); go("capture"); captureUrl(text); }
+});
+
 /* ------------------------------------------------------------ 启动 */
 
-(function init() {
+function boot() {
   if (!TOKEN) {
-    document.querySelector(".content").textContent = "缺少访问令牌：请从 quire ui 打印的地址进入。";
+    document.body.innerHTML = html`<div class="no-token">缺少访问令牌：请从 quire ui 打印的地址进入。</div>`;
     return;
   }
-  // 主题锚点（与 ui-preview 一致）：#paper / #darkroom / #darkroom,light / #swiss
-  const anchor = { paper: "paper:light", darkroom: "darkroom:dark",
-                   "darkroom,light": "darkroom:light", swiss: "swiss:light" }[
-    (location.hash || "").replace("#", "")
-  ];
-  if (anchor) applyPreset(anchor, false);
+  if (window.webkit?.messageHandlers?.windowDrag) document.documentElement.dataset.shell = "";
   api("/api/settings").then((settings) => {
-    if (!anchor) applyPreset(settings.theme || localStorage.getItem("quire-theme") || "paper:light", false);
-    if (settings.auto_check_updates && typeof checkAllUpdates === "function") checkAllUpdates(true);
-  }).catch(() => {
-    if (!anchor) applyPreset(localStorage.getItem("quire-theme") || "paper:light", false);
-  });
-  renderFormatChips(); updateKindFields();
-  loadSettingsView();
-  api("/api/jobs").then(async (data) => {
-    const current = data.jobs.find((j) => j.status === "running" || j.status === "pending")
-      || data.jobs.find((j) => j.status === "paused");
-    if (current) {
-      const detail = await api(`/api/jobs/${current.id}`);
-      attachJob(detail); showView("run");
-    }
+    state.settings = settings;
+    applyTheme(settings.theme, settings.accent);
+    if (settings.auto_check_updates) checkAllUpdates(true);
   }).catch(() => {});
-})();
-
-/* ------------------------------------------------------------ 推荐站点
-   清单由服务端 /api/sites 提供(本项目实测可抓,见 项目进度.md)。
-   每张卡:标题 + 网址 + 资源特点;「打开站点」在默认浏览器打开主页找书,
-   「复制地址」供回采集台粘贴。 */
-(async function recSites() {
-  const cols = $("recCols");
-  if (!cols) return;
-  const data = await api("/api/sites").catch(() => null);
-  if (!data) return;
-  const buildCard = (site) => {
-    const url = `https://${site.host}/`;
-    const card = document.createElement("div");
-    card.className = "rec-card";
-    const head = document.createElement("div");
-    head.className = "rec-head";
-    const name = document.createElement("b");
-    name.textContent = site.name;
-    const kind = document.createElement("span");
-    kind.className = "rec-kind";
-    kind.textContent = site.kind;
-    head.append(name, kind);
-    const host = document.createElement("div");
-    host.className = "rec-host";
-    host.textContent = site.host;
-    card.append(head, host);
-    if (site.note) {
-      const note = document.createElement("div");
-      note.className = "rec-note";
-      note.textContent = site.note;
-      card.append(note);
-    }
-    const actions = document.createElement("div");
-    actions.className = "rec-actions";
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "btn primary";
-    open.textContent = "打开站点";
-    open.addEventListener("click", () => {
-      api("/api/sites/open", { method: "POST", body: { host: site.host } })
-        .then(() => {
-          open.textContent = "已在浏览器打开";
-          setTimeout(() => { open.textContent = "打开站点"; }, 1500);
-        })
-        .catch(() => { open.textContent = "打开失败"; setTimeout(() => { open.textContent = "打开站点"; }, 1500); });
-    });
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.className = "btn ghost";
-    copy.textContent = "复制地址";
-    copy.addEventListener("click", () => {
-      const done = () => {
-        copy.textContent = "已复制";
-        setTimeout(() => { copy.textContent = "复制地址"; }, 1200);
-      };
-      const fallback = () => {
-        const ta = document.createElement("textarea");
-        ta.value = url;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        try { if (document.execCommand("copy")) done(); } catch (_) {}
-        ta.remove();
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(done).catch(fallback);
-      } else {
-        fallback();
-      }
-    });
-    actions.append(open, copy);
-    card.append(actions);
-    return card;
-  };
-  /* 按类型分列（小说/漫画在前，未知类型依出现顺序补列）；站点增多时列内滑动 */
-  const kinds = ["小说", "漫画"];
-  data.sites.forEach((site) => { if (!kinds.includes(site.kind)) kinds.push(site.kind); });
-  kinds.forEach((kind) => {
-    const sites = data.sites.filter((site) => site.kind === kind);
-    if (!sites.length) return;
-    const section = document.createElement("section");
-    section.className = "rec-col";
-    const title = document.createElement("h2");
-    title.className = "rec-col-title";
-    title.textContent = kind;
-    const list = document.createElement("div");
-    list.className = "rec-col-list";
-    sites.forEach((site) => list.appendChild(buildCard(site)));
-    section.append(title, list);
-    cols.appendChild(section);
-  });
-})();
+  api("/api/capabilities").then((caps) => { state.caps = caps; }).catch(() => {});
+  loadBooks();
+  loadJobs();
+  loadSites();
+  go("capture");
+}
+window.addEventListener("DOMContentLoaded", boot);

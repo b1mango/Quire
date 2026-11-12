@@ -30,16 +30,12 @@ _LOG = logging.getLogger(__name__)
 
 _LOOPBACK = {"127.0.0.1", "::1"}
 _MAX_BODY = 65_536
-_STATIC = {
-    "app.css": "text/css; charset=utf-8",
-    "app.js": "text/javascript; charset=utf-8",
-    "library.js": "text/javascript; charset=utf-8",
-    "run-events.js": "text/javascript; charset=utf-8",
-    "capture.js": "text/javascript; charset=utf-8",
-    "chapters.js": "text/javascript; charset=utf-8",
-    "follows.js": "text/javascript; charset=utf-8",
-    "queue-status.js": "text/javascript; charset=utf-8",
-}
+_JS, _CSS = "text/javascript; charset=utf-8", "text/css; charset=utf-8"
+_JS_FILES = (
+    "app.js covers.js follows.js chapters.js capture.js run-events.js tasks.js"
+    " queue-status.js library.js inspector.js settings.js palette.js"
+)
+_STATIC = {"app.css": _CSS, "views.css": _CSS, **dict.fromkeys(_JS_FILES.split(), _JS)}
 
 
 class QuireServer(ThreadingHTTPServer):
@@ -241,9 +237,13 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._reply_json(200, endpoints.delete_book(self.server, parts[2]))
         if method == "POST" and len(parts) == 4 and parts[:2] == ["api", "books"]:
             if parts[3] == "open":
-                return self._reply_json(200, endpoints.open_book(self.server, parts[2]))
+                return self._reply_json(
+                    200, endpoints.open_book(self.server, parts[2], self._body())
+                )
             if parts[3] == "reveal":
-                return self._reply_json(200, endpoints.reveal_book(self.server, parts[2]))
+                return self._reply_json(
+                    200, endpoints.reveal_book(self.server, parts[2], self._body())
+                )
             if parts[3] == "check-update":
                 return self._stream_ndjson(
                     lambda send: follows.check_update_stream(self.server, parts[2], send)

@@ -1,72 +1,83 @@
+/* 任务事件 → 任务模型。每个进行中的任务一条 SSE；事件只改模型，渲染统一节流。
+   模型字段沿用服务端快照（id/kind/title/status/phase/done/total/failed_pages/error/hint/book_id/spec），
+   另加本地字段：chapters（已落定章节，按 id 去重）、thumbs（漫画缩略图）、result（完成摘要）。 */
 "use strict";
 
-const COMPRESS_DESC = {
-  archive: "保留原图，体积最大",
-  balanced: "日常阅读推荐",
-  small: "优先节省空间，体积最小",
-};
-function syncCompressDesc(seg, descId) {
-  const desc = $(descId);
-  if (desc) desc.textContent = COMPRESS_DESC[segValue(seg, "compress")] || "";
-  if (seg.id === "compressSeg") updateSizeEstimate();
+const LIVE = new Set(["pending", "running"]);
+const ENDED = new Set(["done", "partial", "failed", "cancelled"]);
+const EVENT_KINDS = ["phase", "progress", "thumb", "volume", "chapter", "done", "failed", "cancelled", "paused"];
+const streams = new Map();
+
+function jobModel(snapshot) {
+  const job = state.jobs.get(snapshot.id) || { chapters: new Map(), thumbs: [], result: null, volumes: 0 };
+  const { chapters, ...rest } = snapshot;
+  Object.assign(job, rest);
+  (chapters || []).forEach((c) => job.chapters.set(String(c.id), c));
+  state.jobs.set(job.id, job);
+  return job;
 }
 
-function onJobEvent(kind, data) {
+function connectJob(job) {
+  if (streams.has(job.id) || !LIVE.has(job.status)) return;
+  const source = new EventSource(`/api/jobs/${job.id}/events?token=${encodeURIComponent(TOKEN)}`);
+  streams.set(job.id, source);
+  EVENT_KINDS.forEach((kind) => source.addEventListener(kind, (e) => {
+    onJobEvent(job, kind, JSON.parse(e.data));
+    scheduleJobsPaint();
+  }));
+}
+
+function closeStream(job) {
+  const source = streams.get(job.id);
+  if (source) { source.close(); streams.delete(job.id); }
+}
+
+function onJobEvent(job, kind, data) {
   if (kind === "phase") {
-    $("runSub").textContent = { fetching: "正在抓取页面……", encoding: "正在压缩与合成……" }[data.phase] || data.phase;
+    job.phase = data.phase;
+    if (job.status === "pending") job.status = "running";
   } else if (kind === "progress") {
-    $("statDone").textContent = data.done;
-    $("statFailed").textContent = data.failed;
-    $("statTotal").textContent = data.total;
-    if (data.total) $("meterFill").style.width = `${((data.done + data.failed) / data.total) * 100}%`;
-  } else if (kind === "volume") {
-    state.bookId = data.book_id;
-    $("runSub").textContent = `已交付 ${data.done} 卷 · ${data.title}`;
-    $("runDoneActions").hidden = false;
+    if (job.status === "pending") job.status = "running";
+    job.done = data.done; job.total = data.total; job.failed = data.failed;
   } else if (kind === "thumb") {
-    $("runEmpty").hidden = true;
-    const tile = document.createElement("div");
-    tile.className = "thumb";
-    const img = document.createElement("img");
-    img.src = `${data.url}?token=${encodeURIComponent(TOKEN)}`;
-    img.alt = "";
-    const pg = document.createElement("span");
-    pg.className = "pg";
-    pg.textContent = data.page;
-    tile.append(img, pg);
-    thumbnailGroup(data.chapter_id).appendChild(tile);
+    job.thumbs.push(data);
+    if (job.thumbs.length > 240) job.thumbs.splice(0, job.thumbs.length - 240);
   } else if (kind === "chapter") {
-    appendChapters([data]);
-  } else if (kind === "done") {
-    finishRunView(data.partial ? "partial" : "done", data);
-  } else if (kind === "failed" || kind === "cancelled" || kind === "paused") {
-    finishRunView(kind, data);
+    job.chapters.set(String(data.id), data);
+  } else if (kind === "volume") {
+    job.book_id = data.book_id;
+    job.volumes = data.done;
+  } else {
+    const status = kind === "done" ? (data.partial ? "partial" : "done") : kind;
+    job.status = status;
+    job.result = data;
+    if (data.book_id) job.book_id = data.book_id;
+    if (data.message) job.error = data.message;
+    if (data.hint) job.hint = data.hint;
+    if (Number.isFinite(data.failures)) job.failed_pages = data.failures;
+    closeStream(job);
+    if (typeof updateQueueJob === "function") updateQueueJob(job);
+    announceJobEnd(job);
+    if (job.book_id) loadBooks();
   }
 }
 
-
-function resetRunView(job) {
-  $("runTitle").textContent = job.title || "准备中";
-  $("runSub").textContent = "正在连接……";
-  $("stream").textContent = "";
-  resetChapters();
-  $("runEmpty").hidden = false;
-  $("partialNote").hidden = true;
-  $("failedNote").hidden = true;
-  $("runDoneActions").hidden = true;
-  $("retryBtn").hidden = true;
-  $("resumeBtn").hidden = true;
-  $("cancelBtn").hidden = false;
-  $("pauseBtn").hidden = false;
-  $("pauseBtn").disabled = false;
-  $("pauseBtn").textContent = "暂停";
-  $("meterFill").style.width = "0";
-  $("statDone").textContent = "0";
-  $("statFailed").textContent = "0";
-  $("statTotal").textContent = "—";
-  if (state.timer) clearInterval(state.timer);
-  state.timer = setInterval(() => {
-    $("statElapsed").textContent = ((Date.now() - state.startedAt) / 1000).toFixed(1) + " s";
-  }, 200);
+function announceJobEnd(job) {
+  const t = `《${job.title}》`;
+  if (job.status === "done") toast(`${t}已完成`, job.book_id ? "打开" : "", () => openBook(job.book_id));
+  else if (job.status === "partial") toast(`${t}已完成，有缺页`, "查看", () => showJob(job.id));
+  else if (job.status === "failed") toast(`${t}没有完成`, "查看", () => showJob(job.id));
 }
 
+/* 轮询（queue-status.js）带回的快照：补上不在流里的任务，并为新出现的进行中任务接流 */
+function onJobsPolled(jobs) {
+  let changed = false;
+  jobs.forEach((snapshot) => {
+    const known = state.jobs.get(snapshot.id);
+    if (known && streams.has(known.id)) return; // 流里的数据更新更及时
+    if (known && known.status === snapshot.status && known.done === snapshot.done) return;
+    connectJob(jobModel(snapshot));
+    changed = true;
+  });
+  if (changed) scheduleJobsPaint();
+}
