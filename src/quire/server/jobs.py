@@ -374,6 +374,8 @@ class JobManager:
                 options=novel_options,
                 workdir=workdir,
                 formats=spec.formats,
+                epub_style=settings.epub_style,
+                epub_font=settings.epub_font,
                 progress=ChapterSink(job),
                 render=render,
                 on_task=on_task,

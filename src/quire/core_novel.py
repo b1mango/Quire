@@ -12,6 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
 
+from .assemble.epub_style import validate_epub_options
 from .assemble.models import NovelChapter
 from .core_chapter_cache import decode_chapter
 from .core_chapters import (
@@ -157,6 +158,8 @@ async def run_core_novel(
     formats: tuple[str, ...] = ("epub",),
     render: RenderOptions | None = None,
     pdf_chrome: str | None = None,
+    epub_style: str = "songti",
+    epub_font: str = "",
     progress: ChapterProgress | None = None,
     on_task: Callable[[str], None] | None = None,
     stop: Callable[[], bool] | None = None,
@@ -165,6 +168,7 @@ async def run_core_novel(
 ) -> NovelResult:
     opts = options or NovelOptions()
     chosen = validate_novel_formats(formats)
+    validate_epub_options(epub_style, epub_font)
     executable = None
     if "pdf" in chosen:
         executable = find_chrome(pdf_chrome or (render.executable if render else None))
@@ -323,6 +327,8 @@ async def run_core_novel(
                 (*before, report_stamp),
                 source_url=url,
                 pdf_chrome=executable,
+                epub_style=epub_style,
+                epub_font=epub_font,
                 review=review_entries,
                 review_destination=review_path,
                 review_stamp=review_stamp,

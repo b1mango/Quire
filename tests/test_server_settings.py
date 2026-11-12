@@ -259,3 +259,57 @@ def test_settings_failed_replace_preserves_original_and_cleans_staging(tmp_path,
         settings_mod.save(path, settings_mod.UiSettings(str(tmp_path), theme="swiss:light"))
     assert settings_mod.load(path, tmp_path) == original
     assert not list(tmp_path.glob(".settings.json.*"))
+
+
+def test_epub_settings_legacy_defaults_and_roundtrip(tmp_path):
+    import json
+
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"output_dir": str(tmp_path)}))
+    old = settings_mod.load(path, tmp_path)
+    assert old.epub_style == "songti" and old.epub_font == ""
+    selected = settings_mod.parse(
+        {
+            "output_dir": str(tmp_path),
+            "epub_style": "classic",
+            "epub_font": str(tmp_path / "font.ttc"),
+        }
+    )
+    settings_mod.save(path, selected)
+    assert settings_mod.load(path, tmp_path) == selected
+    with pytest.raises(ConfigError, match="未知设置项"):
+        settings_mod.parse({"output_dir": str(tmp_path), "unknown": True})
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [("epub_style", "bad"), ("epub_style", []), ("epub_font", "relative.ttf"), ("epub_font", 1)],
+)
+def test_invalid_epub_settings_rejected(tmp_path, field, value):
+    with pytest.raises(ConfigError):
+        settings_mod.parse({"output_dir": str(tmp_path), field: value})
+
+
+def test_job_forwards_epub_settings(tmp_path):
+    import asyncio
+
+    from quire.models import NovelResult
+    from quire.server.chapter_stream import ChapterTracker
+    from quire.server.jobs import JobManager
+
+    seen = {}
+
+    async def novel(url, out, **kwargs):
+        seen.update(kwargs)
+        return NovelResult(out)
+
+    manager = JobManager(tmp_path, run_manga=lambda *args, **kwargs: None, run_novel=novel)
+    job = Job(
+        "job", JobSpec(kind="novel", url="http://example.test/1", title="t", formats=("epub",))
+    )
+    settings = settings_mod.UiSettings(
+        str(tmp_path / "books"), epub_style="heiti", epub_font="/tmp/font.ttf"
+    )
+    tracker = ChapterTracker(job, tmp_path)
+    asyncio.run(manager._run_capture(job, settings, tracker))
+    assert seen["epub_style"] == "heiti" and seen["epub_font"] == "/tmp/font.ttf"

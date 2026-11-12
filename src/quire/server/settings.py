@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from ..assemble.epub_style import validate_epub_options
 from ..errors import ConfigError
 from ..fetch.browser import RenderOptions
 from ..fetch.browser_endpoint import validate_endpoint
@@ -37,8 +38,11 @@ class UiSettings:
     obey_robots: bool = False
     browser_native: bool = False
     cdp_endpoint: str = ""
+    epub_style: str = "songti"
+    epub_font: str = ""
 
     def __post_init__(self) -> None:
+        validate_epub_options(self.epub_style, self.epub_font)
         if type(self.browser_native) is not bool or not isinstance(self.cdp_endpoint, str):
             raise ConfigError("浏览器设置类型错误")
         if self.cdp_endpoint:
@@ -110,6 +114,8 @@ def parse(payload: Any) -> UiSettings:
         "obey_robots",
         "browser_native",
         "cdp_endpoint",
+        "epub_style",
+        "epub_font",
     }
     unknown = set(payload) - known
     if unknown:

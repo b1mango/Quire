@@ -77,6 +77,8 @@ def cmd_novel(args: argparse.Namespace) -> int:
                 formats=formats,
                 render=render,
                 pdf_chrome=args.chrome,
+                epub_style=args.epub_style,
+                epub_font=args.epub_font,
                 progress=progress,
             )
         )

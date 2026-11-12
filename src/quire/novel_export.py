@@ -94,6 +94,8 @@ async def export_novel(
     *,
     source_url: str,
     pdf_chrome: str | None = None,
+    epub_style: str = "songti",
+    epub_font: str = "",
     review: tuple[ReviewEntry, ...] = (),
     review_destination: Path | None = None,
     review_stamp: Stamp | None = None,
@@ -116,7 +118,14 @@ async def export_novel(
                     render_html(title=result.title, chapters=chapters), path, executable=pdf_chrome
                 )
             else:
-                with EpubWriter(path, title=result.title, source_url=source_url) as writer:
+                with EpubWriter(
+                    path,
+                    title=result.title,
+                    source_url=source_url,
+                    style=epub_style,
+                    font=epub_font,
+                    cover=True,
+                ) as writer:
                     for chapter in chapters:
                         writer.add_chapter(
                             EpubChapter(
@@ -128,6 +137,7 @@ async def export_novel(
                             )
                         )
                         await asyncio.sleep(0)
+                result = replace(result, warnings=(*result.warnings, *writer.warnings))
             candidates.append(path)
         report = result.output.with_suffix(".report.json")
         review_path = result.output.with_suffix(".review.txt") if review else None

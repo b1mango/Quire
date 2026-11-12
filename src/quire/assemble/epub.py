@@ -1,4 +1,4 @@
-"""确定性 EPUB 3 写入器：只接收已清洗的小说章节，标准库实现（项目设计.md §37.6）。
+"""确定性 EPUB 3 写入器：只接收已清洗的小说章节，流式实现（项目设计.md §37.6）。
 
 两条纪律决定了这里的写法：
 
@@ -20,9 +20,13 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
+from xml.etree import ElementTree
 from xml.sax.saxutils import escape, quoteattr
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile, ZipInfo
 
+from .cover import create_cover
+from .epub_style import stylesheet, validate_epub_options
+from .font_subset import subset_font
 from .models import clean_metadata_text
 
 __all__ = ["EpubChapter", "EpubWriter"]
@@ -40,29 +44,6 @@ _DC_NS = "http://purl.org/dc/elements/1.1/"
 _XHTML_NS = "http://www.w3.org/1999/xhtml"
 _EPUB_NS = "http://www.idpf.org/2007/ops"
 _NCX_NS = "http://www.daisy.org/z3986/2005/ncx/"
-
-#: 小体积样式表：只用系统字体族，不引用外部字体。
-_STYLE = """html {
-  font-family: serif;
-}
-body {
-  margin: 0 5%;
-  line-height: 1.6;
-}
-h1 {
-  font-size: 1.3em;
-  margin: 1.2em 0 0.6em;
-}
-p {
-  margin: 0 0 0.8em;
-  text-indent: 2em;
-}
-p.missing,
-p.placeholder {
-  color: #666666;
-  text-indent: 0;
-}
-"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,8 +116,16 @@ class EpubWriter:
         source_url: str = "",
         language: str = "zh",
         identifier: str = "",
+        style: str = "songti",
+        font: str = "",
+        cover: bool = True,
     ) -> None:
+        validate_epub_options(style, font)
         self._path = path
+        self._style = style
+        self._font = font
+        self._cover = cover
+        self.warnings: list[str] = []
         self._title = clean_metadata_text(title)
         self._source_url = clean_metadata_text(source_url)
         self._language = clean_metadata_text(language) or "zh"
@@ -146,6 +135,7 @@ class EpubWriter:
             digest = hashlib.sha256(f"{title}\n{source_url}".encode()).hexdigest()
             resolved = f"urn:quire:{digest[:40]}"
         self._identifier = resolved
+        self._characters = set("目录") if font else set()
         self._chapters: list[_ChapterRef] = []
         self._archive: ZipFile | None = None
         self._used = False
@@ -201,24 +191,65 @@ class EpubWriter:
         href = f"text/{item_id}.xhtml"
         title = clean_metadata_text(chapter.title) or f"第 {chapter.index} 章"
         try:
-            data = self._chapter_document(chapter, title).encode("utf-8")
-            archive.writestr(_entry(f"OEBPS/{href}", ZIP_DEFLATED), data, compresslevel=6)
+            document = self._chapter_document(chapter, title)
+            archive.writestr(
+                _entry(f"OEBPS/{href}", ZIP_DEFLATED), document.encode("utf-8"), compresslevel=6
+            )
             self._chapters.append(_ChapterRef(item_id=item_id, href=href, title=title))
+            if self._font:
+                self._characters.update(title)
+                for node in ElementTree.fromstring(document)[1]:
+                    self._characters.update("".join(node.itertext()))
         except BaseException:
             self._failed = True
             raise
 
     def _documents(self) -> list[tuple[str, bytes]]:
         """收尾补齐的固定条目；顺序固定，保证字节稳定。"""
-        return [
+        cover = create_cover(self._title) if self._cover else None
+        if self._cover and cover is None:
+            self.warnings.append("未找到可显示书名的系统中文字体，未生成 EPUB 封面")
+        font_data, font_media = (
+            subset_font(self._font, self._characters) if self._font else (b"", "")
+        )
+        font_extension = font_media.removeprefix("font/")
+        documents = [
             ("META-INF/container.xml", _container().encode("utf-8")),
-            ("OEBPS/content.opf", self._package().encode("utf-8")),
+            ("OEBPS/content.opf", self._package(cover is not None, font_extension).encode("utf-8")),
             ("OEBPS/nav.xhtml", self._nav().encode("utf-8")),
             ("OEBPS/toc.ncx", self._ncx().encode("utf-8")),
-            ("OEBPS/style.css", _STYLE.encode("utf-8")),
+            (
+                "OEBPS/style.css",
+                stylesheet(self._style, font_extension=font_extension).encode("utf-8"),
+            ),
         ]
+        if cover is not None:
+            documents.extend(
+                [
+                    ("OEBPS/cover.png", cover),
+                    ("OEBPS/cover.xhtml", self._cover_document().encode("utf-8")),
+                ]
+            )
+        if font_extension:
+            documents.append((f"OEBPS/fonts/subset.{font_extension}", font_data))
+        return documents
 
-    def _package(self) -> str:
+    def _cover_document(self) -> str:
+        language = _attr(self._language)
+        return "\n".join(
+            [
+                _XML_HEADER,
+                "<!DOCTYPE html>",
+                f'<html xmlns="{_XHTML_NS}" xml:lang={language} lang={language}>',
+                f"  <head><title>{_esc(self._title)}</title></head>",
+                '  <body style="margin:0;text-align:center">',
+                f'    <img src="cover.png" alt={_attr(self._title)} style="max-width:100%;max-height:100%"/>',
+                "  </body>",
+                "</html>",
+            ]
+        )
+
+    def _package(self, has_cover: bool, font_extension: str) -> str:
         """EPUB 3 包文档：元数据只写已确定的字段。"""
         language = _attr(self._language)
         lines = [
@@ -232,6 +263,8 @@ class EpubWriter:
         ]
         if self._source_url:
             lines.append(f"    <dc:source>{_esc(self._source_url)}</dc:source>")
+        if has_cover:
+            lines.append('    <meta name="cover" content="cover-image"/>')
         lines.extend(
             [
                 f'    <meta property="dcterms:modified">{_MODIFIED}</meta>',
@@ -243,12 +276,25 @@ class EpubWriter:
                 '    <item id="style" href="style.css" media-type="text/css"/>',
             ]
         )
+        if has_cover:
+            lines.extend(
+                [
+                    '    <item id="cover-image" href="cover.png" media-type="image/png" properties="cover-image"/>',
+                    '    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>',
+                ]
+            )
+        if font_extension:
+            lines.append(
+                f'    <item id="font" href="fonts/subset.{font_extension}" media-type="font/{font_extension}"/>'
+            )
         for ref in self._chapters:
             lines.append(
                 f"    <item id={_attr(ref.item_id)} href={_attr(ref.href)}"
                 ' media-type="application/xhtml+xml"/>'
             )
         lines.extend(["  </manifest>", '  <spine toc="ncx">'])
+        if has_cover:
+            lines.append('    <itemref idref="cover" linear="yes"/>')
         for ref in self._chapters:
             lines.append(f"    <itemref idref={_attr(ref.item_id)}/>")
         lines.extend(["  </spine>", "</package>"])

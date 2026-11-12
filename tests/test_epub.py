@@ -34,7 +34,7 @@ FIXED_FILES = (
 
 
 def writer(path: Path, *, title: str = TITLE, source_url: str = URL, **values: str) -> EpubWriter:
-    return EpubWriter(path, title=title, source_url=source_url, **values)
+    return EpubWriter(path, title=title, source_url=source_url, cover=False, **values)
 
 
 def chapter_xhtml(path: Path, index: int) -> ET.Element:
@@ -392,3 +392,193 @@ def test_write_to_closed_archive_fails_and_stops(tmp_path: Path) -> None:
                 output.add_chapter(EpubChapter(1, "第一章", ("正文。",)))
     with ZipFile(path) as result:
         assert result.namelist() == ["mimetype"]
+
+
+@pytest.fixture
+def small_font(tmp_path: Path) -> Path:
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+    builder = FontBuilder(1000, isTTF=True)
+    glyphs = [".notdef", "space", "A", "B", "C", "D", "zhong", "wen", "ellipsis", "zero"]
+    builder.setupGlyphOrder(glyphs)
+    builder.setupCharacterMap(
+        {
+            32: "space",
+            65: "A",
+            66: "B",
+            67: "C",
+            68: "D",
+            ord("中"): "zhong",
+            ord("文"): "wen",
+            0x2026: "ellipsis",
+            0x200B: "zero",
+        }
+    )
+    outlines = {}
+    for glyph in glyphs:
+        pen = TTGlyphPen(None)
+        if glyph not in {".notdef", "space"}:
+            pen.moveTo((100, 100))
+            pen.lineTo((500, 100))
+            pen.lineTo((500, 700))
+            pen.lineTo((100, 700))
+            pen.closePath()
+        outlines[glyph] = pen.glyph()
+    builder.setupGlyf(outlines)
+    builder.setupHorizontalMetrics({glyph: (600, 0) for glyph in glyphs})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupNameTable({"familyName": "Test", "styleName": "Regular"})
+    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+    builder.setupPost()
+    builder.setupMaxp()
+    path = tmp_path / "small.ttf"
+    builder.save(path)
+    return path
+
+
+@pytest.mark.parametrize(
+    ("style", "family", "line_height", "margin"),
+    [
+        ("songti", "serif", "1.8", "0.4em"),
+        ("heiti", "sans-serif", "1.6", "0.25em"),
+        ("classic", "serif", "1.8", "0.4em"),
+    ],
+)
+def test_style_presets(
+    tmp_path: Path, style: str, family: str, line_height: str, margin: str
+) -> None:
+    path = tmp_path / "book.epub"
+    with writer(path, style=style):
+        pass
+    with ZipFile(path) as archive:
+        css = archive.read("OEBPS/style.css").decode()
+    assert f"font-family: {family};" in css
+    assert f"line-height: {line_height};" in css
+    assert f"margin: 0 0 {margin};" in css
+    assert "text-align: justify;" in css and "text-align: center;" in css
+    assert "text-justify: inter-ideograph;" in css
+    assert "color:" not in css and "background" not in css
+    assert ('"Kaiti SC", "STKaiti", "KaiTi", serif' in css) == (style == "classic")
+    assert "@font-face" not in css
+
+
+@pytest.mark.parametrize("title", ["中文", "AB"])
+def test_cover_is_in_manifest_and_first_in_spine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, small_font: Path, title: str
+) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    from quire.assemble import cover
+
+    monkeypatch.setattr(cover, "FONT_CANDIDATES", (small_font,))
+    first_cover = cover.create_cover(title)
+    assert first_cover == cover.create_cover(title)
+    path = tmp_path / "book.epub"
+    with EpubWriter(path, title=title) as output:
+        output.add_chapter(EpubChapter(1, "A", ("B",)))
+    other = tmp_path / "other.epub"
+    with EpubWriter(other, title=title) as repeated:
+        repeated.add_chapter(EpubChapter(1, "A", ("B",)))
+    assert path.read_bytes() == other.read_bytes()
+    assert not output.warnings
+    with ZipFile(path) as archive:
+        opf = ET.fromstring(archive.read("OEBPS/content.opf"))
+        manifest = manifest_of(opf)
+        assert manifest["cover-image"].get("properties") == "cover-image"
+        assert manifest["cover-image"].get("href") == "cover.png"
+        assert (
+            opf.find(f"{{{OPF_NS}}}metadata/{{{OPF_NS}}}meta[@name='cover']").get("content")
+            == "cover-image"
+        )
+        assert spine_hrefs(opf) == ["cover.xhtml", "text/chapter-0001.xhtml"]
+        first_ref = opf.find(f"{{{OPF_NS}}}spine/{{{OPF_NS}}}itemref")
+        assert first_ref.get("linear") == "yes"
+        page = ET.fromstring(archive.read("OEBPS/cover.xhtml"))
+        assert page.find(f".//{{{XHTML_NS}}}img").get("src") == "cover.png"
+        with Image.open(BytesIO(archive.read("OEBPS/cover.png"))) as image:
+            assert image.size == (1200, 1600)
+            assert image.info == {}
+            assert (image.getpixel((500, 110)) == (243, 238, 223)) == title.isascii()
+
+
+def test_missing_cover_font_warns_and_omits_cover(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from quire.assemble import cover
+
+    monkeypatch.setattr(cover, "FONT_CANDIDATES", ())
+    path = tmp_path / "book.epub"
+    with EpubWriter(path, title="中文书名") as output:
+        output.add_chapter(EpubChapter(1, "A", ("B",)))
+    assert len(output.warnings) == 1 and "未生成 EPUB 封面" in output.warnings[0]
+    with ZipFile(path) as archive:
+        assert "OEBPS/cover.png" not in archive.namelist()
+        assert "OEBPS/cover.xhtml" not in archive.namelist()
+        opf = ET.fromstring(archive.read("OEBPS/content.opf"))
+        assert "cover-image" not in manifest_of(opf)
+        assert spine_hrefs(opf) == ["text/chapter-0001.xhtml"]
+
+
+@pytest.mark.parametrize("collection", [False, True])
+def test_font_subset_contains_used_characters_and_is_deterministic(
+    tmp_path: Path, small_font: Path, collection: bool
+) -> None:
+    from io import BytesIO
+
+    from fontTools.ttLib import TTCollection, TTFont
+
+    font_path = small_font
+    if collection:
+        font_path = tmp_path / "small.ttc"
+        collection_font = TTCollection()
+        collection_font.fonts = [TTFont(small_font)]
+        collection_font.save(font_path)
+        collection_font.close()
+    paths = [tmp_path / "one.epub", tmp_path / "two.epub"]
+    for path in paths:
+        with EpubWriter(path, title="C", font=str(font_path), cover=False) as output:
+            output.add_chapter(EpubChapter(1, "B", ("A B\u200b",)))
+    assert paths[0].read_bytes() == paths[1].read_bytes()
+    with ZipFile(paths[0]) as archive:
+        font = TTFont(BytesIO(archive.read("OEBPS/fonts/subset.ttf")))
+        assert set(font.getBestCmap()) == {ord("A"), ord("B"), ord(" "), 0x200B}
+        css = archive.read("OEBPS/style.css").decode()
+        assert "@font-face" in css and '"Quire Embedded", serif' in css
+        opf = ET.fromstring(archive.read("OEBPS/content.opf"))
+        assert manifest_of(opf)["font"].get("media-type") == "font/ttf"
+
+
+@pytest.mark.parametrize("kind", ["missing", "invalid", "relative"])
+def test_bad_font_is_config_error(tmp_path: Path, kind: str) -> None:
+    from quire.errors import ConfigError
+
+    font_path = tmp_path / "bad.ttf"
+    if kind == "invalid":
+        font_path.write_text("not a font")
+    font = "relative.ttf" if kind == "relative" else str(font_path)
+    with pytest.raises(ConfigError, match="字体"):
+        with EpubWriter(tmp_path / "book.epub", title="A", font=font, cover=False):
+            pass
+
+
+def test_cover_without_required_glyphs_is_omitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, small_font: Path
+) -> None:
+    from quire.assemble import cover
+
+    monkeypatch.setattr(cover, "FONT_CANDIDATES", (small_font,))
+    with EpubWriter(tmp_path / "book.epub", title="中文书名") as output:
+        pass
+    assert output.warnings and "未生成 EPUB 封面" in output.warnings[0]
+
+
+def test_cloth_color_matches_frontend_hash() -> None:
+    """与 web/covers.js 的 FNV-1a 取色一致（值由前端同一算法算出）。"""
+    from quire.assemble.cover import cloth_color
+
+    assert cloth_color("三体") == "#4A3B52"
+    assert cloth_color("雪中悍刀行") == "#7B6A4A"
+    assert cloth_color("诡秘之主") == "#2E4A62"
