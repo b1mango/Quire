@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 import time
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from .assemble.epub import EpubChapter, EpubWriter
 from .assemble.models import NovelChapter
 from .assemble.novel_html import render_html
 from .assemble.txt import write_txt
+from .core_chapter_cache import removed_entries
 from .errors import ConfigError, FetchError, LedgerError
 from .export_commit import publish, sync_file
 from .export_receipt import ExportReceipt, PublishedFile
@@ -26,6 +28,7 @@ from .store.export_files import (
     fingerprint,
     make_workspace,
 )
+from .text.noise import URL_REVIEW_RULE
 
 
 def preflight(destinations: tuple[Path, ...], *, overwrite: bool) -> tuple[Stamp | None, ...]:
@@ -37,7 +40,10 @@ def preflight(destinations: tuple[Path, ...], *, overwrite: bool) -> tuple[Stamp
     return stamps
 
 
-def report_payload(result: NovelResult) -> dict[str, object]:
+def report_payload(
+    result: NovelResult, removed: tuple[tuple[int, str, str], ...] = ()
+) -> dict[str, object]:
+    deleted = tuple(entry for entry in removed if entry[1] != URL_REVIEW_RULE)
     return {
         "schema": 1,
         "title": result.title,
@@ -61,6 +67,8 @@ def report_payload(result: NovelResult) -> dict[str, object]:
         "pages_fetched": result.pages_fetched,
         "html_dir": str(result.html_dir) if result.html_dir else None,
         "ocr_chapters": result.ocr_chapters,
+        "removed_lines": len(deleted),
+        "removed_rules": dict(sorted(Counter(rule for _, rule, _ in deleted).items())),
         "review": str(result.review) if result.review else None,
         "chapter_list": [
             {
@@ -78,10 +86,22 @@ def report_payload(result: NovelResult) -> dict[str, object]:
     }
 
 
-def review_text(title: str, entries: tuple[ReviewEntry, ...]) -> str:
+def review_text(
+    title: str,
+    entries: tuple[ReviewEntry, ...],
+    removed: tuple[tuple[int, str, str], ...] = (),
+) -> str:
     """低置信行复核清单：供人工抽查，不改写正文。"""
     lines = [f"# {title} OCR 低置信行复核清单（置信度 < 0.6）", ""]
     lines.extend(f"第{entry.chapter}章 [{entry.confidence:.3f}] {entry.text}" for entry in entries)
+    deleted = tuple(entry for entry in removed if entry[1] != URL_REVIEW_RULE)
+    pending = tuple(entry for entry in removed if entry[1] == URL_REVIEW_RULE)
+    if deleted:
+        lines.extend(("", f"清洗删除（{len(deleted)} 条）"))
+        lines.extend(f"第{chapter}章 [{rule}] {text}" for chapter, rule, text in deleted)
+    if pending:
+        lines.extend(("", f"网址待复核（{len(pending)} 条）"))
+        lines.extend(f"第{chapter}章 [{rule}] {text}" for chapter, rule, text in pending)
     return "\n".join(lines) + "\n"
 
 
@@ -99,6 +119,7 @@ async def export_novel(
     review_stamp: Stamp | None = None,
 ) -> NovelResult:
     started = time.monotonic()
+    removed = removed_entries(chapters)
     assert result.task_id is not None
     workspace, identity = make_workspace(result.output.parent, result.task_id)
     receipt = ExportReceipt(result.task_id, "building", workspace, identity, formats)
@@ -130,7 +151,11 @@ async def export_novel(
                         await asyncio.sleep(0)
             candidates.append(path)
         report = result.output.with_suffix(".report.json")
-        review_path = result.output.with_suffix(".review.txt") if review else None
+        review_path = (
+            result.output.with_suffix(".review.txt")
+            if (review or removed) and review_destination is not None
+            else None
+        )
         final = replace(
             result,
             report=report,
@@ -144,14 +169,16 @@ async def export_novel(
         report_file = workspace / "book.report.json"
         check_workspace(workspace, identity)
         with report_file.open("xb") as stream:
-            stream.write(json.dumps(report_payload(final), ensure_ascii=False, indent=2).encode())
+            stream.write(
+                json.dumps(report_payload(final, removed), ensure_ascii=False, indent=2).encode()
+            )
         candidates.append(report_file)
         extras: list[tuple[str, Path, Path, Stamp | None]] = []
-        if review and review_destination is not None:
+        if (review or removed) and review_destination is not None:
             review_file = workspace / "book.review.txt"
             check_workspace(workspace, identity)
             with review_file.open("xb") as stream:
-                stream.write(review_text(result.title, review).encode("utf-8"))
+                stream.write(review_text(result.title, review, removed).encode("utf-8"))
             extras.append(("review", review_file, review_destination, review_stamp))
         files = tuple(
             PublishedFile(kind, path.name, destination, sync_file(path), stamp)

@@ -9,30 +9,20 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from dataclasses import dataclass
+
+from .noise import (
+    _PAGE_NOTICE,
+    _SITE_NOTICE,
+    URL_REVIEW_RULE,
+    has_quotes,
+    has_url,
+    noise_rule,
+    remove_url_fragments,
+)
 
 _WS = re.compile(r"\s+")
-_SITE_NOTICE = (
-    r"(?:请)?记住本站(?:域名|网址)?"
-    r"(?:\s*[:：]?\s*(?:https?://|www\.)[a-z0-9.-]+(?:/[a-z0-9/?=&_%#.-]*)?)?"
-)
-_PAGE_NOTICE = r"本章未完[，,；;]?\s*(?:请)?点击下一[页頁](?:继续阅读)?"
-
-#: 整行删除的模板行。保守优先：只匹配明确是站点、推广或页面提示的句式。
-NOISE_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"^(?:https?://|www\.)\S+$", re.IGNORECASE),
-    re.compile(rf"^(?:{_SITE_NOTICE}|{_PAGE_NOTICE})[。.!！]?$", re.IGNORECASE),
-    re.compile(
-        r"^(?:(?:求(?:推荐票|月票|订阅|收藏|打赏)|投推荐票)[，,、\s]*)+[。.!！]?$",
-        re.IGNORECASE,
-    ),
-    re.compile(r"^[\W_]{1,12}$"),  # 纯符号行（含 "……"、"----"、"◆"）
-    re.compile(r"^[\s\d０-９]{1,12}$"),  # 纯数字行（页码残留）
-    # 站点导航行：正文容器里常混进"回目录""下一回""编辑"这类单行链接文本。
-    re.compile(
-        r"^(?:回|返回|前往)?(?:目[录錄]|下一[回章節话頁页]|上一[回章節话頁页]|"
-        r"下一[页頁]|上一[页頁]|章节目录|加入书签|收藏本站|顶部|底部|编辑|編輯|展開|收起)$"
-    ),
-)
+_ZERO_WIDTH = str.maketrans("", "", "\u200b\u200c\u200d\u2060\ufeff")
 
 #: 内嵌提示必须自成完整句子；不删除对话或句中提及的模板词。
 INLINE_NOISE = re.compile(
@@ -85,12 +75,12 @@ def is_noise_line(line: str) -> bool:
     text = line.strip()
     if not text:
         return True
-    return any(pattern.search(text) for pattern in NOISE_PATTERNS)
+    return noise_rule(text) is not None
 
 
 def normalize_line(text: str) -> str:
     """折叠空白、去掉中文之间的空格、统一省略号、把中文里的半角标点转全角。"""
-    value = _SPACE_BETWEEN_CJK.sub("", _WS.sub(" ", text).strip())
+    value = _SPACE_BETWEEN_CJK.sub("", _WS.sub(" ", text.translate(_ZERO_WIDTH)).strip())
     value = _ELLIPSIS.sub("……", value)
     value = _strip_inline_noise(value)
     for half, full in _FULLWIDTH:
@@ -119,9 +109,15 @@ def repeated_line_ratio(lines: list[str] | tuple[str, ...]) -> float:
     return repeated / len(lines)
 
 
+@dataclass(frozen=True, slots=True)
+class CleanedParagraphs:
+    paragraphs: tuple[str, ...]
+    removed: tuple[tuple[str, str], ...]
+
+
 def clean_paragraphs(
     paragraphs: tuple[str, ...] | list[str], *, title: str = ""
-) -> tuple[str, ...]:
+) -> CleanedParagraphs:
     """把原始段落清洗成可直接写入成品的正文段落。
 
     * 空行、噪声行、与章节标题重复的行直接删除；
@@ -129,24 +125,46 @@ def clean_paragraphs(
     * 整章被同一行刷屏（占比 > 60%）时删除该行——这是模板页的典型特征。
     """
     chapter_title = normalize_line(strip_site_suffix(title)) if title else ""
-    kept: list[str] = []
-    for raw in paragraphs:
+    kept: list[tuple[str, str, int]] = []
+    removed: list[tuple[int, str, str]] = []
+    for index, raw in enumerate(paragraphs):
+        source = _SPACE_BETWEEN_CJK.sub("", _WS.sub(" ", raw.translate(_ZERO_WIDTH)).strip())
+        rule = noise_rule(source)
+        if rule:
+            removed.append((index, rule, raw))
+            continue
+        if has_quotes(raw) and has_url(raw):
+            removed.append((index, URL_REVIEW_RULE, raw))
+        before_inline = _ELLIPSIS.sub("……", source)
+        if before_inline and not _strip_inline_noise(before_inline):
+            removed.append((index, "站点提示", raw))
+            continue
         line = normalize_line(raw)
-        if not line or is_noise_line(line):
+        _, fragments = remove_url_fragments(raw)
+        if fragments:
+            removed.append((index, "网址片段", raw))
+            line, _ = remove_url_fragments(line)
+        elif not has_quotes(raw) and has_url(raw):
+            removed.append((index, URL_REVIEW_RULE, raw))
+        if not line:
             continue
         if chapter_title and line == chapter_title:
+            removed.append((index, "章节标题", raw))
             continue
-        kept.append(line)
+        kept.append((line, raw, index))
 
-    spam = _spam_lines(kept)
-    if spam:
-        kept = [line for line in kept if line not in spam]
+    spam = _spam_lines([line for line, _, _ in kept])
     deduped: list[str] = []
-    for line in kept:
+    for line, raw, index in kept:
+        if line in spam:
+            removed.append((index, "章节刷屏", raw))
+            continue
         if deduped and deduped[-1] == line:
+            removed.append((index, "相邻重复", raw))
             continue
         deduped.append(line)
-    return tuple(deduped)
+    removed.sort(key=lambda item: item[0])
+    return CleanedParagraphs(tuple(deduped), tuple((rule, raw) for _, rule, raw in removed))
 
 
 def _spam_lines(lines: list[str]) -> set[str]:

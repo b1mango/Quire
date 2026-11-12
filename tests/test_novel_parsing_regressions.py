@@ -24,18 +24,18 @@ from quire.text.clean import chapter_number, clean_paragraphs, is_noise_line, no
 def test_generic_words_preserve_the_entire_paragraph(text: str) -> None:
     assert not is_noise_line(text)
     assert normalize_line(text) == text
-    assert clean_paragraphs((text,)) == (text,)
+    assert clean_paragraphs((text,)).paragraphs == (text,)
 
 
 def test_inline_notice_requires_a_complete_template_sentence() -> None:
     assert normalize_line("他走了。请记住本站域名。雨还在下。") == "他走了。雨还在下。"
     assert normalize_line("她读到本章未完，便放下了书。") == "她读到本章未完，便放下了书。"
-    assert clean_paragraphs(("本章未完，请点击下一页", "求推荐票，求收藏！")) == ()
+    assert clean_paragraphs(("本章未完，请点击下一页", "求推荐票，求收藏！")).paragraphs == ()
 
 
 def test_repeated_prose_below_the_spam_threshold_is_preserved() -> None:
     paragraphs = ("他没有回答。", "风声依旧。", "他没有回答。", "雨又落下。", "他没有回答。")
-    assert clean_paragraphs(paragraphs) == paragraphs
+    assert clean_paragraphs(paragraphs).paragraphs == paragraphs
 
 
 @pytest.mark.parametrize("title", ["第一〇一章", "第一零一章", "第〇一〇一章"])
@@ -185,7 +185,7 @@ def test_short_trusted_continuation_survives_extraction_and_validation(
     assert article.paragraphs == (paragraph,)
     assert validate_article(article, continuation=True) == (True, "ok")
     assert validate_article(article) == (False, "too_short")
-    assert clean_paragraphs(article.paragraphs) == (paragraph,)
+    assert clean_paragraphs(article.paragraphs).paragraphs == (paragraph,)
 
 
 @pytest.mark.parametrize(
@@ -242,4 +242,4 @@ def test_three_page_chain_keeps_the_short_ending_and_stops_before_the_next_chapt
         gathered.extend(article.paragraphs)
         url = find_next_page(doc, url, url)
     assert visited == [origin + name for name in pages]
-    assert clean_paragraphs(gathered) == (*first, "天色暗了。他仍向前走。", *ending)
+    assert clean_paragraphs(gathered).paragraphs == (*first, "天色暗了。他仍向前走。", *ending)

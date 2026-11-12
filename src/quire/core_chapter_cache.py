@@ -1,7 +1,7 @@
 """章节缓存的读取侧:结构与版本校验(写入在 core_chapters)。
 
 缓存里存的是**清洗后的结构化正文**(JSON),不是原始 HTML。结构不符时
-明确报错,不把坏数据当正文。改结构必须同时改 ``NovelOptions.clean_version``。
+明确报错,不把坏数据当正文。旧缓存可以缺少可选的清洗删除记录。
 """
 
 from __future__ import annotations
@@ -9,9 +9,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from .assemble.models import NovelChapter
 from .errors import LedgerError
 
-#: 章节缓存格式版本。改结构必须同时改 ``NovelOptions.clean_version``。
+#: 章节缓存格式版本；可选字段不改变旧缓存的读取方式。
 CACHE_SCHEMA = 2
 
 
@@ -25,6 +26,52 @@ class CachedChapter:
     truncated: bool = False
     source: str = "html"
     review: tuple[tuple[str, float], ...] = ()
+    removed: tuple[tuple[str, str], ...] = ()
+
+    def to_chapter(self, index: int, source_url: str) -> NovelChapter:
+        return _CachedNovelChapter(
+            index,
+            self.title,
+            self.paragraphs,
+            source_url=source_url,
+            pages=self.pages,
+            truncated=self.truncated,
+            source=self.source,
+            review=self.review,
+            removed=self.removed,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _CachedNovelChapter(NovelChapter):
+    removed: tuple[tuple[str, str], ...] = ()
+
+
+def chapter_with_removed(
+    chapter: NovelChapter, paragraphs: tuple[str, ...], removed: tuple[tuple[str, str], ...]
+) -> NovelChapter:
+    previous = chapter.removed if isinstance(chapter, _CachedNovelChapter) else ()
+    return _CachedNovelChapter(
+        chapter.index,
+        chapter.title,
+        paragraphs,
+        source_url=chapter.source_url,
+        missing_reason=chapter.missing_reason,
+        pages=chapter.pages,
+        truncated=chapter.truncated,
+        source=chapter.source,
+        review=chapter.review,
+        removed=(*previous, *removed),
+    )
+
+
+def removed_entries(chapters: tuple[NovelChapter, ...]) -> tuple[tuple[int, str, str], ...]:
+    return tuple(
+        (chapter.index, rule, text)
+        for chapter in chapters
+        if isinstance(chapter, _CachedNovelChapter)
+        for rule, text in chapter.removed
+    )
 
 
 def decode_chapter(data: bytes) -> CachedChapter:
@@ -41,6 +88,7 @@ def decode_chapter(data: bytes) -> CachedChapter:
     truncated = payload.get("truncated", False)
     source = payload.get("source", "html")
     review = payload.get("review", [])
+    removed = payload.get("removed", [])
     if (
         not isinstance(title, str)
         or not isinstance(paragraphs, list)
@@ -57,6 +105,14 @@ def decode_chapter(data: bytes) -> CachedChapter:
             and isinstance(item[1], int | float)
             for item in review
         )
+        or not isinstance(removed, list)
+        or not all(
+            isinstance(item, list)
+            and len(item) == 2
+            and isinstance(item[0], str)
+            and isinstance(item[1], str)
+            for item in removed
+        )
     ):
         raise LedgerError("章节缓存字段不合法")
     return CachedChapter(
@@ -66,4 +122,5 @@ def decode_chapter(data: bytes) -> CachedChapter:
         truncated,
         source,
         tuple((item[0], float(item[1])) for item in review),
+        tuple((item[0], item[1]) for item in removed),
     )

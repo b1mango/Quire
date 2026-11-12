@@ -109,6 +109,23 @@ def test_resume_reuses_cached_chapters_and_retries_only_failures(site, tmp_path:
     assert second.chapters_written == 4
 
 
+def test_cleaning_review_survives_cache_reuse(site, tmp_path: Path) -> None:
+    out = tmp_path / "book.epub"
+    work = tmp_path / "work"
+    first = run(site, out, work)
+    assert first.review is not None
+    original = first.review.read_bytes()
+    first_report = json.loads(first.report.read_text("utf-8"))
+    assert first_report["removed_lines"] > 0
+    assert "清洗删除" in original.decode("utf-8")
+    second = run(site, out, work, resume=True, options=replace(OPTIONS, overwrite=True))
+    assert second.review is not None and second.review.read_bytes() == original
+    assert (
+        json.loads(second.report.read_text("utf-8"))["removed_rules"]
+        == first_report["removed_rules"]
+    )
+
+
 def test_corrupted_chapter_cache_is_refetched_alone(site, tmp_path: Path) -> None:
     out = tmp_path / "book.epub"
     work = tmp_path / "work"

@@ -98,7 +98,7 @@ def test_clean_paragraphs_removes_noise_duplicates_and_spam() -> None:
         "刷屏行",
         "收尾段落，故事到此结束。",
     )
-    cleaned = clean_paragraphs(paragraphs)
+    cleaned = clean_paragraphs(paragraphs).paragraphs
     assert cleaned == (
         "第一段正文，写了一点事情。",
         "第二段正文，又写了一点事情。",
@@ -107,7 +107,9 @@ def test_clean_paragraphs_removes_noise_duplicates_and_spam() -> None:
 
 
 def test_clean_paragraphs_drops_line_equal_to_title() -> None:
-    assert clean_paragraphs(("第一章 起点", "正文内容。"), title="第一章 起点") == ("正文内容。",)
+    assert clean_paragraphs(("第一章 起点", "正文内容。"), title="第一章 起点").paragraphs == (
+        "正文内容。",
+    )
 
 
 def test_text_ratios() -> None:

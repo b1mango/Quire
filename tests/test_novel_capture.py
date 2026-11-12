@@ -318,6 +318,20 @@ def test_decode_chapter_rejects_bad_payloads() -> None:
         decode_chapter(b'{"schema": 2, "title": "t", "paragraphs": [], "pages": 1, "truncated": 3}')
 
 
+def test_chapter_cleaning_saves_removed_lines_in_cache(tmp_path: Path) -> None:
+    links = (ChapterLink("第一章", SOURCE + "1.html"),)
+    body = PROSE + "<p>　求月票！　</p><p>网址是 www.example.com，他记在心里。</p>"
+    _, snapshot = run_capture(
+        tmp_path, links, StubFetcher({links[0].url: chapter_html("第一章", body)})
+    )
+    cached = _cached_chapter(tmp_path / "work", snapshot)
+    assert cached.removed == (
+        ("求票推广", "求月票！"),
+        ("网址片段", "网址是 www.example.com，他记在心里。"),
+    )
+    assert "网址是 ，他记在心里。" in cached.paragraphs
+
+
 def test_max_pages_truncation_is_reported_and_marked(tmp_path: Path) -> None:
     """分页超限不能静默：要有警告、缓存标记，成品里也要写明。"""
     links = (ChapterLink("第一章 长章", SOURCE + "1.html"),)
