@@ -10,7 +10,12 @@ from ..errors import ConfigError, NetworkError
 from ..utils.urls import is_usable_url
 from .simple import DEFAULT_ACCEPT, DEFAULT_LANGUAGE, DEFAULT_UA
 
-_PUBLIC_HEADERS = {"accept", "accept-language", "referer"}
+_PUBLIC_HEADERS = {
+    "accept",
+    "accept-language",
+    "referer",
+    "user-agent",
+}  # UA：站点移动版目录（咚漫）
 
 
 def valid_url(value: str) -> httpx.URL:

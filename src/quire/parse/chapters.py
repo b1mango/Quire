@@ -122,8 +122,9 @@ def discover_chapters(
     "在 <ul> 里"，不分组就会把整站导航当成目录。宁可不认，也不能抓错。
     """
     base = join_url(base_url, doc.effective_base()) or base_url
-    materialized = doc.select_one("#quire-catalogue")
-    if materialized is not None and urlsplit(base_url).hostname == "t.shuqi.com":
+    # 站点适配器重建的全量目录（书旗、咚漫）：整份照收，不再按标题/URL 形态二次筛选
+    host = (urlsplit(base_url).hostname or "").lower().rsplit(".", 2)[-2:]
+    if doc.select_one("#quire-catalogue") and ".".join(host) in {"shuqi.com", "dongmanmanhua.cn"}:
         selector = "#quire-catalogue a"
     anchors = _anchors(doc, selector)
     found: list[ChapterLink] = []

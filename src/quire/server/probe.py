@@ -17,10 +17,10 @@ from ..parse.images import collect, prefilter
 from ..parse.minidom import parse as parse_html
 from ..parse.packed import extract_script_images
 from ..parse.series import Volume, plan_volumes
-from ..sites import bilibili
+from ..sites import bilibili, dongman
 from ..sites.cleanup import clean_document
 from ..sites.expand import expand_catalogue
-from ..sites.kind_guard import check_placement
+from ..sites.kind_guard import check_placement, expected_kind
 from ..sites.registry import cookie_hosts_for
 from ..sites.rules import SiteRule, resolve_rule
 from ..utils.urls import is_usable_url, route_fragment
@@ -81,8 +81,11 @@ async def probe_url(
     url = validate_task_url(url)
     validate_capture_mode(kind, capture_mode)
     check_placement(url, kind)
+    if capture_mode == "auto" and dongman.is_viewer_page(url):
+        capture_mode = "single"
     rule = resolve_rule(data_root, url) if data_root else None
-    chosen_kind = kind or (rule.kind if rule else None)
+    # 自动识别先信已知站点（咚漫、腾讯动漫等形态单一的站），再信站点规则，最后才看页面内容
+    chosen_kind = kind or expected_kind(url) or (rule.kind if rule else None)
 
     def stage(name: str) -> None:
         if on_stage is not None:
