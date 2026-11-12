@@ -251,7 +251,11 @@ $("addGroupBtn").addEventListener("click", addGroup);
 
 /* ------------------------------------------------------------ 打开 / 定位 */
 
+/* 打开 = 在内置阅读器里读；交给系统应用另走 openExternal */
 function openBook(id, format) {
+  if (id) openReader(id, format);
+}
+function openExternal(id, format) {
   if (!id) return;
   api(`/api/books/${id}/open`, { method: "POST", body: format ? { format } : {} }).catch((err) => toast(errText(err)));
 }

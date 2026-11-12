@@ -173,6 +173,7 @@ function typing() {
 function onShortcut(e) {
   if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
   const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase();
+  if ($("reader") && !$("reader").hidden) return; // 阅读器打开时键盘归阅读器
   if (mod && key === "k") { e.preventDefault(); openPalette(); return; }
   if (document.querySelector("dialog[open]")) return;
   const run = (fn) => { e.preventDefault(); fn(); };

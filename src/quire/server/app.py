@@ -30,12 +30,6 @@ _LOG = logging.getLogger(__name__)
 
 _LOOPBACK = {"127.0.0.1", "::1"}
 _MAX_BODY = 65_536
-_JS, _CSS = "text/javascript; charset=utf-8", "text/css; charset=utf-8"
-_JS_FILES = (
-    "app.js covers.js follows.js chapters.js capture.js run-events.js tasks.js"
-    " queue-status.js library.js inspector.js settings.js palette.js"
-)
-_STATIC = {"app.css": _CSS, "views.css": _CSS, **dict.fromkeys(_JS_FILES.split(), _JS)}
 
 
 class QuireServer(ThreadingHTTPServer):
@@ -274,11 +268,11 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _static(self, name: str) -> None:
-        if name not in _STATIC:
+        if name not in files.STATIC:
             return self._reply_json(404, {"error": "没有这个资源"})
         body = _web_bytes(name)
         self.send_response(200)
-        self.send_header("Content-Type", _STATIC[name])
+        self.send_header("Content-Type", files.STATIC[name])
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()

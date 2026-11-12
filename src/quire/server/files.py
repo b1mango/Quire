@@ -15,6 +15,17 @@ from ..store import library
 if TYPE_CHECKING:
     from .app import _Handler
 
+#: 前端静态资源白名单（文件名 → Content-Type）；不在表里的一律 404
+_WEB_FILES = (
+    "app.js covers.js follows.js chapters.js capture.js run-events.js tasks.js queue-status.js"
+    " library.js inspector.js settings.js palette.js reader.js reader-flow.js"
+    " app.css views.css reader.css"
+)
+STATIC = {
+    name: "text/css; charset=utf-8" if name.endswith(".css") else "text/javascript; charset=utf-8"
+    for name in _WEB_FILES.split()
+}
+
 
 def send(handler: _Handler, path: Path, content_type: str) -> None:
     body = path.read_bytes()

@@ -31,16 +31,17 @@ function singleInspector(b) {
   const group = state.groups.find((g) => g.id === b.group);
   const files = b.files || (b.formats || []).map((format) => ({ format, bytes: 0, name: "" }));
   return html`${cover(coverItem(b))}<h2>${b.title}</h2><div class="by">${[b.author, bookHost(b)].filter(Boolean).join(" · ")}</div>
-    <div class="acts"><button class="btn primary" data-ia="open">打开</button><button class="btn" data-ia="reveal">在访达中显示</button></div>
+    <div class="acts"><button class="btn primary" data-ia="open">阅读</button><button class="btn" data-ia="external">用系统应用打开</button></div>
     <dl><dt>类型</dt><dd>${KIND_TEXT[b.kind] || b.kind || "—"}</dd>
       <dt>大小</dt><dd class="num">${humanSize(b.bytes)}</dd>
       <dt>加入</dt><dd>${addedOn(b) || "—"}</dd>
       <dt>分组</dt><dd>${group ? group.name : "未分组"}</dd>
       <dt>来源</dt><dd title="${b.source_url || ""}">${bookHost(b) || "—"}</dd></dl>
-    ${files.length ? html`<div class="sec"><h4>文件</h4><div class="files">${files.map((f) => html`<button class="file" data-file="${f.format}" title="${f.name ? `打开 ${f.name}；⌥ 点击在访达中显示` : "打开"}">
+    ${files.length ? html`<div class="sec"><h4>文件</h4><div class="files">${files.map((f) => html`<button class="file" data-file="${f.format}" title="${f.name ? `阅读 ${f.name}；⌥ 点击在访达中显示` : "阅读"}">
       <span class="ext">${f.format.toUpperCase()}</span><span>${f.name || f.format.toUpperCase()}</span><span class="sz num">${f.bytes ? humanSize(f.bytes) : ""}</span></button>`)}</div></div>` : ""}
     ${followSection(b)}
     <div class="menu-list">
+      <button class="btn" data-ia="reveal">在访达中显示</button>
       <button class="btn" data-ia="move">移动到分组…</button>
       ${group ? html`<button class="btn" data-ia="ungroup">移出「${group.name}」</button>` : ""}
       ${b.source_url ? html`<button class="btn" data-ia="recapture">重新采集…</button>` : ""}
@@ -114,6 +115,7 @@ $("inspIn").addEventListener("click", (e) => {
   switch (a.dataset.ia) {
     case "open": openBook(b.id); break;
     case "reveal": revealBook(b.id); break;
+    case "external": openExternal(b.id); break;
     case "check": case "checkMany": checkSelected(books); break;
     case "follow": followBook(b); break;
     case "recapture": resumeInCapture(b); break;
