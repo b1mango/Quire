@@ -113,7 +113,7 @@ async def run_core_manga(
                 if receipt.result is not None and (
                     receipt.result.task_id != task_id or receipt.result.title != result.title
                 ):
-                    raise LedgerError("Export receipt does not match the current task")
+                    raise LedgerError("导出凭据与当前任务不符")
                 reused = await recover_export(ledger.root, receipt, ledger.snapshot(task_id), opts)
                 if reused is not None:
                     if on_task:

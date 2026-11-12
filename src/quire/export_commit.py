@@ -17,14 +17,14 @@ from .store.export_files import Stamp, _directory, check_workspace, fingerprint
 def sync_file(path: Path) -> Stamp:
     value = fingerprint(path)
     if value is None:
-        raise LedgerError("Export candidate is missing")
+        raise LedgerError("导出候选文件缺失")
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
     if fingerprint(path) != value:
-        raise LedgerError("Export candidate changed while syncing")
+        raise LedgerError("导出候选文件同步时发生变化")
     return value
 
 
@@ -51,29 +51,29 @@ def _finish_link(receipt: ExportReceipt, item: PublishedFile) -> None:
     if (target.st_dev, target.st_ino) != (staged.st_dev, staged.st_ino):
         return
     if not stat.S_ISREG(target.st_mode) or target.st_nlink != 2:
-        raise LedgerError("Unexpected links in interrupted publication")
+        raise LedgerError("中断的发布中存在异常链接")
     check_workspace(receipt.workspace, receipt.workspace_identity)
     descriptor = os.open(temporary, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(descriptor)
         if _identity(before) != _identity(staged) or before.st_size != item.stamp.size:
-            raise LedgerError("Interrupted publication changed")
+            raise LedgerError("中断的发布文件已变化")
         digest = hashlib.sha256()
         remaining = item.stamp.size
         while remaining:
             block = os.read(descriptor, min(remaining, 1024 * 1024))
             if not block:
-                raise LedgerError("Interrupted publication was truncated")
+                raise LedgerError("中断的发布文件被截断")
             digest.update(block)
             remaining -= len(block)
         if digest.hexdigest() != item.stamp.sha256 or _identity(os.fstat(descriptor)) != _identity(
             before
         ):
-            raise LedgerError("Interrupted publication differs from receipt")
+            raise LedgerError("中断的发布文件与凭据不符")
         if _identity(temporary.lstat()) != _identity(before) or _identity(
             item.destination.lstat()
         ) != _identity(before):
-            raise LedgerError("Interrupted publication paths changed")
+            raise LedgerError("中断的发布路径已变化")
         temporary.unlink()
         sync_directory(receipt.workspace)
         sync_directory(item.destination.parent)
@@ -95,7 +95,7 @@ async def _stage_in_directory(receipt: ExportReceipt, item: PublishedFile, direc
     check_workspace(receipt.workspace, receipt.workspace_identity)
     source = receipt.workspace / item.candidate
     if fingerprint(source) != item.stamp:
-        raise LedgerError("Export candidate differs from receipt; sources preserved")
+        raise LedgerError("导出候选文件与凭据不符，原文件已保留")
     temporary = _temporary(receipt, item)
     old = fingerprint(temporary)
     if old is not None:
@@ -114,7 +114,7 @@ async def _stage_in_directory(receipt: ExportReceipt, item: PublishedFile, direc
             or before.st_nlink != 1
             or before.st_size != item.stamp.size
         ):
-            raise LedgerError("Export candidate changed before staging")
+            raise LedgerError("导出候选文件暂存前已变化")
         check_workspace(receipt.workspace, receipt.workspace_identity)
         target_fd = os.open(
             temporary.name,
@@ -127,19 +127,19 @@ async def _stage_in_directory(receipt: ExportReceipt, item: PublishedFile, direc
             while remaining:
                 block = os.read(source_fd, min(remaining, 1024 * 1024))
                 if not block:
-                    raise LedgerError("Export candidate was truncated while staging")
+                    raise LedgerError("导出候选文件暂存时被截断")
                 target.write(block)
                 remaining -= len(block)
                 await asyncio.sleep(0)
             if _identity(os.fstat(source_fd)) != _identity(before):
-                raise LedgerError("Export candidate changed while staging")
+                raise LedgerError("导出候选文件暂存时发生变化")
             target.flush()
             os.fsync(target.fileno())
     finally:
         if source_fd != -1:
             os.close(source_fd)
     if fingerprint(temporary) != item.stamp or fingerprint(source) != item.stamp:
-        raise LedgerError("Export candidate changed while staging")
+        raise LedgerError("导出候选文件暂存时发生变化")
     check_workspace(receipt.workspace, receipt.workspace_identity)
 
 
@@ -154,7 +154,7 @@ async def publish(receipt: ExportReceipt) -> None:
             if current == item.stamp:
                 committed.append(item.destination.name)
             elif current != item.before:
-                raise LedgerError("Output changed since preparation; refusing to overwrite")
+                raise LedgerError("成品准备后已变化，拒绝覆盖")
             else:
                 pending.append(item)
         for item in pending:
@@ -165,13 +165,13 @@ async def publish(receipt: ExportReceipt) -> None:
         for item in pending:
             check_workspace(receipt.workspace, receipt.workspace_identity)
             if fingerprint(item.destination) != item.before:
-                raise LedgerError("Output changed before publication; refusing to overwrite")
+                raise LedgerError("成品发布前已变化，拒绝覆盖")
             temporary = _temporary(receipt, item)
             if fingerprint(temporary) != item.stamp:
-                raise LedgerError("Staged output changed before publication")
+                raise LedgerError("暂存成品发布前已变化")
             check_workspace(receipt.workspace, receipt.workspace_identity)
             if fingerprint(item.destination) != item.before:
-                raise LedgerError("Output changed before publication; refusing to overwrite")
+                raise LedgerError("成品发布前已变化，拒绝覆盖")
             if item.before is None:
                 os.link(temporary, item.destination, follow_symlinks=False)
                 committed.append(item.destination.name)
@@ -183,7 +183,7 @@ async def publish(receipt: ExportReceipt) -> None:
             sync_directory(receipt.workspace)
             await asyncio.sleep(0)
         if not matches(receipt):
-            raise LedgerError("Published outputs failed verification")
+            raise LedgerError("已发布成品验证失败")
         for parent in {item.destination.parent for item in receipt.files}:
             sync_directory(parent)
     except OSError:

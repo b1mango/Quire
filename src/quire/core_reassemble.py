@@ -102,10 +102,10 @@ async def run_reassemble(
         for record in snapshot.resources:
             try:
                 if record.status != "done" or record.local_path is None:
-                    raise LedgerError("Missing source")
+                    raise LedgerError("原文件缺失")
                 stamp = fingerprint(root, task_id, record.local_path, expected_size=record.size)
                 if stamp.sha256 != record.sha256:
-                    raise LedgerError("Source differs")
+                    raise LedgerError("原文件不匹配")
             except LedgerError as exc:
                 raise ConfigError(
                     "该任务未保留完整原图或原图已损坏，需重抓或下次加 --keep-images"

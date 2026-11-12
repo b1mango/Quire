@@ -59,19 +59,19 @@ def test_identity_and_zero_budget(encoding: str) -> None:
     body = b"unaltered\x00\xff"
     assert decode_body(body, encoding, len(body)) is body
     assert decode_body(b"", encoding, 0) == b""
-    with pytest.raises(FetchError, match="size limit"):
+    with pytest.raises(FetchError, match="大小限制"):
         decode_body(body, encoding, len(body) - 1)
 
 
 @pytest.mark.parametrize("encoding", ["identity", "gzip", "deflate"])
 def test_negative_budget(encoding: str) -> None:
-    with pytest.raises(FetchError, match="size limit"):
+    with pytest.raises(FetchError, match="大小限制"):
         decode_body(b"", encoding, -1)
 
 
 @pytest.mark.parametrize("encoding", ["br", "zstd", "gzip, deflate", "x-gzip", "gzip; q=1"])
 def test_unsupported_encoding(encoding: str) -> None:
-    with pytest.raises(FetchError, match="Unsupported content encoding"):
+    with pytest.raises(FetchError, match="不支持的内容编码"):
         decode_body(b"", encoding, 1024)
 
 
@@ -86,7 +86,7 @@ def test_round_trip(kind: str, body: bytes, bounded_calls: list[tuple[int, int, 
 @pytest.mark.parametrize("kind", ["gzip", "deflate", "raw"])
 def test_input_budget_before_inflate(kind: str, bounded_calls: list[tuple[int, int, int]]) -> None:
     raw = _encode(b"", kind)
-    with pytest.raises(FetchError, match="size limit"):
+    with pytest.raises(FetchError, match="大小限制"):
         decode_body(raw, _encoding(kind), len(raw) - 1)
     assert not bounded_calls
 
@@ -98,7 +98,7 @@ def test_bomb_stops_at_budget_plus_one(
     raw = _encode(b"x" * (8 * 1024 * 1024), kind)
     budget = 100_000
     assert len(raw) < budget
-    with pytest.raises(FetchError, match="size limit"):
+    with pytest.raises(FetchError, match="大小限制"):
         decode_body(raw, _encoding(kind), budget)
     assert sum(length for _, _, length in bounded_calls) == budget + 1
 
@@ -111,7 +111,7 @@ def test_gzip_members_share_budget(budget: int, bounded_calls: list[tuple[int, i
     if budget == 65536:
         assert decode_body(raw, "gzip", budget) == first + second
     else:
-        with pytest.raises(FetchError, match="size limit"):
+        with pytest.raises(FetchError, match="大小限制"):
             decode_body(raw, "gzip", budget)
     assert sum(length for _, _, length in bounded_calls) == 65536
 
@@ -120,7 +120,7 @@ def test_empty_gzip_members_after_exact_output_budget() -> None:
     body = b"a" * 4096
     raw = _encode(body, "gzip") + _encode(b"", "gzip") * 10
     assert decode_body(raw, "gzip", len(body)) == body
-    with pytest.raises(FetchError, match="size limit"):
+    with pytest.raises(FetchError, match="大小限制"):
         decode_body(raw + _encode(b"b", "gzip"), "gzip", len(body))
 
 
@@ -130,7 +130,7 @@ def test_empty_gzip_member_limit(members: int, bounded_calls: list[tuple[int, in
     if members == 1024:
         assert decode_body(raw, "gzip", len(raw)) == b""
     else:
-        with pytest.raises(FetchError, match="member limit"):
+        with pytest.raises(FetchError, match="成员数量限制"):
             decode_body(raw, "gzip", len(raw))
     assert len(bounded_calls) == 1024
 

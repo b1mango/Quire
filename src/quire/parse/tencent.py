@@ -36,7 +36,7 @@ def reader_data(html: str) -> dict[str, object] | None:
                 source,
             )
             if len(source) > 160:
-                raise ValueError("Expression too long")
+                raise ValueError("表达式过长")
             source = re.sub(
                 r"Math.pow\((\d{1,2}),(\d)\)", lambda m: str(int(m[1]) ** int(m[2])), source
             )
@@ -81,7 +81,7 @@ def reader_data(html: str) -> dict[str, object] | None:
                     result = operations[type(node.op)](value(node.left), value(node.right))
                     if abs(result) < 1000000:
                         return int(result)
-                raise ValueError("Unsupported nonce expression")
+                raise ValueError("不支持的 nonce 表达式")
 
             return str(value(ast.parse(source, mode="eval").body))
 

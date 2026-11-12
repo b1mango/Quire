@@ -92,7 +92,7 @@ def test_concurrent_modification_rejected(tmp_path, monkeypatch, change):
         return real_read(fd, size)
 
     monkeypatch.setattr("quire.store.cache.os.read", read)
-    with pytest.raises(LedgerError, match="changed"):
+    with pytest.raises(LedgerError, match="发生变化"):
         fingerprint(tmp_path, TASK, f"cache/{TASK}/image")
 
 

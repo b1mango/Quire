@@ -212,7 +212,7 @@ def test_wal_sidecars_are_rejected_without_modification(
         sidecar.symlink_to(target)
     else:
         sidecar.write_bytes(b"foreign journal")
-    with pytest.raises(LedgerError, match="journal mode"), open_database(tmp_path):
+    with pytest.raises(LedgerError, match="日志模式"), open_database(tmp_path):
         pytest.fail("unsupported sidecar accepted")
     assert path.read_bytes() == original
     if dangling:
@@ -227,7 +227,7 @@ def test_root_symlink_is_rejected_without_touching_target(tmp_path: Path) -> Non
     target.mkdir(mode=0o755)
     root = tmp_path / "root"
     root.symlink_to(target, target_is_directory=True)
-    with pytest.raises(LedgerError, match="directory"), open_database(root):
+    with pytest.raises(LedgerError, match="目录"), open_database(root):
         pytest.fail("root symlink accepted")
     assert list(target.iterdir()) == []
     assert stat.S_IMODE(target.stat().st_mode) == 0o755
@@ -243,7 +243,7 @@ def test_foreign_key_damage_is_rejected_without_modification(tmp_path: Path) -> 
         assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
     path = tmp_path / "ledger.db"
     original = path.read_bytes()
-    with pytest.raises(LedgerError, match="references"), open_database(tmp_path):
+    with pytest.raises(LedgerError, match="引用"), open_database(tmp_path):
         pytest.fail("orphaned resource accepted")
     assert path.read_bytes() == original
 
@@ -282,7 +282,7 @@ def test_existing_root_permissions_are_preserved(tmp_path: Path) -> None:
 def test_second_owner_rejected_and_exception_releases_lock(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="caller"), open_database(tmp_path) as connection:
         inode = (tmp_path / "ledger.lock").stat().st_ino
-        with pytest.raises(LedgerError, match="in use"), open_database(tmp_path):
+        with pytest.raises(LedgerError, match="使用中"), open_database(tmp_path):
             pytest.fail("second owner accepted")
         connection.execute("BEGIN IMMEDIATE")
         _task(connection)
@@ -354,7 +354,7 @@ def test_real_kill_hot_journal_recovery(tmp_path: Path, unknown_version: bool) -
         assert child.stdout is not None
         assert select.select([child.stdout], [], [], 10)[0], "child did not reach spill"
         assert child.stdout.readline().strip() == "ready"
-        with pytest.raises(LedgerError, match="in use"), open_database(tmp_path):
+        with pytest.raises(LedgerError, match="使用中"), open_database(tmp_path):
             pytest.fail("second process accepted")
         journal = tmp_path / "ledger.db-journal"
         assert journal.stat().st_size > 512
@@ -365,7 +365,7 @@ def test_real_kill_hot_journal_recovery(tmp_path: Path, unknown_version: bool) -
     path = tmp_path / "ledger.db"
     before = (path.read_bytes(), journal.read_bytes())
     if unknown_version:
-        with pytest.raises(LedgerError, match="version"), open_database(tmp_path):
+        with pytest.raises(LedgerError, match="版本"), open_database(tmp_path):
             pytest.fail("unknown version recovered in place")
         assert (path.read_bytes(), journal.read_bytes()) == before
     else:

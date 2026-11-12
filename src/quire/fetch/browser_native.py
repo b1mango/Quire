@@ -77,7 +77,7 @@ async def owned_tab(cdp: Cdp) -> AsyncIterator[str]:
                     async with asyncio.timeout(3):
                         reply = await cdp.call("Target.closeTarget", {"targetId": target})
                         if reply.get("success") is False:
-                            raise FetchError("Chrome refused target cleanup")
+                            raise FetchError("Chrome 拒绝清理目标")
                 except (QuireError, TimeoutError):
                     raise FetchError("CDP 标签页清理失败；请手动关闭 Quire 新建的标签页") from None
 

@@ -15,14 +15,14 @@ _PUBLIC_HEADERS = {"accept", "accept-language", "referer"}
 
 def valid_url(value: str) -> httpx.URL:
     if not is_usable_url(value) or any(ord(c) < 32 for c in value):
-        raise ConfigError("URL must be an absolute HTTP(S) address without credentials")
+        raise ConfigError("URL 须为不含凭据的绝对 HTTP(S) 地址")
     try:
         url = httpx.URL(value)
         if url.scheme not in {"http", "https"} or not url.host or url.userinfo:
             raise ValueError
         return url.copy_with(fragment=None)
     except (httpx.InvalidURL, ValueError):
-        raise ConfigError("URL must be an absolute HTTP(S) address without credentials") from None
+        raise ConfigError("URL 须为不含凭据的绝对 HTTP(S) 地址") from None
 
 
 def public_headers(referer: str | None, custom: Mapping[str, str] | None) -> dict[str, str]:
@@ -35,7 +35,7 @@ def public_headers(referer: str | None, custom: Mapping[str, str] | None) -> dic
     for name, value in (custom or {}).items():
         key = name.lower()
         if key not in _PUBLIC_HEADERS or any(ord(c) < 32 or ord(c) > 126 for c in value):
-            raise ConfigError("Only public ASCII collection headers are supported")
+            raise ConfigError("只支持公开的 ASCII 采集请求头")
         result[key] = value
     if referer is not None:
         result["referer"] = str(valid_url(referer))
@@ -48,4 +48,4 @@ def redirect_target(url: httpx.URL, location: str) -> httpx.URL:
     try:
         return valid_url(str(url.join(location)))
     except httpx.InvalidURL:
-        raise NetworkError("Invalid redirect Location") from None
+        raise NetworkError("重定向 Location 无效") from None

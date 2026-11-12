@@ -58,7 +58,7 @@ def encode_pages(
     """Yield one encoded crop at a time; target-size budgeting belongs to the caller."""
     try:
         if encoding.max_edge < 0 or (not encoding.lossless and not 1 <= encoding.quality <= 100):
-            raise FetchError("Invalid image encoding parameters")
+            raise FetchError("图片编码参数无效")
         with normalized_image(data) as image:
             step = image.height
             if options.split_tall and image.height > image.width * 8:
@@ -78,4 +78,4 @@ def encode_pages(
     except FetchError:
         raise
     except Exception:
-        raise FetchError("Image page encoding failed") from None
+        raise FetchError("图片页面编码失败") from None

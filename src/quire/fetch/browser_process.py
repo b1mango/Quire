@@ -39,7 +39,7 @@ def find_chrome(path: str | None = None) -> str | None:
     if path is not None:
         found = _executable(path)
         if found is None:
-            raise ConfigError("Chrome path must refer to an executable file")
+            raise ConfigError("Chrome 路径须指向可执行文件")
         return found
     for candidate in _CHROME_PATHS:
         if found := _executable(candidate):
@@ -78,9 +78,9 @@ class ChromeProcess:
 
     async def __aenter__(self) -> ChromeProcess:
         if self._entered or self._close_task is not None:
-            raise ConfigError("ChromeProcess cannot be entered more than once")
+            raise ConfigError("ChromeProcess 不能重复进入")
         if os.name != "posix":
-            raise ConfigError("Isolated Chrome process groups require a POSIX system")
+            raise ConfigError("隔离 Chrome 进程组需要 POSIX 系统")
         self._entered = True
         try:
             self._temporary = tempfile.TemporaryDirectory(prefix="quire-chrome-")
@@ -120,7 +120,7 @@ class ChromeProcess:
             async with asyncio.timeout(_START_TIMEOUT):
                 while True:
                     if self._process.poll() is not None:
-                        raise NetworkError("Chrome exited before its debugging endpoint was ready")
+                        raise NetworkError("Chrome 调试端点就绪前进程已退出")
                     if endpoint := self._read_endpoint():
                         self.endpoint = endpoint
                         return self
@@ -128,9 +128,9 @@ class ChromeProcess:
         except BaseException as exc:
             await self.close()
             if isinstance(exc, TimeoutError):
-                raise FetchError("Chrome debugging endpoint startup timed out") from None
+                raise FetchError("Chrome 调试端点启动超时") from None
             if isinstance(exc, (OSError, ValueError)):
-                raise NetworkError("Unable to start isolated Chrome") from None
+                raise NetworkError("无法启动隔离的 Chrome") from None
             raise
 
     def _read_endpoint(self) -> str | None:
@@ -141,10 +141,10 @@ class ChromeProcess:
         except FileNotFoundError:
             return None
         except UnicodeError:
-            raise FetchError("Invalid Chrome debugging endpoint file") from None
+            raise FetchError("Chrome 调试端点文件无效") from None
         lines = text.splitlines()
         if len(text) > 4096:
-            raise FetchError("Invalid Chrome debugging endpoint file")
+            raise FetchError("Chrome 调试端点文件无效")
         if len(lines) < 2:
             return None
         if (
@@ -154,7 +154,7 @@ class ChromeProcess:
             or not 1 <= int(lines[0]) <= 65535
             or re.fullmatch(r"/devtools/browser/[A-Za-z0-9_-]+", lines[1]) is None
         ):
-            raise FetchError("Invalid Chrome debugging endpoint file")
+            raise FetchError("Chrome 调试端点文件无效")
         return f"ws://127.0.0.1:{lines[0]}{lines[1]}"
 
     async def __aexit__(self, *exc: object) -> None:
@@ -213,9 +213,9 @@ class ChromeProcess:
                 if not await self._wait_group_exit():
                     self._signal_group(signal.SIGKILL)
                     if not await self._wait_group_exit():
-                        raise NetworkError("Isolated Chrome process group did not exit")
+                        raise NetworkError("隔离的 Chrome 进程组未退出")
                 await asyncio.to_thread(self._process.wait)
         except OSError:
-            raise NetworkError("Unable to clean up isolated Chrome process") from None
+            raise NetworkError("无法清理隔离的 Chrome 进程") from None
         if self._temporary is not None:
             self._temporary.cleanup()

@@ -55,7 +55,7 @@ def test_single_pale_color_pixel_never_sampled_away() -> None:
 def test_classification_failure_is_redacted() -> None:
     image = Image.new("RGB", (2, 2))
     image.close()
-    with pytest.raises(FetchError, match="classification"):
+    with pytest.raises(FetchError, match="分类"):
         classify(image)
 
 
@@ -279,14 +279,14 @@ def test_encoder_errors_are_redacted(monkeypatch: pytest.MonkeyPatch) -> None:
         raise OSError("private-payload")
 
     monkeypatch.setattr(Image.Image, "save", fail)
-    with pytest.raises(FetchError, match="encoding") as caught:
+    with pytest.raises(FetchError, match="编码") as caught:
         list(encode_pages(data, DEFAULT, OPTIONS))
     assert "private-payload" not in "".join(traceback.format_exception(caught.value))
 
 
 @pytest.mark.parametrize("encoding", [Encoding(0, 100), Encoding(101, 100), Encoding(80, -1)])
 def test_invalid_encoding_is_domain_error(encoding: Encoding) -> None:
-    with pytest.raises(FetchError, match="parameters"):
+    with pytest.raises(FetchError, match="参数"):
         list(encode_pages(b"", encoding, OPTIONS))
 
 

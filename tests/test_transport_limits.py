@@ -108,7 +108,7 @@ def test_trickling_body_checks_deadline_and_cancel_between_reads(monkeypatch, ca
 def test_concatenated_gzip_preserves_every_member_and_limits_total():
     body = gzip.compress(b"first") + gzip.compress(b"") + gzip.compress(b"second")
     assert Fetcher(max_bytes=11)._decode(body, "gzip") == b"firstsecond"
-    with pytest.raises(FetchError, match="size limit"):
+    with pytest.raises(FetchError, match="大小限制"):
         Fetcher(max_bytes=10)._decode(body, "gzip")
     with pytest.raises(zlib.error):
         Fetcher()._decode(body[:-2], "gzip")
@@ -130,7 +130,7 @@ def test_chunked_payload_and_trailers_with_response_limit(budget):
         if budget == 11:
             assert Fetcher(max_bytes=budget)._read_body(response) == b"firstsecond"
         else:
-            with pytest.raises(FetchError, match="size limit"):
+            with pytest.raises(FetchError, match="大小限制"):
                 Fetcher(max_bytes=budget)._read_body(response)
     finally:
         response.close()

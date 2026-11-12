@@ -304,15 +304,15 @@ def test_context_lifecycle_errors(tmp_path: Path) -> None:
     output = writer(path)
     assert not path.exists()
     chapter = EpubChapter(1, "第一章", ("正文。",))
-    with pytest.raises(RuntimeError, match="not open"):
+    with pytest.raises(RuntimeError, match="未打开"):
         output.add_chapter(chapter)
     with output:
-        with pytest.raises(RuntimeError, match="reused"):
+        with pytest.raises(RuntimeError, match="不能重复使用"):
             output.__enter__()
         output.add_chapter(chapter)
-    with pytest.raises(RuntimeError, match="not open"):
+    with pytest.raises(RuntimeError, match="未打开"):
         output.add_chapter(EpubChapter(2, "第二章", ("正文。",)))
-    with pytest.raises(RuntimeError, match="reused"):
+    with pytest.raises(RuntimeError, match="不能重复使用"):
         output.__enter__()
     output.__exit__(None, None, None)
 
@@ -321,7 +321,7 @@ def test_context_lifecycle_errors(tmp_path: Path) -> None:
 def test_non_positive_or_non_integer_index_is_rejected(tmp_path: Path, index: object) -> None:
     path = tmp_path / "temporary"
     with writer(path) as output:
-        with pytest.raises(ValueError, match="positive integer"):
+        with pytest.raises(ValueError, match="正整数"):
             output.add_chapter(EpubChapter(index, "非法", ("正文。",)))  # type: ignore[arg-type]
         # 校验失败不污染写入器：补齐合法章节后仍能正常收尾。
         output.add_chapter(EpubChapter(1, "补章", ("正文。",)))
@@ -333,9 +333,9 @@ def test_out_of_order_index_is_rejected_without_poisoning(tmp_path: Path) -> Non
     path = tmp_path / "temporary"
     with writer(path) as output:
         output.add_chapter(EpubChapter(1, "第一章", ("正文。",)))
-        with pytest.raises(ValueError, match="increase by one"):
+        with pytest.raises(ValueError, match="依次递增"):
             output.add_chapter(EpubChapter(3, "第三章", ("正文。",)))
-        with pytest.raises(ValueError, match="increase by one"):
+        with pytest.raises(ValueError, match="依次递增"):
             output.add_chapter(EpubChapter(1, "第一章", ("正文。",)))
         output.add_chapter(EpubChapter(2, "第二章", ("正文。",)))
     opf = xml_part(path, "OEBPS/content.opf")
@@ -370,11 +370,11 @@ def test_failed_write_marks_the_writer_failed(
 
     monkeypatch.setattr(ZipFile, "writestr", fail)
     output = writer(tmp_path / "temporary")
-    with pytest.raises(RuntimeError, match="failed write"):
+    with pytest.raises(RuntimeError, match="写入失败"):
         with output:
             with pytest.raises(OSError, match="disk failure"):
                 output.add_chapter(EpubChapter(1, "第一章", ("正文。",)))
-            with pytest.raises(RuntimeError, match="not open"):
+            with pytest.raises(RuntimeError, match="未打开"):
                 output.add_chapter(EpubChapter(2, "第二章", ("正文。",)))
     assert output._archive is None
 
@@ -382,13 +382,13 @@ def test_failed_write_marks_the_writer_failed(
 def test_write_to_closed_archive_fails_and_stops(tmp_path: Path) -> None:
     path = tmp_path / "temporary"
     output = writer(path)
-    with pytest.raises(RuntimeError, match="failed write"):
+    with pytest.raises(RuntimeError, match="写入失败"):
         with output:
             assert output._archive is not None
             output._archive.close()
             with pytest.raises(ValueError, match="closed"):
                 output.add_chapter(EpubChapter(1, "第一章", ("正文。",)))
-            with pytest.raises(RuntimeError, match="not open"):
+            with pytest.raises(RuntimeError, match="未打开"):
                 output.add_chapter(EpubChapter(1, "第一章", ("正文。",)))
     with ZipFile(path) as result:
         assert result.namelist() == ["mimetype"]

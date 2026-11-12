@@ -41,7 +41,7 @@ def test_engines_reject_size_before_load(
     monkeypatch.setattr(PngImagePlugin.PngImageFile, "load", unexpected)
     monkeypatch.setattr(subprocess, "run", unexpected)
     engine = object.__new__(OnnxEngine) if kind == "onnx" else TesseractEngine("tesseract")
-    with pytest.raises(OcrEngineError, match="dimensions or pixel count"):
+    with pytest.raises(OcrEngineError, match="尺寸或像素数"):
         engine.recognize(data)
 
 
@@ -96,7 +96,7 @@ def test_recognition_tensor_rejects_extreme_line_before_resize(
 
     monkeypatch.setattr(Image.Image, "resize", unexpected)
     with Image.new("L", (100000, 10)) as image:
-        with pytest.raises(FetchError, match="dimensions or pixel count"):
+        with pytest.raises(FetchError, match="尺寸或像素数"):
             _to_tensor(np, image, (480000, 48))
 
 

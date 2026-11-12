@@ -129,9 +129,9 @@ def cleanup(root: Path, receipt: ExportReceipt, opts: MangaOptions) -> ExportRec
 def _check_outputs(metadata: dict[Path, tuple[int, ...]]) -> None:
     try:
         if any(_identity(path.lstat()) != value for path, value in metadata.items()):
-            raise LedgerError("Output changed during cleanup; remaining sources preserved")
+            raise LedgerError("清理时成品发生变化，剩余原文件已保留")
     except OSError as exc:
-        raise LedgerError("Output disappeared during cleanup; remaining sources preserved") from exc
+        raise LedgerError("清理时成品消失，剩余原文件已保留") from exc
 
 
 async def complete(root: Path, receipt: ExportReceipt, opts: MangaOptions) -> MangaResult:

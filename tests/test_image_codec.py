@@ -268,7 +268,7 @@ def test_normalization_error_is_redacted(monkeypatch: pytest.MonkeyPatch) -> Non
     with Image.new("L", (2, 2)) as source:
         data = pack(source)
     monkeypatch.setattr(ImageOps, "exif_transpose", fail)
-    with pytest.raises(FetchError, match="normalization") as caught, normalized_image(data):
+    with pytest.raises(FetchError, match="标准化") as caught, normalized_image(data):
         pytest.fail("Fault was accepted")
     assert "private-payload" not in "".join(traceback.format_exception(caught.value))
 
@@ -277,9 +277,9 @@ def test_normalization_error_is_redacted(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_unsupported_depth_fails_without_silent_clipping(mode: str) -> None:
     with Image.new(mode, (2, 2), 1000) as source:
         data = pack(source, "TIFF")
-    with pytest.raises(FetchError, match="sample depth"):
+    with pytest.raises(FetchError, match="采样深度"):
         inspect_image(data)
-    with pytest.raises(FetchError, match="sample depth"), normalized_image(data):
+    with pytest.raises(FetchError, match="采样深度"), normalized_image(data):
         pytest.fail("Unsupported depth was silently clipped")
 
 

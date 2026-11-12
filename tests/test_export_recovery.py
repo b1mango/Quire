@@ -78,7 +78,7 @@ def test_prepared_user_edit_never_overwritten_even_with_flag(tmp_path, monkeypat
     interrupt(tmp_path, monkeypatch)
     target = tmp_path / "book.pdf"
     target.write_bytes(b"user edit")
-    with pytest.raises(LedgerError, match="Output changed"):
+    with pytest.raises(LedgerError, match="成品准备后已变化"):
         capture(tmp_path, resume=True, options=MangaOptions(overwrite=True))
     assert target.read_bytes() == b"user edit"
     assert not (tmp_path / "book.cbz").exists()
@@ -252,7 +252,7 @@ def test_same_size_changed_cache_survives_pending_cleanup(tmp_path, monkeypatch)
         return remove_cached(root, task_id, relative, **kwargs)
 
     monkeypatch.setattr("quire.core_publish.remove_cached", modify)
-    with pytest.raises(LedgerError, match="preserved"):
+    with pytest.raises(LedgerError, match="已保留"):
         capture(tmp_path)
     assert changed[0].read_bytes().startswith(b"xxx")
 
@@ -291,7 +291,7 @@ def test_output_changes_during_cleanup_stop_and_preserve_candidates(tmp_path, mo
         target.unlink() if damage == "delete" else target.write_bytes(b"user change")
 
     monkeypatch.setattr("quire.core_publish.remove_cached", alter)
-    with pytest.raises(LedgerError, match="during cleanup"):
+    with pytest.raises(LedgerError, match="清理时"):
         capture(tmp_path)
     _, record = receipt(tmp_path)
     assert not record["cleaned"] and record["state"] == "complete"

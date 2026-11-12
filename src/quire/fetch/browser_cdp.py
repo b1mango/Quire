@@ -18,18 +18,18 @@ class _NoRedirectConnect(connect):
 
 
 def _invalid_constant(value: str) -> NoReturn:
-    raise ValueError("Invalid JSON constant")
+    raise ValueError("JSON 常量无效")
 
 
 def _message(raw: str | bytes) -> dict[str, Any]:
     try:
         value = json.loads(raw, parse_constant=_invalid_constant)
     except (ValueError, UnicodeError, RecursionError):
-        raise FetchError("Invalid CDP JSON message") from None
+        raise FetchError("CDP JSON 消息无效") from None
     if not isinstance(value, dict):
-        raise FetchError("Invalid CDP message structure")
+        raise FetchError("CDP 消息结构无效")
     if "sessionId" in value and (not isinstance(value["sessionId"], str) or not value["sessionId"]):
-        raise FetchError("Invalid CDP session identifier")
+        raise FetchError("CDP 会话标识无效")
     if "id" in value:
         if (
             type(value["id"]) is not int
@@ -37,9 +37,9 @@ def _message(raw: str | bytes) -> dict[str, Any]:
             or "method" in value
             or ("result" in value) == ("error" in value)
         ):
-            raise FetchError("Invalid CDP response structure")
+            raise FetchError("CDP 响应结构无效")
         if "result" in value and not isinstance(value["result"], dict):
-            raise FetchError("Invalid CDP response result")
+            raise FetchError("CDP 响应结果无效")
         if "error" in value:
             error = value["error"]
             if (
@@ -47,7 +47,7 @@ def _message(raw: str | bytes) -> dict[str, Any]:
                 or type(error.get("code")) is not int
                 or not isinstance(error.get("message"), str)
             ):
-                raise FetchError("Invalid CDP response error")
+                raise FetchError("CDP 响应错误信息无效")
     elif (
         not isinstance(value.get("method"), str)
         or not value["method"]
@@ -55,7 +55,7 @@ def _message(raw: str | bytes) -> dict[str, Any]:
         or "result" in value
         or "error" in value
     ):
-        raise FetchError("Invalid CDP event structure")
+        raise FetchError("CDP 事件结构无效")
     return value
 
 
@@ -73,7 +73,7 @@ class Cdp:
 
     async def __aenter__(self) -> Cdp:
         if self._entered or self._close_task is not None:
-            raise ConfigError("Cdp cannot be entered more than once")
+            raise ConfigError("CDP 不能重复进入")
         self._entered = True
         try:
             self._connection = await _NoRedirectConnect(
@@ -84,7 +84,7 @@ class Cdp:
                 close_timeout=1,
             )
         except (OSError, TimeoutError, ValueError, WebSocketException):
-            raise NetworkError("Unable to connect to Chrome debugging endpoint") from None
+            raise NetworkError("无法连接 Chrome 调试端点") from None
         self._reader = asyncio.create_task(self._read(), name="quire-cdp-reader")
         return self
 
@@ -101,14 +101,14 @@ class Cdp:
         if self._failure is not None:
             raise type(self._failure)(self._failure.message) from None
         if self._connection is None:
-            raise NetworkError("CDP connection is not open")
+            raise NetworkError("CDP 连接未打开")
         if (
             not isinstance(method, str)
             or not method
             or (params is not None and not isinstance(params, dict))
             or (session_id is not None and (not isinstance(session_id, str) or not session_id))
         ):
-            raise FetchError("Invalid CDP command arguments")
+            raise FetchError("CDP 命令参数无效")
         self._next_id += 1
         message: dict[str, Any] = {"id": self._next_id, "method": method}
         if params is not None:
@@ -118,14 +118,14 @@ class Cdp:
         try:
             wire = json.dumps(message, allow_nan=False)
         except (TypeError, ValueError, RecursionError):
-            raise FetchError("CDP command must contain valid JSON data") from None
+            raise FetchError("CDP 命令须包含有效的 JSON 数据") from None
         future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._pending[message["id"]] = future
         try:
             await self._connection.send(wire)
             return await future
         except (OSError, TimeoutError, WebSocketException):
-            self._fail(NetworkError("CDP connection failed while sending a command"))
+            self._fail(NetworkError("发送命令时 CDP 连接失败"))
             await self.close()
             assert self._failure is not None
             raise type(self._failure)(self._failure.message) from None
@@ -159,22 +159,20 @@ class Cdp:
                         suffix = (
                             ": Invalid InterceptionId" if "Invalid InterceptionId" in detail else ""
                         )
-                        future.set_exception(
-                            FetchError(f"CDP command failed (code {code}){suffix}")
-                        )
+                        future.set_exception(FetchError(f"CDP 命令失败（代码 {code}）{suffix}"))
                     else:
                         future.set_result(message["result"])
                 else:
                     try:
                         self.events.put_nowait(message)
                     except asyncio.QueueFull:
-                        raise FetchError("CDP event queue exceeded its limit of 256") from None
+                        raise FetchError("CDP 事件队列超过 256 条限制") from None
         except FetchError as exc:
             self._fail(exc)
         except (OSError, TimeoutError, WebSocketException):
-            self._fail(NetworkError("CDP connection was lost"))
+            self._fail(NetworkError("CDP 连接已断开"))
         finally:
-            self._fail(NetworkError("CDP connection closed"))
+            self._fail(NetworkError("CDP 连接已关闭"))
             self._begin_close()
 
     def _begin_close(self) -> asyncio.Task[None]:
@@ -183,7 +181,7 @@ class Cdp:
         return self._close_task
 
     async def close(self) -> None:
-        self._fail(NetworkError("CDP connection closed"))
+        self._fail(NetworkError("CDP 连接已关闭"))
         task = self._begin_close()
         cancelled = False
         while not task.done():
@@ -200,7 +198,7 @@ class Cdp:
             if self._connection is not None:
                 await self._connection.close()
         except (OSError, TimeoutError, WebSocketException):
-            self._fail(NetworkError("CDP connection failed during shutdown"))
+            self._fail(NetworkError("关闭时 CDP 连接失败"))
         finally:
             if self._reader is not None:
                 self._reader.cancel()

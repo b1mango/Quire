@@ -29,4 +29,4 @@ def classify(image: Image.Image) -> PageKind:
                 gray = red
             return "gray" if any(gray.histogram()[1:255]) else "bitonal"
     except Exception:
-        raise FetchError("Image classification failed") from None
+        raise FetchError("图片分类失败") from None

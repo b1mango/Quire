@@ -36,11 +36,11 @@ class ResourceSpec:
 
     def __post_init__(self) -> None:
         if type(self.chapter) is not int or type(self.page) is not int:
-            raise LedgerError("Chapter and page must be integers")
+            raise LedgerError("章节和页码须为整数")
         if not 1 <= self.chapter < 2**63 or not 1 <= self.page < 2**63:
-            raise LedgerError("Chapter and page must be positive SQLite integers")
+            raise LedgerError("章节和页码须为 SQLite 正整数")
         if not _absolute_url(self.url) or (self.referer and not _absolute_url(self.referer)):
-            raise LedgerError("Resource URL and referer must be absolute HTTP(S) addresses")
+            raise LedgerError("资源 URL 和 referer 须为绝对 HTTP(S) 地址")
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,32 +65,32 @@ def _json(value: object) -> str:
     def validate(item: object) -> None:
         if isinstance(item, dict):
             if any(not isinstance(key, str) for key in item):
-                raise LedgerError("Option keys must be strings")
+                raise LedgerError("选项键须为字符串")
             for child in item.values():
                 validate(child)
         elif isinstance(item, list):
             for child in item:
                 validate(child)
         elif item is not None and type(item) not in (str, int, bool, float):
-            raise LedgerError("Options must contain JSON values")
+            raise LedgerError("选项须包含 JSON 值")
 
     try:
         validate(value)
         return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
     except (ValueError, TypeError, RecursionError) as exc:
-        raise LedgerError("Options must be finite, acyclic JSON values") from exc
+        raise LedgerError("选项须为有限且无循环的 JSON 值") from exc
 
 
 def task_identity(
     url: str, options: Mapping[str, JsonValue], resources: Sequence[ResourceSpec]
 ) -> tuple[str, str]:
     if not _absolute_url(url):
-        raise LedgerError("Source URL must be an absolute HTTP(S) address")
+        raise LedgerError("来源 URL 须为绝对 HTTP(S) 地址")
     if not resources:
-        raise LedgerError("A task must have at least one resource")
+        raise LedgerError("任务须至少包含一个资源")
     keys = [(resource.chapter, resource.page) for resource in resources]
     if keys != sorted(set(keys)):
-        raise LedgerError("Resources must have unique chapter/page keys in reading order")
+        raise LedgerError("资源须按阅读顺序排列，章节和页码不得重复")
     options_json = _json(dict(options))
     canonical = _json(
         {

@@ -240,7 +240,7 @@ def test_chrome_start_failure_cleans_resources(
         assert "SECRET_BODY" not in str(caught.value)
         assert process.profile is not None and not process.profile.exists()
         if failure in {"missing", "incomplete"}:
-            assert "timed out" in str(caught.value)
+            assert "超时" in str(caught.value)
         if failure in {"early", "unexecutable"}:
             assert isinstance(caught.value, NetworkError)
             if process.pid is not None:
@@ -402,7 +402,7 @@ def test_cdp_connection_refused_and_closed_calls() -> None:
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             cdp = Cdp(f"ws://127.0.0.1:{listener.getsockname()[1]}/SECRET_BODY")
-            with pytest.raises(NetworkError, match="not open"):
+            with pytest.raises(NetworkError, match="未打开"):
                 await cdp.call("Test.beforeOpen")
             with pytest.raises(NetworkError) as caught:
                 async with cdp:
@@ -410,7 +410,7 @@ def test_cdp_connection_refused_and_closed_calls() -> None:
             assert "SECRET_BODY" not in str(caught.value)
             assert caught.value.__suppress_context__
             await cdp.close()
-            with pytest.raises(NetworkError, match="closed"):
+            with pytest.raises(NetworkError, match="已关闭"):
                 await cdp.call("Test.afterClose")
         _assert_no_transport_tasks()
 

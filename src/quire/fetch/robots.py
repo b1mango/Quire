@@ -129,4 +129,4 @@ class RobotsPolicy:
                 self._policies[origin] = _parse(body)
             rules = self._policies[origin]
         if not _allowed(rules, url):
-            raise BlockedError("robots.txt does not allow Quire to fetch this resource")
+            raise BlockedError("robots.txt 不允许 Quire 采集此资源")

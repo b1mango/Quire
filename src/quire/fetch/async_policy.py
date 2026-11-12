@@ -103,4 +103,4 @@ class AsyncRobotsPolicy:
                     text = ""
                 self._rules[origin] = _parse(text)
         if not _allowed(self._rules[origin], url):
-            raise BlockedError("robots.txt does not allow Quire to fetch this resource")
+            raise BlockedError("robots.txt 不允许 Quire 采集此资源")

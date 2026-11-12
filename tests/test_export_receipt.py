@@ -105,7 +105,7 @@ def object_at(payload: dict[str, object], path: str) -> dict[str, object]:
 def assert_corrupt(root: Path, receipt: ExportReceipt, payload: dict[str, object]) -> None:
     save_record(root, receipt.key, payload)
     original = (root / "exports" / f"{receipt.key}.json").read_bytes()
-    with pytest.raises(LedgerError, match="export receipt"):
+    with pytest.raises(LedgerError, match="导出凭据"):
         read_receipt(root, receipt.key, root / "book.pdf", FORMATS)
     assert (root / "exports" / f"{receipt.key}.json").read_bytes() == original
 

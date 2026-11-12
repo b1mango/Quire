@@ -85,7 +85,7 @@ def test_finish_link_rejects_third_link_without_unlinking(prepared, linked, tmp_
     extra = tmp_path / "user-link.pdf"
     os.link(linked, extra)
 
-    with pytest.raises(LedgerError, match="Unexpected links"):
+    with pytest.raises(LedgerError, match="异常链接"):
         commit._finish_link(prepared, item)
 
     assert extra.samefile(linked) and linked.samefile(item.destination)
@@ -100,7 +100,7 @@ def test_finish_link_rejects_receipt_mismatch_without_unlinking(prepared, linked
     content = b"changed" if damage == "size" else b"X" * item.stamp.size
     linked.write_bytes(content)
 
-    message = "publication changed" if damage == "size" else "differs from receipt"
+    message = "发布文件已变化" if damage == "size" else "与凭据不符"
     with pytest.raises(LedgerError, match=message):
         commit._finish_link(prepared, item)
 
@@ -121,7 +121,7 @@ def test_finish_link_rejects_replacement_between_stat_and_open(prepared, linked,
         return original_open(path, flags, *args, **kwargs)
 
     monkeypatch.setattr(commit.os, "open", open_file)
-    with pytest.raises(LedgerError, match="publication changed"):
+    with pytest.raises(LedgerError, match="发布文件已变化"):
         commit._finish_link(prepared, item)
 
     assert saved.samefile(item.destination)
@@ -146,7 +146,7 @@ def test_finish_link_bounds_read_and_rejects_change_even_when_digest_matches(
         return block
 
     monkeypatch.setattr(commit.os, "read", read)
-    with pytest.raises(LedgerError, match="differs from receipt"):
+    with pytest.raises(LedgerError, match="与凭据不符"):
         commit._finish_link(prepared, item)
 
     assert reads == [item.stamp.size] and linked.samefile(item.destination)
@@ -175,7 +175,7 @@ def test_finish_link_rejects_path_replacement_after_hash(prepared, linked, monke
         return value
 
     monkeypatch.setattr(commit.os, "fstat", fstat)
-    with pytest.raises(LedgerError, match="paths changed"):
+    with pytest.raises(LedgerError, match="路径已变化"):
         commit._finish_link(prepared, item)
 
     assert calls == 2 and target.read_bytes() == b"user replacement"
@@ -199,7 +199,7 @@ def test_finish_link_leaves_different_inodes_untouched(prepared, linked):
 def test_sync_file_requires_existing_unchanged_candidate(prepared, tmp_path):
     item = prepared.files[0]
     assert commit.sync_file(prepared.workspace / item.candidate) == item.stamp
-    with pytest.raises(LedgerError, match="candidate is missing"):
+    with pytest.raises(LedgerError, match="候选文件缺失"):
         commit.sync_file(tmp_path / "missing.pdf")
 
 
@@ -212,7 +212,7 @@ def test_sync_file_rejects_change_after_fsync(prepared, monkeypatch):
         source.write_bytes(b"user modified candidate")
 
     monkeypatch.setattr(commit.os, "fsync", sync)
-    with pytest.raises(LedgerError, match="changed while syncing"):
+    with pytest.raises(LedgerError, match="同步时发生变化"):
         commit.sync_file(source)
     assert source.read_bytes() == b"user modified candidate"
 
@@ -246,7 +246,7 @@ def test_bounded_read_rejects_early_eof_and_keeps_paths(prepared, monkeypatch, o
 
     monkeypatch.setattr(commit, "fingerprint", checked)
     monkeypatch.setattr(commit.os, "read", read)
-    with pytest.raises(LedgerError, match="was truncated"):
+    with pytest.raises(LedgerError, match="被截断"):
         if operation == "finish-link":
             commit._finish_link(prepared, item)
         else:
@@ -295,9 +295,7 @@ def test_stage_rejects_changed_source_without_publishing(prepared, monkeypatch, 
         monkeypatch.setattr(commit.asyncio, "sleep", sleep)
     else:
         monkeypatch.setattr(commit.os, "fsync", sync)
-    message = {"before": "differs from receipt", "open": "changed before staging"}.get(
-        when, "changed while staging"
-    )
+    message = {"before": "与凭据不符", "open": "暂存前已变化"}.get(when, "暂存时发生变化")
     with pytest.raises(LedgerError, match=message):
         asyncio.run(commit._stage(prepared, item))
 
@@ -332,10 +330,10 @@ def test_publish_rejects_changed_files_and_preserves_candidates(prepared, monkey
     else:
         monkeypatch.setattr(commit, "sync_directory", sync)
     messages = {
-        "prepared": "Output changed since preparation",
-        "before-publication": "Output changed before publication",
-        "staged": "Staged output changed before publication",
-        "after-publication": "Published outputs failed verification",
+        "prepared": "成品准备后已变化",
+        "before-publication": "成品发布前已变化",
+        "staged": "暂存成品发布前已变化",
+        "after-publication": "已发布成品验证失败",
     }
     with pytest.raises(LedgerError, match=messages[when]):
         asyncio.run(commit.publish(prepared))
@@ -456,7 +454,7 @@ def test_publish_rechecks_old_target_after_staged_fingerprint(prepared, monkeypa
 
     monkeypatch.setattr(commit, "sync_directory", sync)
     monkeypatch.setattr(commit, "fingerprint", checked)
-    with pytest.raises(LedgerError, match="Output changed before publication"):
+    with pytest.raises(LedgerError, match="成品发布前已变化"):
         asyncio.run(commit.publish(receipt))
 
     assert changed and first.destination.read_bytes() == b"user modified output"

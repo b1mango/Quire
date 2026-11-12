@@ -51,7 +51,7 @@ class Ledger:
 
     def __enter__(self) -> Ledger:
         if self._context is not None:
-            raise LedgerError("Ledger is already open")
+            raise LedgerError("账本已打开")
         context = open_database(self.root)
         self._connection = context.__enter__()
         self._context = context
@@ -60,7 +60,7 @@ class Ledger:
 
     def __exit__(self, *exc: object) -> None:
         if self._context is not None and self._owner != get_ident():
-            raise LedgerError("Ledger must be closed by its owning thread")
+            raise LedgerError("账本须由所属线程关闭")
         context, self._context = self._context, None
         self._connection = None
         self._owner = None
@@ -70,7 +70,7 @@ class Ledger:
     @property
     def _db(self) -> sqlite3.Connection:
         if self._connection is None:
-            raise LedgerError("Ledger must be used within its context manager")
+            raise LedgerError("账本须在其上下文管理器中使用")
         return self._connection
 
     @contextmanager
@@ -85,7 +85,7 @@ class Ledger:
                 db.rollback()
                 raise
         except sqlite3.Error as exc:
-            raise LedgerError("Ledger transaction failed") from exc
+            raise LedgerError("账本事务失败") from exc
 
     def create_task(
         self, url: str, options: Mapping[str, JsonValue], resources: Sequence[ResourceSpec]
@@ -109,20 +109,20 @@ class Ledger:
         try:
             row = self._db.execute("SELECT status FROM tasks WHERE id = ?", (task_id,)).fetchone()
             if row is None:
-                raise LedgerError("Unknown ledger task")
+                raise LedgerError("未知的账本任务")
             resources = self._db.execute(
                 "SELECT * FROM resources WHERE task_id = ? ORDER BY chapter, page", (task_id,)
             ).fetchall()
             return TaskSnapshot(task_id, cast(TaskStatus, row[0]), tuple(map(_record, resources)))
         except sqlite3.Error as exc:
-            raise LedgerError("Cannot read ledger task") from exc
+            raise LedgerError("无法读取账本任务") from exc
 
     def describe(self, task_id: str) -> tuple[str, dict[str, JsonValue]]:
         row = self._db.execute(
             "SELECT source_url, options_json FROM tasks WHERE id = ?", (task_id,)
         ).fetchone()
         if row is None:
-            raise LedgerError("Unknown ledger task")
+            raise LedgerError("未知的账本任务")
         return str(row[0]), cast(dict[str, JsonValue], json.loads(row[1]))
 
     def contains(self, task_id: str) -> bool:
@@ -132,7 +132,7 @@ class Ledger:
                 is not None
             )
         except sqlite3.Error as exc:
-            raise LedgerError("Cannot look up ledger task") from exc
+            raise LedgerError("无法查找账本任务") from exc
 
     def done_chapters(self, url: str) -> list[tuple[str, ResourceRecord]]:
         """同一来源地址下所有任务已完成的整章资源（page=1）。
@@ -148,7 +148,7 @@ class Ledger:
                 (url,),
             ).fetchall()
         except sqlite3.Error as exc:
-            raise LedgerError("Cannot read ledger tasks") from exc
+            raise LedgerError("无法读取账本任务列表") from exc
         return [(str(row["owner"]), _record(row)) for row in rows]
 
     def start(self, task_id: str) -> None:
@@ -158,7 +158,7 @@ class Ledger:
                 (_now(), task_id),
             ).rowcount
             if not changed:
-                raise LedgerError("Only a pending task can start; recover it before restarting")
+                raise LedgerError("只能启动待处理任务，重启前须先恢复")
 
     def _require_downloading(self, db: sqlite3.Connection, key: tuple[str, int, int]) -> None:
         row = db.execute(
@@ -167,7 +167,7 @@ class Ledger:
             key,
         ).fetchone()
         if row is None or tuple(row) != ("downloading", "running"):
-            raise LedgerError("Resource must be downloading in a running task")
+            raise LedgerError("资源须处于运行中任务的下载状态")
 
     def claim(self, task_id: str, chapter: int, page: int) -> ResourceRecord:
         key = (task_id, chapter, page)
@@ -180,7 +180,7 @@ class Ledger:
                 key,
             ).fetchone()
             if row is None:
-                raise LedgerError("Only a pending resource in a running task can be claimed")
+                raise LedgerError("只能领取运行中任务的待处理资源")
             db.execute("UPDATE tasks SET updated_at = ? WHERE id = ?", (_now(), task_id))
             return _record(row)
 
@@ -192,7 +192,7 @@ class Ledger:
                 "SELECT 1 FROM resources WHERE task_id = ? AND local_path = ?",
                 (task_id, relative_path),
             ).fetchone():
-                raise LedgerError("Cache path is already assigned to another resource")
+                raise LedgerError("缓存路径已分配给其他资源")
             stamp = fingerprint(self.root, task_id, relative_path, sync=True)
             db.execute(
                 "UPDATE resources SET status = 'done', local_path = ?, sha256 = ?, size = ? "
@@ -203,7 +203,7 @@ class Ledger:
 
     def fail(self, task_id: str, chapter: int, page: int, code: FailureCode) -> None:
         if code not in {"network", "invalid_image", "invalid_text", "blocked", "cancelled"}:
-            raise LedgerError("Unknown resource failure code")
+            raise LedgerError("未知的资源失败代码")
         key = (task_id, chapter, page)
         with self._transaction() as db:
             self._require_downloading(db, key)
@@ -220,7 +220,7 @@ class Ledger:
             if snapshot.status != "running" or any(
                 r.status not in {"done", "failed"} for r in snapshot.resources
             ):
-                raise LedgerError("Task cannot finish before all resources are settled")
+                raise LedgerError("所有资源处理完毕前任务不能结束")
             completed = sum(r.status == "done" for r in snapshot.resources)
             status = (
                 "done"
