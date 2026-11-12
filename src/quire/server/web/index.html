@@ -57,6 +57,9 @@
             <button type="button" class="btn quiet" id="pasteBtn">粘贴 <span class="kbd">⌘V</span></button>
             <button class="btn primary" id="probeBtn" disabled>识别</button>
           </form>
+          <div class="kind-pick" id="kindPick" role="radiogroup" aria-label="内容类型">
+            <span>类型</span><div class="seg"><button type="button" role="radio" data-k="auto" aria-checked="true" aria-pressed="true">自动识别</button><button type="button" role="radio" data-k="novel" aria-checked="false" aria-pressed="false">小说</button><button type="button" role="radio" data-k="manga" aria-checked="false" aria-pressed="false">漫画</button></div>
+          </div>
           <ol class="steps" id="steps" hidden aria-live="polite">
             <li data-s="fetch">连接站点</li><li data-s="parse">读取目录</li><li data-s="estimate">抽样估算体积</li>
           </ol>

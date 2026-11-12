@@ -1,5 +1,5 @@
 /* 阅读器：参照「图书」。文字（EPUB/TXT）按 CSS 多栏分页，宽屏双页；漫画（CBZ/ZIP）单页、双页或条漫；
-   PDF 交给内嵌的系统 PDF 视图。界面元素鼠标一动就浮现，静止两秒退场。
+   PDF 交给内嵌的系统 PDF 视图。顶栏 / 底栏只在鼠标靠近窗口上沿 / 下沿时浮现。
    后端契约见 server/reader.py：/read、/read/section/n、/read/page/n、/read/pdf、/progress。依赖 app.js。 */
 "use strict";
 
@@ -11,10 +11,13 @@ const RD_ICONS = {
 };
 const RD_FONTS = [["Songti SC", "宋体"], ["PingFang SC", "苹方"], ["Kaiti SC", "楷体"], ["Georgia", "Georgia"]];
 const RD_TONES = [["paper", "#FFFFFF", "#1D1B18"], ["sepia", "#F6EFE3", "#4A3A28"], ["gray", "#4A4A4C", "#E8E6E1"], ["night", "#121212", "#C9C6C0"]];
+/* 排版默认值；「自定义排版」里的滑杆对应 lh 行距、ls 字距%、ws 词距%、margin 页边%、cols 栏数、bold、justify */
+const RD_TYPO = { lh: 1.85, ls: 0, ws: 0, margin: 0, cols: "auto", bold: false, justify: true };
+const RD_DEFAULTS = { size: 19, font: "Songti SC", tone: "auto", flow: "paged", spread: "auto", rtl: false, comicFlow: "paged", ...RD_TYPO };
 const rd = {
   book: null, meta: null, section: 0, page: 0, pages: 1, frac: 0, calmTimer: null, saveTimer: null, loading: 0,
-  prefs: Object.assign({ size: 19, font: "Songti SC", tone: "auto", flow: "paged", spread: "auto", rtl: false, comicFlow: "paged" },
-    JSON.parse(localStorage.getItem("quire-reader") || "{}")),
+  cache: new Map(), // 段号 → 正文；翻到章末时下一章已在手里，切章无等待
+  prefs: Object.assign({}, RD_DEFAULTS, JSON.parse(localStorage.getItem("quire-reader") || "{}")),
 };
 const icon = (name) => raw(`<svg viewBox="0 0 16 16">${RD_ICONS[name]}</svg>`);
 const rdq = (sel) => $("reader").querySelector(sel);
@@ -27,6 +30,7 @@ function savePrefs() { localStorage.setItem("quire-reader", JSON.stringify(rd.pr
 async function openReader(bookId, format) {
   const book = state.books.find((b) => b.id === bookId) || { id: bookId, title: "" };
   rd.book = book;
+  rd.cache = new Map();
   mountReader();
   rdq(".rd-top .t").textContent = book.title;
   showMsg("正在打开…", "");
@@ -52,9 +56,10 @@ async function openReader(bookId, format) {
   } else {
     rdq(".rd-stage").innerHTML = html`<iframe class="rd-pdf" title="${rd.meta.title}" src="${withToken(`/api/books/${bookId}/read/pdf?format=pdf`)}"></iframe>`;
     rdq(".rd-bot").hidden = true;
+    $("reader").classList.add("pinned"); // PDF 视图会吞掉鼠标事件，顶栏常驻
     saveProgress("0", 0);
   }
-  wake();
+  hint();
 }
 
 function closeReader() {
@@ -73,7 +78,8 @@ function mountReader() {
     el.className = "reader";
     el.setAttribute("aria-label", "阅读器");
     document.body.appendChild(el);
-    el.addEventListener("mousemove", wake);
+    el.addEventListener("mousemove", onReaderMove);
+    el.addEventListener("mouseleave", () => reveal(false, false));
     el.addEventListener("click", onReaderClick);
     el.addEventListener("input", onReaderInput);
     el.addEventListener("load", () => rd.meta && rd.meta.mode === "text" && rd.prefs.flow === "paged" && remeasure(), true);
@@ -88,6 +94,7 @@ function mountReader() {
     <div class="rd-bot"><input type="range" min="0" max="1000" value="0" aria-label="阅读位置" data-rd="scrub"><span class="pos num"></span></div>
     <div class="rd-pop toc" hidden role="menu"></div><div class="rd-pop look" hidden></div>`;
   el.hidden = false;
+  el.classList.remove("pinned", "show-top", "show-bot");
   applyLook();
 }
 
@@ -107,8 +114,15 @@ function applyLook() {
   const el = $("reader");
   el.dataset.tone = toneOf();
   el.dataset.flow = rd.meta && rd.meta.mode === "pages" ? rd.prefs.comicFlow : rd.prefs.flow;
-  el.style.setProperty("--rd-size", `${rd.prefs.size}px`);
-  el.style.setProperty("--rd-font", `"${rd.prefs.font}", var(--font-book)`);
+  const p = rd.prefs;
+  el.style.setProperty("--rd-size", `${p.size}px`);
+  el.style.setProperty("--rd-font", `"${p.font}", var(--font-book)`);
+  el.style.setProperty("--rd-lh", String(p.lh));
+  el.style.setProperty("--rd-ls", `${p.ls / 100}em`);
+  el.style.setProperty("--rd-ws", `${p.ws / 100}em`);
+  el.style.setProperty("--rd-pad", `${Math.max(2, 7 + Number(p.margin))}vw`);
+  el.style.setProperty("--rd-weight", p.bold ? "600" : "400");
+  el.style.setProperty("--rd-align", p.justify ? "justify" : "start");
 }
 
 function lookPanel() {
@@ -119,10 +133,28 @@ function lookPanel() {
       <button data-tone="auto" aria-pressed="${pressed(rd.prefs.tone === "auto")}" title="跟随应用" style="background:linear-gradient(135deg,#fff 50%,#121212 50%);color:transparent">·</button>
       ${RD_TONES.map(([v, bg, fg]) => html`<button data-tone="${v}" aria-pressed="${pressed(rd.prefs.tone === v)}" style="background:${bg};color:${fg}" title="${{ paper: "原色", sepia: "纸色", gray: "灰", night: "夜间" }[v]}">文</button>`)}</div></div>
     ${text ? html`<div class="row"><div class="rd-fonts">${RD_FONTS.map(([f, label]) => html`<button data-font="${f}" aria-pressed="${pressed(rd.prefs.font === f)}" style="font-family:'${f}'">${label}</button>`)}</div></div>
-      <div class="row"><div class="rd-seg"><button data-flow="paged" aria-pressed="${pressed(rd.prefs.flow === "paged")}">翻页</button><button data-flow="scroll" aria-pressed="${pressed(rd.prefs.flow === "scroll")}">滚动</button></div></div>`
+      <div class="row"><div class="rd-seg"><button data-flow="paged" aria-pressed="${pressed(rd.prefs.flow === "paged")}">翻页</button><button data-flow="scroll" aria-pressed="${pressed(rd.prefs.flow === "scroll")}">滚动</button></div></div>
+      ${typoPanel()}`
     : html`<div class="row"><div class="rd-seg"><button data-cflow="paged" aria-pressed="${pressed(rd.prefs.comicFlow === "paged")}">翻页</button><button data-cflow="scroll" aria-pressed="${pressed(rd.prefs.comicFlow === "scroll")}">条漫</button></div></div>
       <div class="row"><div class="rd-seg"><button data-spread="single" aria-pressed="${pressed(rd.prefs.spread === "single")}">单页</button><button data-spread="auto" aria-pressed="${pressed(rd.prefs.spread === "auto")}">自动</button><button data-spread="double" aria-pressed="${pressed(rd.prefs.spread === "double")}">双页</button></div></div>
       <div class="row"><div class="rd-seg"><button data-rtl="0" aria-pressed="${pressed(!rd.prefs.rtl)}">从左往右</button><button data-rtl="1" aria-pressed="${pressed(rd.prefs.rtl)}">日漫 · 从右往左</button></div></div>`}`;
+}
+
+/* 自定义排版：对应「图书」的 粗体 / 行间距 / 字符间距 / 词间距 / 页边空白 / 列 / 两端对齐 */
+function typoPanel() {
+  const p = rd.prefs;
+  const slider = (key, label, min, max, step, shown) => html`<label class="rd-slider"><span>${label}</span>
+    <input type="range" data-typo="${key}" min="${min}" max="${max}" step="${step}" value="${p[key]}"><output>${shown}</output></label>`;
+  return html`<details class="rd-typo" ${rd.typoOpen ? raw("open") : ""}><summary>自定义排版</summary>
+    <label class="rd-toggle"><span>粗体文本</span><input type="checkbox" class="switch" data-typo="bold" ${p.bold ? raw("checked") : ""}></label>
+    ${slider("lh", "行间距", 1.2, 2.6, 0.05, Number(p.lh).toFixed(2))}
+    ${slider("ls", "字符间距", 0, 20, 1, `${p.ls}%`)}
+    ${slider("ws", "词间距", 0, 50, 1, `${p.ws}%`)}
+    ${slider("margin", "页边空白", -5, 15, 1, `${p.margin > 0 ? "+" : ""}${p.margin}%`)}
+    <label class="rd-toggle"><span>列</span><select data-typo="cols" class="field-input">
+      ${[["auto", "自动设定"], ["1", "单栏"], ["2", "双栏"]].map(([v, l]) => html`<option value="${v}" ${p.cols === v ? raw("selected") : ""}>${l}</option>`)}</select></label>
+    <label class="rd-toggle"><span>两端对齐</span><input type="checkbox" class="switch" data-typo="justify" ${p.justify ? raw("checked") : ""}></label>
+    <button class="rd-reset" data-typo-reset="1">恢复默认排版</button></details>`;
 }
 
 function togglePop(kind) {
@@ -132,6 +164,7 @@ function togglePop(kind) {
   pop.hidden = !pop.hidden;
   rdq(`[data-rd=${kind}]`).setAttribute("aria-pressed", String(!pop.hidden));
   if (pop.hidden) return;
+  $("reader").classList.add("show-top");
   if (kind === "look") { pop.innerHTML = lookPanel(); return; }
   pop.innerHTML = html`${rd.meta.toc.map((t) => html`<button data-sec="${t.section}" aria-current="${String(t.section === rd.section)}">${t.title}</button>`)}`;
   pop.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "center" });
@@ -141,16 +174,29 @@ function closePops() {
   $("reader").querySelectorAll("[data-rd=toc],[data-rd=look]").forEach((b) => b.setAttribute("aria-pressed", "false"));
 }
 
-/* 界面浮现 / 退场 */
-function wake() {
+/* 界面浮现：鼠标进入上沿 / 下沿热区才出现，离开后稍等再退场；打开浮层时顶栏保持 */
+const EDGE = 72;
+function popOpen() { return [...$("reader").querySelectorAll(".rd-pop")].some((p) => !p.hidden); }
+function reveal(top, bot) {
   const el = $("reader");
   if (!el || el.hidden) return;
-  el.classList.remove("calm");
   clearTimeout(rd.calmTimer);
+  if (top) el.classList.add("show-top");
+  if (bot) el.classList.add("show-bot");
+  if (top && bot) return;
   rd.calmTimer = setTimeout(() => {
-    const busy = [...el.querySelectorAll(".rd-pop")].some((p) => !p.hidden) || el.querySelector(".rd-top:hover, .rd-bot:hover");
-    if (!busy) el.classList.add("calm");
-  }, 2000);
+    if (!top && !popOpen()) el.classList.remove("show-top");
+    if (!bot) el.classList.remove("show-bot");
+  }, 450);
+}
+function onReaderMove(e) {
+  reveal(e.clientY < EDGE || popOpen(), e.clientY > window.innerHeight - EDGE);
+}
+/* 刚打开时顶栏露一下，提示返回和目录在哪 */
+function hint() {
+  reveal(true, false);
+  clearTimeout(rd.calmTimer);
+  rd.calmTimer = setTimeout(() => { if (!popOpen()) $("reader").classList.remove("show-top"); }, 1600);
 }
 
 /* ------------------------------------------------------------ 进度 */
@@ -176,6 +222,12 @@ function setBottom(fraction, label) {
 /* ------------------------------------------------------------ 事件 */
 
 function onReaderClick(e) {
+  if (e.target.closest(".rd-typo summary")) { rd.typoOpen = !e.target.closest("details").open; return; }
+  if (e.target.closest("[data-typo-reset]")) {
+    Object.assign(rd.prefs, RD_TYPO); savePrefs(); applyLook();
+    rdq(".rd-pop.look").innerHTML = lookPanel(); relayout(); return;
+  }
+  if (e.target.closest(".rd-typo")) return;
   const t = e.target.closest("[data-rd],[data-sec],[data-size],[data-tone],[data-font],[data-flow],[data-cflow],[data-spread],[data-rtl],.rd-hot");
   if (!t) { if (!e.target.closest(".rd-pop")) closePops(); return; }
   const d = t.dataset;
@@ -198,12 +250,25 @@ function onReaderClick(e) {
     savePrefs();
     applyLook();
     rdq(".rd-pop.look").innerHTML = lookPanel();
-    if (rd.meta.mode === "text" && (d.size || d.font || d.flow)) relayout();
+    if (rd.meta.mode === "text" && (d.size || d.font)) relayout();
+    if (rd.meta.mode === "text" && d.flow) loadSection(rd.section, rd.frac);
     if (rd.meta.mode === "pages" && (d.cflow || d.spread || d.rtl)) renderPages();
   }
 }
 
 function onReaderInput(e) {
+  const key = e.target.dataset.typo;
+  if (key && rd.meta) {
+    const t = e.target;
+    rd.prefs[key] = t.type === "checkbox" ? t.checked : t.tagName === "SELECT" ? t.value : Number(t.value);
+    const out = t.parentElement.querySelector("output");
+    if (out) out.textContent = key === "lh" ? Number(t.value).toFixed(2) : `${key === "margin" && t.value > 0 ? "+" : ""}${t.value}%`;
+    savePrefs();
+    applyLook();
+    cancelAnimationFrame(rd.typoFrame);
+    rd.typoFrame = requestAnimationFrame(() => relayout());
+    return;
+  }
   if (e.target.dataset.rd !== "scrub" || !rd.meta) return;
   const f = Number(e.target.value) / 1000;
   clearTimeout(rd.scrubTimer);
@@ -233,7 +298,7 @@ document.addEventListener("keydown", (e) => {
     savePrefs(); applyLook(); relayout();
   } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "w") closeReader();
   else handled = false;
-  if (handled) { e.preventDefault(); e.stopImmediatePropagation(); wake(); }
+  if (handled) { e.preventDefault(); e.stopImmediatePropagation(); }
 }, true);
 window.addEventListener("resize", () => {
   if (!rd.meta || $("reader").hidden) return;

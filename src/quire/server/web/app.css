@@ -192,8 +192,9 @@ dialog::backdrop{background:rgba(10,8,5,.22)}
 .sb-top{justify-content:space-between;padding:0 10px 0 18px;-webkit-user-select:none;user-select:none}
 .brand{font:600 15px/1 var(--font-book);letter-spacing:.12em;color:var(--text)}
 .brand small{font:500 11px/1 var(--font-ui);letter-spacing:.02em;color:var(--text-3);margin-left:6px}
-html[data-shell] .sb-top{padding-left:84px;justify-content:flex-end}
-html[data-shell] .brand{display:none}
+/* 原生壳：左上角留给红绿灯（约 70px），品牌字让到其右侧 */
+html[data-shell] .sb-top{padding-left:84px}
+html[data-shell] .brand small{display:none}
 .qdot{width:7px;height:7px;border-radius:50%;margin-left:auto;background:var(--accent);flex:none}
 .qdot[data-status="active"]{animation:pulse 1.2s var(--ease) infinite;box-shadow:0 0 0 3px var(--accent-soft)}
 .qdot[data-status="done"]{background:var(--ok)}

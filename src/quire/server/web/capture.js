@@ -17,6 +17,16 @@ const STAGE_STEP = { fetch: 0, render: 0, parse: 1, estimate: 2 };
 const capture = { request: null, kind: null, mode: "auto", split: "volume", formats: null,
                   compress: null, ocr: null, style: null };
 
+/* 用户预选的类型（自动 / 小说 / 漫画），跨次记住 */
+function kindPref() { const k = localStorage.getItem("quire-kind"); return k === "novel" || k === "manga" ? k : null; }
+function paintKindPick() {
+  const k = kindPref() || "auto";
+  $("kindPick").querySelectorAll("[data-k]").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.k === k));
+    b.setAttribute("aria-checked", String(b.dataset.k === k));
+  });
+}
+
 function host(url) { try { return new URL(url).host.replace(/^www\./, ""); } catch (_) { return url; } }
 function unitOf(probe) { return probe.kind === "manga" && !(probe.chapters || []).length ? "页" : "章"; }
 
@@ -25,7 +35,7 @@ function unitOf(probe) { return probe.kind === "manga" && !(probe.chapters || []
 function captureUrl(url, opts = {}) {
   $("urlIn").value = url;
   $("probeBtn").disabled = !url.trim();
-  Object.assign(capture, { kind: null, mode: "auto", formats: null }, opts);
+  Object.assign(capture, { kind: kindPref(), mode: "auto", formats: null }, opts);
   runProbe();
 }
 
@@ -37,18 +47,24 @@ function setSteps(stage) {
   steps.children[0].textContent = stage === "render" ? "浏览器渲染" : "连接站点";
 }
 
-function runProbe() {
+/* keep=true：结果卡上切换类型时原地重识别（卡片变淡并提示），不退回空白页 */
+function runProbe(keep = false) {
   const url = $("urlIn").value.trim();
   if (!url) return;
   const request = Symbol();
   capture.request = request;
   state.probe = null;
   $("capHome").hidden = true;
-  $("result").textContent = "";
+  const card = keep && $("result").querySelector(".result");
+  if (card) {
+    card.classList.add("reprobing");
+    card.querySelector(".rs-head > div")?.insertAdjacentHTML("beforeend",
+      html`<div class="reprobe-note" role="status">正在按${capture.kind === "manga" ? "漫画" : "小说"}重新识别…</div>`);
+  } else $("result").textContent = "";
   $("capErr").textContent = "";
   $("dock").hidden = true;
   $("resetCap").hidden = false;
-  $("capture").classList.remove("has-result");
+  if (!card) $("capture").classList.remove("has-result");
   $("probeBtn").disabled = true;
   $("probeBtn").textContent = "识别中…";
   setSteps("fetch");
@@ -60,7 +76,10 @@ function runProbe() {
     if (!result) throw new Error("识别没有返回结果，请再试一次");
     showResult(result);
   }).catch((err) => {
-    if (capture.request === request) showProbeError(err);
+    if (capture.request !== request) return;
+    $("result").textContent = "";
+    $("capture").classList.remove("has-result");
+    showProbeError(err);
   }).finally(() => {
     if (capture.request !== request) return;
     setSteps(null);
@@ -167,7 +186,7 @@ function bindResult(kind) {
   $("kindPill").addEventListener("click", () => {
     capture.kind = kind === "manga" ? "novel" : "manga";
     capture.formats = null;
-    runProbe();
+    runProbe(true);
   });
   $("fmtChips").addEventListener("click", (e) => {
     const chip = e.target.closest(".chip");
@@ -289,7 +308,7 @@ function startJob() {
 
 function resetCapture() {
   capture.request = Symbol();
-  Object.assign(capture, { kind: null, mode: "auto", split: "volume", formats: null });
+  Object.assign(capture, { kind: kindPref(), mode: "auto", split: "volume", formats: null });
   state.probe = null;
   $("capture").classList.remove("has-result");
   $("result").textContent = "";
@@ -339,9 +358,17 @@ $("siteGrid").addEventListener("click", (e) => {
 $("urlIn").addEventListener("input", () => { $("probeBtn").disabled = !$("urlIn").value.trim(); });
 $("omniForm").addEventListener("submit", (e) => {
   e.preventDefault();
-  Object.assign(capture, { kind: null, mode: "auto", formats: null });
+  Object.assign(capture, { kind: kindPref(), mode: "auto", formats: null });
   runProbe();
 });
+$("kindPick").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-k]");
+  if (!b) return;
+  if (b.dataset.k === "auto") localStorage.removeItem("quire-kind"); else localStorage.setItem("quire-kind", b.dataset.k);
+  paintKindPick();
+  $("urlIn").focus();
+});
+paintKindPick();
 $("pasteBtn").addEventListener("click", pasteUrl);
 $("resetCap").addEventListener("click", resetCapture);
 $("startBtn").addEventListener("click", startJob);

@@ -214,7 +214,8 @@ function boot() {
     document.body.innerHTML = html`<div class="no-token">缺少访问令牌：请从 quire ui 打印的地址进入。</div>`;
     return;
   }
-  if (window.webkit?.messageHandlers?.windowDrag) document.documentElement.dataset.shell = "";
+  // windowDrag 桥注册在隔离的内容世界里，页面看不到；用页面世界的 clipboard 桥判断是否在原生壳内
+  if (window.webkit?.messageHandlers?.clipboard) document.documentElement.dataset.shell = "";
   api("/api/settings").then((settings) => {
     state.settings = settings;
     applyTheme(settings.theme, settings.accent);
