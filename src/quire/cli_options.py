@@ -126,6 +126,8 @@ def add_novel_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--site", help="指定本地 TOML 站点规则")
     parser.add_argument("-o", "--output", help="输出路径，默认当前目录的 book.epub")
     parser.add_argument("--format", help="epub,txt,pdf；默认 epub")
+    parser.add_argument("--epub-style", choices=("songti", "heiti", "classic"), default="songti")
+    parser.add_argument("--epub-font", default="", help="嵌入 EPUB 的字体文件绝对路径")
     parser.add_argument("--chapter-selector", help="目录页里的章节链接选择器")
     parser.add_argument("--content-selector", help="正文容器选择器")
     parser.add_argument("--next-selector", help="分页的下一页链接选择器")

@@ -118,3 +118,19 @@ def test_unreadable_destination_after_failure_is_reported_unknown(tmp_path, monk
     with pytest.raises(FetchError, match="book.txt（状态无法确认）"):
         asyncio.run(export(tmp_path))
     assert (tmp_path / "book.txt").is_symlink()
+
+
+def test_cover_warning_reaches_result_and_report(tmp_path, monkeypatch):
+    import json
+
+    from quire.assemble import cover
+
+    monkeypatch.setattr(cover, "FONT_CANDIDATES", ())
+    result = asyncio.run(export(tmp_path, epub_style="heiti"))
+    assert any("未生成 EPUB 封面" in warning for warning in result.warnings)
+    report = json.loads(result.report.read_text())
+    assert report["warnings"] == list(result.warnings)
+    from zipfile import ZipFile
+
+    with ZipFile(tmp_path / "book.epub") as archive:
+        assert "font-family: sans-serif;" in archive.read("OEBPS/style.css").decode()

@@ -100,7 +100,11 @@ def test_resume_reuses_cached_chapters_and_retries_only_failures(site, tmp_path:
     before = {path: site.hits(path) for path in (*done, *done_pages)}
     before_missing = site.hits("/book/4.html")
 
-    second = run(site, out, work, resume=True, options=replace(OPTIONS, overwrite=True))
+    second = run(
+        site, out, work, resume=True, options=replace(OPTIONS, overwrite=True), epub_style="classic"
+    )
+    with zipfile.ZipFile(out) as archive:
+        assert b"Kaiti SC" in archive.read("OEBPS/style.css")
     assert second.resources_reused == 4
     assert second.pages_fetched == 1  # 只有失败的第四章重试
     for path, count in before.items():
@@ -283,10 +287,14 @@ def test_cli_novel_reports_partial_and_writes_output(site, tmp_path: Path, capsy
             str(tmp_path / "work"),
             "--format",
             "epub,txt",
+            "--epub-style",
+            "heiti",
         ]
     )
     assert code == 4  # 有缺章：成功但带警告
     assert out.exists() and out.with_suffix(".txt").exists()
+    with zipfile.ZipFile(out) as archive:
+        assert b"font-family: sans-serif" in archive.read("OEBPS/style.css")
     printed = capsys.readouterr().out
     assert "1 章缺失" in printed
     assert "EPUB" in printed and "TXT" in printed
@@ -381,3 +389,34 @@ def test_resume_with_explicit_overwrite_rewrites_its_own_output(site, tmp_path: 
     assert second.resources_reused == 4
     assert second.task_id == first.task_id
     assert out.exists()
+
+
+def test_cli_forwards_epub_font_and_style(tmp_path, monkeypatch):
+    from quire.cli import main
+    from quire.models import NovelResult
+
+    seen = {}
+
+    async def capture(url, out, **kwargs):
+        seen.update(kwargs)
+        return NovelResult(out)
+
+    monkeypatch.setattr("quire.core_novel.run_core_novel", capture)
+    font = str(tmp_path / "font.ttf")
+    assert (
+        main(
+            [
+                "novel",
+                "https://example.test/book",
+                "-o",
+                str(tmp_path / "book.epub"),
+                "--epub-style",
+                "classic",
+                "--epub-font",
+                font,
+                "-q",
+            ]
+        )
+        == 0
+    )
+    assert seen["epub_style"] == "classic" and seen["epub_font"] == font
