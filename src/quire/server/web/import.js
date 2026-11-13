@@ -163,7 +163,28 @@ $("importTray").addEventListener("keydown", (e) => {
 
 /* ------------------------------------------------------------ 入口：按钮与拖放 */
 
-$("importBtn").addEventListener("click", () => $("importFile").click());
+/* 「导入」菜单：书籍文件 / 图片文件夹 */
+function toggleImportMenu(open) {
+  $("importMenu").hidden = !open;
+  $("importBtn").setAttribute("aria-expanded", String(open));
+  if (open) $("importMenu").querySelector("button").focus();
+}
+$("importBtn").addEventListener("click", () => toggleImportMenu($("importMenu").hidden));
+$("importMenu").addEventListener("click", (e) => {
+  const pick = e.target.closest("[data-pick]");
+  if (!pick) return;
+  toggleImportMenu(false);
+  $(pick.dataset.pick === "folder" ? "importDir" : "importFile").click();
+});
+document.addEventListener("click", (e) => { if (!e.target.closest(".imp-wrap")) toggleImportMenu(false); });
+$("importMenu").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { toggleImportMenu(false); $("importBtn").focus(); }
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const items = [...$("importMenu").querySelectorAll("button")];
+    items[(items.indexOf(document.activeElement) + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
+  }
+});
 $("importFile").addEventListener("change", (e) => { importFiles(e.target.files); e.target.value = ""; });
 document.addEventListener("click", (e) => { if (e.target.closest("[data-import]")) $("importFile").click(); });
 

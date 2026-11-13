@@ -1,4 +1,4 @@
-/* 图片文件夹 → CBZ：拖进窗口的文件夹（或「文件夹」按钮选的）在浏览器里打成不压缩的 ZIP——图片本身已压缩，
+/* 图片文件夹 → CBZ：拖进窗口的文件夹（或「导入 → 图片文件夹」选的）在浏览器里打成不压缩的 ZIP——图片本身已压缩，
    只算 CRC，Blob 直接引用原文件不复制数据——命名「文件夹名.cbz」，再走 import.js 的预览确认流程。
    子文件夹按路径自然序（第1话/第2话…）；文件夹里的 TXT/EPUB/PDF/CBZ/ZIP 另外单独导入。依赖 import.js。 */
 "use strict";
@@ -105,7 +105,6 @@ function droppedFolders(dataTransfer) {
     .then((pairs) => pairs.reduce((map, [key, files]) => map.set(key, [...(map.get(key) || []), ...files]), new Map()));
 }
 
-$("importDirBtn").addEventListener("click", () => $("importDir").click());
 $("importDir").addEventListener("change", (e) => {
   const folders = new Map();
   [...e.target.files].forEach((file) => {

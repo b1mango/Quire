@@ -7,7 +7,7 @@
 <p align="center">Collect comics and novels in your own local library for organized offline reading.</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-unreleased-e3aa43" alt="status unreleased" />
+  <a href="https://github.com/b1mango/Quire/releases/latest"><img src="https://img.shields.io/github/v/release/b1mango/Quire?color=e3aa43" alt="latest release" /></a>
   <img src="https://img.shields.io/badge/platform-macOS-1f6feb" alt="macOS" />
   <a href="#license"><img src="https://img.shields.io/badge/license-pending-777777" alt="license pending" /></a>
 </p>
@@ -29,14 +29,18 @@
 
 ## Installation
 
-No GitHub Release is published yet. Python 3.12 or newer is required:
+Download `quire-<version>.dmg` from [Releases](https://github.com/b1mango/Quire/releases/latest), open it, and drag **quire** into **Applications**. Requires macOS 13 or later; universal for Intel and Apple silicon; the Python runtime is bundled.
+
+The build is ad-hoc signed and not notarized: on first launch, right-click the app in Finder and choose **Open**, or choose **Open Anyway** in **System Settings → Privacy & Security**; alternatively run `xattr -dr com.apple.quarantine /Applications/quire.app`.
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes (in Chinese).
+
+Running from source requires Python 3.12 or newer:
 
 ```bash
 python -m pip install -e '.[core,dev]'
 quire ui
 ```
-
-An unsigned local macOS build may require **Open Anyway** in **System Settings → Privacy & Security** on first launch, or `xattr -dr com.apple.quarantine /Applications/quire.app` (adjust the path to the actual installation).
 
 ## Development
 

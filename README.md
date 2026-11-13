@@ -7,7 +7,7 @@
 <p align="center">把漫画与小说收进自己的本地书库，整理后离线阅读。</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-unreleased-e3aa43" alt="status unreleased" />
+  <a href="https://github.com/b1mango/Quire/releases/latest"><img src="https://img.shields.io/github/v/release/b1mango/Quire?color=e3aa43" alt="latest release" /></a>
   <img src="https://img.shields.io/badge/platform-macOS-1f6feb" alt="macOS" />
   <a href="#license"><img src="https://img.shields.io/badge/license-pending-777777" alt="license pending" /></a>
 </p>
@@ -29,14 +29,18 @@
 
 ## 安装
 
-当前尚未发布 GitHub Release。需要 Python 3.12 或更高版本，可从源码安装：
+从 [Releases](https://github.com/b1mango/Quire/releases/latest) 下载 `quire-<版本>.dmg`，打开后把「quire」拖进「应用程序」。支持 macOS 13 及以上，Intel 与 Apple 芯片通用，内置运行环境，无需另装 Python。
+
+安装包为临时签名、未经苹果公证：首次打开请在「访达」里右键 →「打开」，或在“系统设置 → 隐私与安全性”中选择“仍要打开”；也可以执行 `xattr -dr com.apple.quarantine /Applications/quire.app`。
+
+各版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+
+从源码运行需要 Python 3.12 或更高版本：
 
 ```bash
 python -m pip install -e '.[core,dev]'
 quire ui
 ```
-
-macOS 未公证的本地构建首次打开可能需要在“系统设置 → 隐私与安全性”中选择“仍要打开”，或执行 `xattr -dr com.apple.quarantine /Applications/quire.app`（按实际安装路径调整）。
 
 ## 开发
 

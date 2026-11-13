@@ -279,3 +279,11 @@
 .it-row.is-skipped{opacity:.55}
 .it-row .bar.busy>i{background:linear-gradient(90deg,var(--surface-3),var(--accent),var(--surface-3));background-size:200% 100%;animation:it-busy 1.2s linear infinite}
 @keyframes it-busy{from{background-position:200% 0}to{background-position:0 0}}
+.imp-wrap{position:relative}
+.imp-wrap .chev{width:12px;height:12px;margin-left:-2px;opacity:.6}
+.imp-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:268px;padding:5px;border-radius:10px;background:var(--surface);box-shadow:var(--shadow-pop);animation:pop .14s var(--ease-out)}
+.imp-menu[hidden]{display:none}
+.imp-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:7px;padding:8px 10px;color:var(--text)}
+.imp-menu button:hover,.imp-menu button:focus-visible{background:var(--surface-2);outline:none}
+.imp-menu b{display:block;font-weight:550;font-size:var(--fs-13)}
+.imp-menu small{display:block;margin-top:2px;font-size:var(--fs-12);color:var(--text-3);line-height:1.4}

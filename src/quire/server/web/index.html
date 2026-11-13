@@ -87,9 +87,12 @@
           <button aria-pressed="true" data-layout="grid" aria-label="封面" title="封面"><svg class="i" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg></button>
           <button aria-pressed="false" data-layout="list" aria-label="列表" title="列表"><svg class="i" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h0M2.5 8h0M2.5 12h0"/></svg></button>
         </div>
-        <button class="btn quiet" id="importBtn" title="导入本地 TXT、EPUB、PDF、CBZ、ZIP，也可以直接把文件拖进窗口"><svg class="i" viewBox="0 0 16 16"><path d="M8 2.5v8M4.8 7.3 8 10.5l3.2-3.2M2.5 11v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V11"/></svg>导入</button>
+        <div class="imp-wrap"><button class="btn quiet" id="importBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="importMenu" title="导入本地书籍或图片文件夹，也可以直接拖进窗口"><svg class="i" viewBox="0 0 16 16"><path d="M8 2.5v8M4.8 7.3 8 10.5l3.2-3.2M2.5 11v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V11"/></svg>导入<svg class="i chev" viewBox="0 0 16 16"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg></button>
+          <div class="imp-menu" id="importMenu" role="menu" hidden>
+            <button role="menuitem" data-pick="files"><b>书籍文件…</b><small>TXT、EPUB、PDF、CBZ、ZIP，可多选</small></button>
+            <button role="menuitem" data-pick="folder"><b>图片文件夹（打包成漫画）…</b><small>整个文件夹的图片打成一本 CBZ，子文件夹按名称顺序成章</small></button>
+          </div></div>
         <input type="file" id="importFile" multiple accept=".txt,.epub,.pdf,.cbz,.zip" hidden>
-        <button class="btn quiet" id="importDirBtn" title="把一个图片文件夹打包成漫画（CBZ）导入；子文件夹按名称顺序成章"><svg class="i" viewBox="0 0 16 16"><path d="M2 4.5a1 1 0 0 1 1-1h3.2l1.3 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg>文件夹</button>
         <input type="file" id="importDir" webkitdirectory hidden>
         <button class="btn quiet" id="checkAll" hidden><svg class="i" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.8v2.6h-2.6"/></svg><span id="checkAllTxt">检查更新</span></button>
       </div>
