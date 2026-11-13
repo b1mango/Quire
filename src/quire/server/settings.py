@@ -16,6 +16,7 @@ from ..assemble.epub_style import validate_epub_options
 from ..errors import ConfigError
 from ..fetch.browser import RenderOptions
 from ..fetch.browser_endpoint import validate_endpoint
+from ..fetch.proxy import ROUTE_MODES, ROUTES
 from ..image.options import PRESETS
 from ..workspace import atomic_output
 
@@ -49,9 +50,12 @@ class UiSettings:
     cdp_endpoint: str = ""
     epub_style: str = "songti"
     epub_font: str = ""
+    network_route: str = "auto"  # auto 按站自动选代理/直连；proxy、direct 锁定一条
 
     def __post_init__(self) -> None:
         validate_epub_options(self.epub_style, self.epub_font)
+        if self.network_route not in ROUTE_MODES:
+            raise ConfigError("网络线路须为自动、始终代理或始终直连")
         if type(self.browser_native) is not bool or not isinstance(self.cdp_endpoint, str):
             raise ConfigError("浏览器设置类型错误")
         if self.cdp_endpoint:
@@ -131,6 +135,7 @@ def parse(payload: Any) -> UiSettings:
         "cdp_endpoint",
         "epub_style",
         "epub_font",
+        "network_route",
     }
     unknown = set(payload) - known
     if unknown:
@@ -159,3 +164,12 @@ def save(path: Path, settings: UiSettings) -> None:
     payload = json.dumps(asdict(settings), ensure_ascii=False, indent=2) + "\n"
     with atomic_output(path, overwrite=True) as handle:
         handle.write(payload.encode("utf-8"))
+
+
+def apply_network(path: Path, data_root: Path, settings: UiSettings | None = None) -> None:
+    """把线路设置交给抓取层；线路记录存数据目录。设置文件损坏时按自动处理。"""
+    try:
+        mode = (settings or load(path, data_root)).network_route
+    except ConfigError:
+        mode = "auto"
+    ROUTES.configure(mode, data_root / "net-routes.json")

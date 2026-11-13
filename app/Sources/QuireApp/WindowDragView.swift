@@ -59,8 +59,12 @@ final class WindowDragView: NSView {
     static let geometryScript = #"""
         (() => {
           // 顶部 52px 整条是拖拽带：侧栏顶部 + 当前视图工具条；其中的控件照常可点。
-          const zones = () => [...document.querySelectorAll('.sb-top, .toolbar')]
-            .filter((el) => el.getClientRects().length > 0);
+          // 阅读器是盖在主界面上的全屏层：打开时只认阅读器顶栏，底下主界面的按钮不再登记。
+          const zones = () => {
+            const reader = document.querySelector('#reader:not([hidden])');
+            return [...document.querySelectorAll(reader ? '#reader .rd-top' : '.sb-top, .toolbar')]
+              .filter((el) => el.getClientRects().length > 0);
+          };
           const selector = '.seg, button, a, input, textarea, select, label, '
             + '[contenteditable], [role="button"], [data-no-drag]';
           const rect = (element) => {
@@ -87,6 +91,8 @@ final class WindowDragView: NSView {
             attributes: true, childList: true, subtree: true, characterData: true
           });
           window.addEventListener('resize', update);
+          // 阅读器顶栏浮现/退场带位移动画：动画结束后再量一次，免得按钮区域按半途位置登记
+          document.addEventListener('transitionend', update, true);
           window.addEventListener('scroll', update, true);
           document.fonts.ready.then(update);
           update();

@@ -84,3 +84,14 @@ def test_failed_catalogue_page_keeps_original_instead_of_gaps():
     first = _resp(BASE + "index_1.html", _list(range(1, 21), select))
     client = _Client({BASE + "index_3.html": _list(range(41, 61))}, fail=BASE + "index_2.html")
     assert asyncio.run(catalogue_pages.expand_pages(client, first)) is first
+
+
+def test_explicit_chapter_list_link_is_followed_from_a_sparse_book_page():
+    book = _resp(
+        BASE,
+        '<h1>某书</h1><a href="/book/9/all/">章节列表</a><a href="/book/9/99.html">第99章 新</a>',
+    )
+    client = _Client({BASE + "all/": _list(range(1, 31))})
+    assert _count(asyncio.run(full_catalogue.expand_listing(client, book))) == 30
+    chapter = _resp(BASE + "2.html", '<p>正文</p><a href="/book/9/">目录</a>')
+    assert asyncio.run(full_catalogue.expand_listing(_Client({}), chapter)) is chapter

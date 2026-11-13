@@ -2,6 +2,11 @@
    外观（明暗 × 强调色）立即生效并写回。依赖 app.js / follows.js（streamFrames）。 */
 "use strict";
 
+const ROUTE_DESC = {
+  auto: "跟随系统代理；某个站走代理失败时自动改直连（反之亦然），并记住这个站",
+  proxy: "所有站都走系统代理（未开代理时等同直连）",
+  direct: "所有站都直连，不走系统代理",
+};
 const Q_DESC = { archive: "保留原图，体积最大", balanced: "体积与清晰度兼顾，适合日常阅读", small: "体积最小，适合手机" };
 const FIELD_RULES = {
   setOutput: { err: "errOutput", read: (v) => {
@@ -79,6 +84,8 @@ function fillSettings() {
   pressSeg($("qSeg"), s.compress);
   $("qDesc").textContent = Q_DESC[s.compress] || "";
   pressSeg($("ocrSeg"), s.ocr);
+  pressSeg($("routeSeg"), s.network_route || "auto");
+  $("routeDesc").textContent = ROUTE_DESC[s.network_route || "auto"];
   $("cdpRow").hidden = !s.browser_native && !s.cdp_endpoint;
   applyTheme(s.theme, s.accent);
   fillEpubStyleRow(s);
@@ -169,6 +176,13 @@ $("ocrSeg").addEventListener("click", (e) => {
   if (!b) return;
   pressSeg($("ocrSeg"), b.dataset.v);
   saveSettings({ ocr: b.dataset.v }).catch(() => {});
+});
+$("routeSeg").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-v]");
+  if (!b) return;
+  pressSeg($("routeSeg"), b.dataset.v);
+  $("routeDesc").textContent = ROUTE_DESC[b.dataset.v];
+  saveSettings({ network_route: b.dataset.v }).catch(() => {});
 });
 
 Object.keys(FIELD_RULES).forEach((id) => {

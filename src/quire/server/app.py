@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlsplit
 from ..errors import ConfigError, LedgerError, ParseError, QuireError
 from ..store.models import JsonValue
 from . import endpoints, files, follows, ocr_dl, reader, recsites
+from . import settings as settings_mod
 from .jobs import JobManager
 
 _LOG = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class QuireServer(ThreadingHTTPServer):
         self.data_root = data_root.absolute()
         self.settings_path = self.data_root / "settings.json"
         self.settings_lock = threading.Lock()
+        settings_mod.apply_network(self.settings_path, self.data_root)
         self.manager = manager
         self.opener = opener
         self.revealer = revealer or _reveal_with_system

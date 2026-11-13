@@ -65,6 +65,7 @@ def put_settings(ctx: QuireServer, payload: Any) -> dict[str, JsonValue]:
         merged: dict[str, Any] = {**get_settings(ctx), **payload}
         parsed = settings_mod.parse(merged)
         settings_mod.save(ctx.settings_path, parsed)
+        settings_mod.apply_network(ctx.settings_path, ctx.data_root, parsed)
         return get_settings(ctx)
 
 

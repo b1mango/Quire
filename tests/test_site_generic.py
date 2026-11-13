@@ -184,7 +184,10 @@ def test_fallback_transport_switches_host_to_direct_and_remembers():
 
     asyncio.run(run())
     assert calls == ["proxy", "direct", "direct"]  # 第二次不再试代理
-    assert transport.direct_hosts == {"cn.test"}
+    assert (
+        set(transport.book.routes) == {"cn.test"}
+        and transport.book.preferred("cn.test") == "direct"
+    )
 
 
 def test_fallback_transport_tries_direct_when_proxy_exit_is_blocked():
@@ -203,7 +206,10 @@ def test_fallback_transport_tries_direct_when_proxy_exit_is_blocked():
             return ok.status_code, still.status_code
 
     assert asyncio.run(run()) == (200, 405)
-    assert transport.direct_hosts == {"cn.test"}
+    assert (
+        set(transport.book.routes) == {"cn.test"}
+        and transport.book.preferred("cn.test") == "direct"
+    )
 
 
 def test_script_array_images_cover_common_templates():
@@ -240,3 +246,56 @@ def test_unnamed_arrays_need_one_folder_and_five_images():
     assert len(extract_array_images(pages)) == 6
     relative = '<script>var chapterImages = ["1.jpg","2.jpg"]</script>'
     assert extract_array_images(relative) == []  # 不知道图床：交给渲染
+
+
+def test_route_book_persists_and_reverses_when_direct_breaks(tmp_path):
+    path = tmp_path / "net-routes.json"
+    book = proxy.RouteBook()
+    book.configure("auto", path)
+    book.learn("cn.test", "direct")
+    again = proxy.RouteBook()
+    again.configure("auto", path)
+    assert again.preferred("cn.test") == "direct"  # 重启后直接用学到的线路
+
+    def direct(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("dns 0.0.0.0", request=request)
+
+    transport = proxy.FallbackTransport(
+        httpx.MockTransport(lambda r: httpx.Response(200, text="p")),
+        httpx.MockTransport(direct),
+        again,
+    )
+
+    async def run() -> str:
+        async with httpx.AsyncClient(transport=transport) as client:
+            return (await client.get("https://cn.test/")).text
+
+    assert (
+        asyncio.run(run()) == "p" and again.preferred("cn.test") == "proxy"
+    )  # 直连坏了反向切回代理
+
+
+def test_route_mode_locks_one_route():
+    calls: list[str] = []
+    book = proxy.RouteBook()
+    book.configure("proxy")
+
+    def proxied(request: httpx.Request) -> httpx.Response:
+        calls.append("proxy")
+        raise httpx.ConnectError("down", request=request)
+
+    transport = proxy.FallbackTransport(
+        httpx.MockTransport(proxied), httpx.MockTransport(lambda r: httpx.Response(200)), book
+    )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=transport) as client:
+            await client.get("https://x.test/")
+
+    import pytest
+
+    with pytest.raises(httpx.ConnectError):
+        asyncio.run(run())  # 锁定代理：不偷偷改直连
+    assert calls == ["proxy"]
+    book.configure("direct")
+    assert proxy.proxy_mounts("http://127.0.0.1:7897", httpx.Limits(), book) is None

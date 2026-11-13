@@ -138,6 +138,8 @@
         <div class="group">
           <div class="srow"><div class="txt"><label for="setConcurrency">同时下载</label><small>1–32；遇到站点限流时调低</small><div class="field-err" id="errConcurrency" hidden></div></div><input class="field-input sm num" id="setConcurrency" inputmode="numeric" data-key="concurrency"></div>
           <div class="srow"><div class="txt"><label for="setRate">每站请求上限</label><small>0–10 次/秒</small><div class="field-err" id="errRate" hidden></div></div><input class="field-input sm num" id="setRate" inputmode="decimal" data-key="rate"><span class="unit">次/秒</span></div>
+          <div class="srow"><div class="txt"><span class="lab">网络线路</span><small id="routeDesc"></small></div>
+            <div class="seg" id="routeSeg" role="group" aria-label="网络线路"><button aria-pressed="false" data-v="auto">自动</button><button aria-pressed="false" data-v="proxy">始终代理</button><button aria-pressed="false" data-v="direct">始终直连</button></div></div>
           <div class="srow"><div class="txt"><label for="setRobots">遵守 robots.txt</label><small>无法获取时按不限制处理</small></div><input type="checkbox" class="switch" id="setRobots" data-key="obey_robots"></div>
           <div class="srow"><div class="txt"><label for="setBrowserNative">使用真实浏览器</label><small>用于需要登录或反爬严格的站点</small></div><input type="checkbox" class="switch" id="setBrowserNative" data-key="browser_native"></div>
           <div class="srow" id="cdpRow" hidden><div class="txt"><label for="setCdpEndpoint">已登录 Chrome 的调试地址</label><small>留空则使用内置隔离浏览器</small><div class="field-err" id="errCdp" hidden></div></div><input class="field-input" id="setCdpEndpoint" placeholder="http://127.0.0.1:9222" style="width:220px" spellcheck="false" data-key="cdp_endpoint"></div>

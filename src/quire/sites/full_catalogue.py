@@ -33,6 +33,10 @@ class _Client(Protocol):
     ) -> Response: ...
 
 
+#: 明确指向「整本目录」的说法；单写「目录」「章节目录」的在阅读页上也常见（回书页），算弱证据
+_STRONG = re.compile(r"(?:查看|显示|展开)?(?:全部|完整|所有|更多)(?:章节|目录)|章节列表|全文目录")
+
+
 def full_links(page: Response) -> list[str]:
     """书页上指向完整目录的同源链接（去掉指回本页的）；阅读页返回空。"""
     doc = parse_html(page.text, base_url=page.url)
@@ -64,7 +68,7 @@ async def expand_listing(client: _Client, page: Response) -> Response:
         return page
     best = page
     count = len(discover_chapters(parse_html(page.text, base_url=page.url), page.url, limit=20001))
-    if count < 2:
+    if count < 2 and not _strong(page):
         return page  # 本页不像书页（单章页的「目录」链接是回书页，不能把单章任务换成整本）
     for target in targets:
         try:
@@ -78,3 +82,11 @@ async def expand_listing(client: _Client, page: Response) -> Response:
         if len(links) > count:
             best, count = other, len(links)
     return best
+
+
+def _strong(page: Response) -> bool:
+    doc = parse_html(page.text, base_url=page.url)
+    return any(
+        node.tag == "a" and _STRONG.search(re.sub(r"\s+", "", node.text))
+        for node in doc.iter_elements()
+    )
