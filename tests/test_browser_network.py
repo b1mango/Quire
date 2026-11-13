@@ -178,7 +178,7 @@ def test_event_dispatch_dialogs_limits_and_cancellation():
             )
             await asyncio.wait_for(started.wait(), 1)
             pending_tasks = list(net.pending)
-            net.count = 512
+            net.count = 2048
             await net.cdp.events.put(
                 {"sessionId": "session", "method": "Fetch.requestPaused", "params": request()}
             )

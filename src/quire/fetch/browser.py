@@ -28,7 +28,8 @@ _STATE = """(() => {
  /^(Just a moment|Attention Required)/i.test(document.title),
  height: root ? root.scrollHeight : 0, viewport: innerHeight,
  text: document.body ? document.body.innerText.trim() : '',
- images: [...document.images].map(i => i.currentSrc || i.src || i.dataset.src || '').join('|')};
+ images: [...document.images].map(i => i.dataset.src || i.dataset.original ||
+   i.currentSrc || i.src || '').join('|')};
 })()"""
 _DOM = """(() => {
  const copy = document.documentElement.cloneNode(true);
@@ -141,6 +142,9 @@ async def _scroll(
     previous: tuple[object, ...] | None = None
     stable = asyncio.get_running_loop().time()
     started = stable
+    # 懒加载阅读页（奇漫屋等）解密后一次写好全部 data-src：边滚边加载时图片清单不再变化，
+    # 清单稳定一段时间就收工，不必一张张滚到底
+    seen_images, images_since = "", stable
     scrolls = 0
     while True:
         network.check()
@@ -158,6 +162,15 @@ async def _scroll(
         now = asyncio.get_running_loop().time()
         if marker != previous or network.pending or state["ready"] != "complete":
             previous, stable = marker, now
+        if content == "images" and visible != seen_images:
+            seen_images, images_since = visible, now
+        elif (
+            content == "images"
+            and visible.count("|") >= 4
+            and state["ready"] == "complete"
+            and now - images_since >= max(4.0, opts.settle * 2)
+        ):
+            return
         bottom = state["y"] + state["viewport"] >= state["height"] - 2
         if not bottom and state["ready"] != "loading":
             if scrolls >= opts.max_scrolls:
@@ -219,6 +232,7 @@ async def render_page(
                     cdp, session, tree["frameTree"]["frame"]["id"], client, page
                 ) as network:
                     network.ready_script = ready_script(page.url)
+                    network.stub_images = content == "images"
                     snapshot: Any = None
                     for retried in (False, True):
                         navigation = await cdp.call(

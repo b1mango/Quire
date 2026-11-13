@@ -18,6 +18,7 @@ from .models import MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate
 from .parse.minidom import parse
 from .parse.series import Volume, plan_volumes, split_spec
+from .sites.expand import expand_catalogue
 from .sites.registry import cookie_hosts_for
 from .sites.rules import SiteRule
 from .store.models import ResourceSpec
@@ -105,6 +106,8 @@ async def run_series(
             # Cloudflare 盾站点：HTTP 403 命中时自动升级真实 Chrome 过质询。
             client.escalation = ClearanceEscalation(client, render)
         page = await fetch_render_input(client, url, render, referer=opts.referer)
+        if not (render and (render.native or render.cdp_endpoint)):
+            page = await expand_catalogue(client, page)  # 与探查同一套目录补全（咚漫全量等）
         if render:
             page, _ = await render_page(page, client, render, content="text")
         doc = parse(page.text, base_url=page.url)

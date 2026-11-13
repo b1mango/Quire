@@ -115,6 +115,13 @@ class CleanedParagraphs:
     removed: tuple[tuple[str, str], ...]
 
 
+#: 章末站点区块的起点：推荐书单、报错/书签按钮、验证码框。正文里不会整行以这些开头。
+_RECOMMEND = re.compile(
+    r"(?:猜你喜欢|相关推荐|热门推荐|推荐阅读|本书相关|大家都在看|热门小说)(?:[:：].*)?"
+    r"|章节报错.{0,10}|存书签|验证码[:：].{0,20}"
+)
+
+
 def clean_paragraphs(
     paragraphs: tuple[str, ...] | list[str], *, title: str = ""
 ) -> CleanedParagraphs:
@@ -153,6 +160,18 @@ def clean_paragraphs(
             continue
         kept.append((line, raw, index))
 
+    # 章末「猜你喜欢」「章节报错」之后是站点区块（推荐书单、站点介绍），从第一个标记起整段截掉
+    cut = next(
+        (
+            i
+            for i, (line, _, _) in enumerate(kept)
+            if i >= len(kept) * 0.6 and _RECOMMEND.fullmatch(line)
+        ),
+        None,
+    )
+    if cut is not None:
+        removed.extend((index, "章末站点区块", raw) for _, raw, index in kept[cut:])
+        kept = kept[:cut]
     spam = _spam_lines([line for line, _, _ in kept])
     deduped: list[str] = []
     for line, raw, index in kept:

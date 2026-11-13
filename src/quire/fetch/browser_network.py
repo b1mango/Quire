@@ -13,6 +13,8 @@ from .browser_cdp import Cdp
 from .session import AsyncFetcher
 from .simple import Response
 
+_PIXEL = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"  # 1×1 透明 GIF
+
 
 def _interception_gone(exc: QuireError) -> bool:
     # 页面在我们应答前取消了请求(广告/统计脚本常见),拦截点已失效,无需再应答。
@@ -37,6 +39,9 @@ class BrowserNetwork:
         self.error: BaseException | None = None
         self.warnings: set[str] = set()
         self.ready_script: str | None = None
+        # 漫画渲染只为拿到图片地址：图片请求直接回 1×1 占位，不经网络（下载阶段再取原图），
+        # 懒加载会因占位图极小而一次触发全部，渲染快且不重复下载
+        self.stub_images = False
         self.count = 0
         self.bytes = 0
         self.last_activity = asyncio.get_running_loop().time()
@@ -76,7 +81,9 @@ class BrowserNetwork:
                 continue
             self.count += 1
             self.last_activity = asyncio.get_running_loop().time()
-            if self.count > 512 or len(self.pending) >= 64:
+            # 漫画阅读页常一次发起上百个图片请求；真实并发由 AsyncFetcher 的连接槽限制，
+            # 这里只防失控页面无限发请求
+            if self.count > 2048 or len(self.pending) >= 512:
                 self.error = FetchError("动态页面资源数量超过限制")
                 return
             task = asyncio.create_task(self._serve(event["params"]))
@@ -122,6 +129,24 @@ class BrowserNetwork:
                 await self.cdp.call(
                     "Fetch.failRequest",
                     {"requestId": params["requestId"], "errorReason": "BlockedByClient"},
+                    session_id=self.session,
+                )
+            except QuireError as failure:
+                if not _interception_gone(failure):
+                    self.error = failure
+            finally:
+                self.last_activity = asyncio.get_running_loop().time()
+            return
+        if self.stub_images and kind == "Image" and request["method"] == "GET":
+            try:
+                await self.cdp.call(
+                    "Fetch.fulfillRequest",
+                    {
+                        "requestId": params["requestId"],
+                        "responseCode": 200,
+                        "responseHeaders": [{"name": "content-type", "value": "image/gif"}],
+                        "body": _PIXEL,
+                    },
                     session_id=self.session,
                 )
             except QuireError as failure:

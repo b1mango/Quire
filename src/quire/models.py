@@ -33,10 +33,12 @@ class MangaOptions:
     overwrite: bool = False
     obey_robots: bool = True
     policy: FilterPolicy = field(default_factory=FilterPolicy)
+    #: 静态页没有图片但有脚本时自动改用隔离浏览器渲染（桌面应用开启；CLI 默认不启动浏览器）
+    auto_render: bool = False
 
     def __post_init__(self) -> None:
-        if type(self.obey_robots) is not bool:
-            raise ConfigError("robots 开关须为布尔值")
+        if type(self.obey_robots) is not bool or type(self.auto_render) is not bool:
+            raise ConfigError("robots 与自动渲染开关须为布尔值")
         if not 1 <= self.concurrency <= 32 or not 0 <= self.retries <= 10:
             raise ConfigError("并发须为 1-32，重试须为 0-10")
         if any(not math.isfinite(v) or v <= 0 for v in (self.rate, self.timeout, self.dpi)):

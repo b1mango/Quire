@@ -72,3 +72,24 @@ def pick_source[T: _Link](links: list[T]) -> list[T]:
         if all(len({x.title for x in g} & best) * 2 >= len(g) for g in ranked[1:]):
             return ranked[0]
     return links
+
+
+_ID_TOKEN = re.compile(r"[A-Za-z0-9]{8,}")
+
+
+def _token_signature(match: re.Match[str]) -> str:
+    token = match[0]
+    # 字母数字混排的长段（base62 等随机章节 ID，如 5OR5bujjqLR2jIdyd69YHj）整段视为编号；
+    # ch12、vol2 这类「字母前缀 + 数字」仍只换数字，保留前缀区分不同链接族。
+    if (
+        re.search(r"\d", token)
+        and re.search(r"[A-Za-z]", token)
+        and not re.fullmatch(r"[A-Za-z]+\d+", token)
+    ):
+        return "#"
+    return _DIGIT_RUN.sub("#", token)
+
+
+def chapter_signature(url: str) -> str:
+    """URL 的数字段与随机 ID 段换成 ``#``，用于判断链接是否同属一组。"""
+    return _DIGIT_RUN.sub("#", _ID_TOKEN.sub(_token_signature, url))

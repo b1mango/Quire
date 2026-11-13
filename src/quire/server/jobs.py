@@ -299,6 +299,7 @@ class JobManager:
             rate=settings.rate,
             follow_pages=True,
             obey_robots=settings.obey_robots,
+            auto_render=True,
         )
         novel_options = NovelOptions(
             concurrency=settings.concurrency,

@@ -33,7 +33,15 @@ from .store.models import JsonValue, ResourceSpec, task_identity
 
 def _identity_options(opts: MangaOptions, candidates: list[Candidate]) -> dict[str, JsonValue]:
     identity = cast(dict[str, JsonValue], json.loads(json.dumps(asdict(opts))))
-    for key in ("concurrency", "rate", "timeout", "retries", "overwrite", "keep_images"):
+    for key in (
+        "concurrency",
+        "rate",
+        "timeout",
+        "retries",
+        "overwrite",
+        "keep_images",
+        "auto_render",
+    ):
         identity.pop(key)
     for key in ("remove", "next_selector", "follow_pages"):
         if not identity[key]:

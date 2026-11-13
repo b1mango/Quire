@@ -261,4 +261,9 @@ def extract_script_images(html: str) -> list[str]:
         return tencent
     smh = extract_smh_reader_images(html)
     page_urls = extract_page_url_list(html)
-    return smh if len(smh) >= len(page_urls) else page_urls
+    best = smh if len(smh) >= len(page_urls) else page_urls
+    if best:
+        return best
+    from .script_images import extract_array_images
+
+    return extract_array_images(html)  # SinMH chapterImages、DM5 newImgs 等通用数组

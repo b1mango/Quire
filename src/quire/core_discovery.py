@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from .assemble.models import clean_metadata_text
-from .errors import ConfigError
+from .errors import ConfigError, NoImagesError
 from .fetch.browser import RenderOptions, fetch_render_input, render_page
 from .fetch.session import AsyncFetcher
 from .manga import discover_page
@@ -40,11 +40,17 @@ async def discover_manga(
         notes: tuple[str, ...] = ()
         if render:
             page, notes = await render_page(page, client, render)
-        found, part = discover_page(
-            current,
-            replace(opts, first=1, last=0) if opts.next_selector or opts.follow_pages else opts,
-            page,
-        )
+        scoped = replace(opts, first=1, last=0) if opts.next_selector or opts.follow_pages else opts
+        try:
+            found, part = discover_page(current, scoped, page)
+        except NoImagesError:
+            # 静态页没有图但有脚本（图片清单加密、由脚本解密写入）：这一页改用隔离浏览器渲染
+            if not opts.auto_render or render or not parse(page.text).select("script[src]"):
+                raise
+            page, notes = await render_page(
+                page, client, RenderOptions(timeout=60, max_scrolls=1000)
+            )
+            found, part = discover_page(current, scoped, page)
         if result is None:
             result = part
         else:

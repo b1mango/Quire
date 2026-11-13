@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -23,7 +24,12 @@ from ..sites.expand import expand_catalogue
 from ..sites.kind_guard import check_placement, expected_kind, guess_kind
 from ..sites.registry import cookie_hosts_for
 from ..sites.rules import SiteRule, resolve_rule
+from ..text.clean import strip_site_suffix
 from ..utils.urls import is_usable_url, route_fragment
+
+_TITLE_SUFFIX = re.compile(
+    r"\s*(?:最新)?(?:章节(?:更新)?列表|章节目录|全部章节|全文阅读|最新章节|目录)$"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,7 +234,11 @@ def _inspect(
     doc = parse_html(page.text, base_url=page.url)
     clean_document(doc, page.url)
     title_node = doc.select_one("h1") or doc.select_one("title")
-    title = clean_metadata_text(title_node.text if title_node else "") or "未命名"
+    title = clean_metadata_text(title_node.text if title_node else "")
+    if title_node is not None and title_node.tag == "title":
+        title = strip_site_suffix(title)  # 「书名_全文免费阅读_站名」只留书名
+    # 完整目录页的 h1 常是「书名章节列表」「书名最新章节」：去掉后缀只留书名
+    title = _TITLE_SUFFIX.sub("", title).strip(" _-|·") or title.strip() or "未命名"
     links = discover_chapters(
         doc, page.url, selector=rule.chapter_links if rule else None, limit=20001
     )

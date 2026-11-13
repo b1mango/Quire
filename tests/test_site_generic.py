@@ -161,4 +161,82 @@ def test_system_proxy_switch_and_loopback_bypass(monkeypatch):
     assert proxy.proxy_mounts(None, httpx.Limits()) is None
     mounts = proxy.proxy_mounts("http://127.0.0.1:7897", httpx.Limits())
     assert mounts is not None and mounts["all://127.0.0.1"] is None
-    assert isinstance(mounts["all://"], httpx.AsyncHTTPTransport)
+    assert isinstance(mounts["all://"], proxy.FallbackTransport)
+
+
+def test_fallback_transport_switches_host_to_direct_and_remembers():
+    calls: list[str] = []
+
+    def broken(request: httpx.Request) -> httpx.Response:
+        calls.append("proxy")
+        raise httpx.RemoteProtocolError("reset", request=request)
+
+    def direct(request: httpx.Request) -> httpx.Response:
+        calls.append("direct")
+        return httpx.Response(200, text="ok")
+
+    transport = proxy.FallbackTransport(httpx.MockTransport(broken), httpx.MockTransport(direct))
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=transport) as client:
+            assert (await client.get("https://cn.test/a")).text == "ok"
+            assert (await client.get("https://cn.test/b")).text == "ok"
+
+    asyncio.run(run())
+    assert calls == ["proxy", "direct", "direct"]  # 第二次不再试代理
+    assert transport.direct_hosts == {"cn.test"}
+
+
+def test_fallback_transport_tries_direct_when_proxy_exit_is_blocked():
+    def blocked(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(405, text="geo")
+
+    def direct(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200 if request.url.host == "cn.test" else 403, text="d")
+
+    transport = proxy.FallbackTransport(httpx.MockTransport(blocked), httpx.MockTransport(direct))
+
+    async def run() -> tuple[int, int]:
+        async with httpx.AsyncClient(transport=transport) as client:
+            ok = await client.get("https://cn.test/")
+            still = await client.get("https://cf.test/")  # 直连也被拒：如实返回代理的结果
+            return ok.status_code, still.status_code
+
+    assert asyncio.run(run()) == (200, 405)
+    assert transport.direct_hosts == {"cn.test"}
+
+
+def test_script_array_images_cover_common_templates():
+    from quire.parse.packed import extract_script_images
+
+    sinmh = (
+        '<script>var chapterImages = ["001.jpg","002.jpg","003.jpg"];var chapterPath = '
+        '"images/comic/12/345/";var pageImage = "https://res.test/images/default/cover.png";</script>'
+    )
+    assert extract_script_images(sinmh) == [
+        f"https://res.test/images/comic/12/345/00{n}.jpg" for n in (1, 2, 3)
+    ]
+    absolute = '<script>var newImgs = ["https:\\/\\/img.test\\/a\\/1.webp","https:\\/\\/img.test\\/a\\/2.webp"]</script>'
+    assert extract_script_images(absolute) == [
+        "https://img.test/a/1.webp",
+        "https://img.test/a/2.webp",
+    ]
+    import base64
+
+    run = 'ts_reader.run({"sources":[{"images":["https://i.test/c/1.jpg","https://i.test/c/2.jpg"]}]})'
+    encoded = base64.b64encode(run.encode()).decode()
+    inline = f'<script src="data:text/javascript;base64,{encoded}"></script>'
+    assert len(extract_script_images(inline)) == 2
+
+
+def test_unnamed_arrays_need_one_folder_and_five_images():
+    from quire.parse.script_images import extract_array_images
+
+    covers = '<script>x=["https://c.test/a/1.jpg","https://c.test/b/2.jpg","https://c.test/c/3.jpg","https://c.test/d/4.jpg","https://c.test/e/5.jpg"]</script>'
+    assert extract_array_images(covers) == []  # 推荐作品封面散在不同目录
+    pages = (
+        "<script>x=[" + ",".join(f'"https://c.test/ch/{n}.jpg"' for n in range(1, 7)) + "]</script>"
+    )
+    assert len(extract_array_images(pages)) == 6
+    relative = '<script>var chapterImages = ["1.jpg","2.jpg"]</script>'
+    assert extract_array_images(relative) == []  # 不知道图床：交给渲染

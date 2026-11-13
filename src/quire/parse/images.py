@@ -44,7 +44,9 @@ URL_BLACKLIST = re.compile(
     r"(?:^|[/_.\-])("
     r"logo|avatar|icon|favicon|banner|ad|ads|advert|adv|spacer|blank|"
     r"loading|placeholder|ph\.|grey|gray|pixel|1x1|transparent|"
-    r"qrcode|qr_|erweima|weixin|wechat|share|btn|button|arrow|bullet|dot"
+    r"qrcode|qr_|erweima|weixin|wechat|share|btn|button|arrow|bullet|dot|"
+    # 模板主题目录与翻页悬浮按钮（奇漫屋等 /template/pc/…/floatw_1.png「上一章」）
+    r"template|templets|skin|float|floatw|gotop|totop|prev|next"
     r")(?:[/_.\-]|$|\d)",
     re.IGNORECASE,
 )
