@@ -89,6 +89,8 @@
         </div>
         <button class="btn quiet" id="importBtn" title="导入本地 TXT、EPUB、PDF、CBZ、ZIP，也可以直接把文件拖进窗口"><svg class="i" viewBox="0 0 16 16"><path d="M8 2.5v8M4.8 7.3 8 10.5l3.2-3.2M2.5 11v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V11"/></svg>导入</button>
         <input type="file" id="importFile" multiple accept=".txt,.epub,.pdf,.cbz,.zip" hidden>
+        <button class="btn quiet" id="importDirBtn" title="把一个图片文件夹打包成漫画（CBZ）导入；子文件夹按名称顺序成章"><svg class="i" viewBox="0 0 16 16"><path d="M2 4.5a1 1 0 0 1 1-1h3.2l1.3 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg>文件夹</button>
+        <input type="file" id="importDir" webkitdirectory hidden>
         <button class="btn quiet" id="checkAll" hidden><svg class="i" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.8v2.6h-2.6"/></svg><span id="checkAllTxt">检查更新</span></button>
       </div>
       <div class="lib-wrap" id="libWrap">
@@ -172,7 +174,7 @@
 </div></dialog>
 <dialog id="confirm" aria-labelledby="confirmTitle"><div class="confirm" id="confirmIn"></div></dialog>
 <div class="drop-zone" id="dropZone" hidden><div><svg class="i" viewBox="0 0 16 16"><path d="M8 2.5v8M4.8 7.3 8 10.5l3.2-3.2M2.5 11v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V11"/></svg>
-  <b>松开即可导入到书库</b><small>TXT 会自动转码、分章、去广告并转成 EPUB；EPUB、PDF、CBZ、ZIP 直接入库</small></div></div>
+  <b>松开即可导入到书库</b><small>TXT 自动转码、分章、去广告并转成 EPUB；图片文件夹打包成 CBZ 漫画；EPUB、PDF、CBZ、ZIP 校验后入库</small></div></div>
 <section class="import-tray" id="importTray" hidden aria-live="polite" aria-label="导入进度"></section>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTxt"></span><button id="toastAct" hidden></button></div>
 
@@ -188,6 +190,7 @@
 <script src="/static/inspector.js"></script>
 <script src="/static/settings.js"></script>
 <script src="/static/import.js"></script>
+<script src="/static/import-folder.js"></script>
 <script src="/static/palette.js"></script>
 <script src="/static/reader.js"></script>
 <script src="/static/reader-flow.js"></script>

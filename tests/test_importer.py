@@ -106,3 +106,40 @@ def test_netdisk_ad_lines(line, noise):
     from quire.text.noise import noise_rule
 
     assert bool(noise_rule(line)) is noise
+
+
+def _paragraphs(n: int) -> list[str]:
+    return [
+        f"第{k}段的开头，" + "雾气沿着河面慢慢散开，" * (k % 5 + 3) + f"这是第{k}段的结尾。"
+        for k in range(n)
+    ]
+
+
+def _wrapped(text: str, width: int) -> list[str]:
+    return [text[i : i + width] for i in range(0, len(text), width)]
+
+
+def test_hard_wrapped_txt_is_rejoined(tmp_path: Path):
+    paragraphs = _paragraphs(60)
+    lines = ["第1章 起"] + [line for p in paragraphs for line in _wrapped("　　" + p, 30)]
+    source = tmp_path / "wrap.txt"
+    source.write_text(
+        "\n".join(lines + ["第2章 续", "第2章正文。", "第3章 终", "第3章正文。"]), encoding="utf-8"
+    )
+    result = files.prepare(source, "折行.txt", tmp_path / "out", "songti", "")
+    assert any("硬换行" in note for note in result.notes)
+    body = result.files[1][1].read_text("utf-8").split("\n\n")
+    assert paragraphs[0] in body and paragraphs[-1] in body  # 折断的句子接回整段
+
+
+def test_normal_txt_is_not_rejoined(tmp_path: Path):
+    paragraphs = _paragraphs(60)
+    source = tmp_path / "plain.txt"
+    source.write_text(
+        "\n".join(["第1章 起", *paragraphs, "第2章 续", "正文。", "第3章 终", "正文二。"]),
+        encoding="utf-8",
+    )
+    result = files.prepare(source, "正常.txt", tmp_path / "out", "songti", "")
+    assert not any("硬换行" in note for note in result.notes)
+    body = result.files[1][1].read_text("utf-8").split("\n\n")
+    assert all(p in body for p in paragraphs[:5])

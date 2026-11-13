@@ -11,7 +11,7 @@ const imports = { items: [], busy: false, seq: 0, depth: 0 };
 function importFiles(fileList) {
   const files = [...fileList];
   if (!files.length) return;
-  if (imports.items.length && imports.items.every((it) => it.state === "done" || it.state === "failed")) imports.items = [];
+  clearFinishedImports();
   files.forEach((file) => {
     const ok = IMPORT_EXT.test(file.name);
     imports.items.push({
@@ -22,6 +22,11 @@ function importFiles(fileList) {
   });
   paintImports();
   pumpImports();
+}
+
+const FINISHED = new Set(["done", "failed", "skipped"]);
+function clearFinishedImports() {
+  if (imports.items.length && imports.items.every((it) => FINISHED.has(it.state))) imports.items = [];
 }
 
 function pumpImports() {
@@ -97,6 +102,7 @@ function previewLine(p) {
 
 function importLine(it) {
   if (it.state === "queued") return "等待中";
+  if (it.state === "packing") return html`正在把图片打包成 CBZ <span class="num">${Math.round(it.progress * 100)}%</span>`;
   if (it.state === "uploading") return html`上传中 <span class="num">${Math.round(it.progress * 100)}%</span>`;
   if (it.state === "processing") return it.preview && it.preview.format === "txt" ? "正在整理：转码、分章、去广告…" : "正在整理并放进书库…";
   if (it.state === "confirm") return previewLine(it.preview);
@@ -112,7 +118,7 @@ function importLine(it) {
 function paintImports() {
   const tray = $("importTray");
   if (!imports.items.length) { tray.hidden = true; return; }
-  const left = imports.items.filter((it) => it.state === "queued" || it.state === "uploading" || it.state === "processing").length;
+  const left = imports.items.filter((it) => ["packing", "queued", "uploading", "processing"].includes(it.state)).length;
   const waiting = imports.items.filter((it) => it.state === "confirm").length;
   const failed = imports.items.filter((it) => it.state === "failed").length;
   const head = waiting ? `确认书名和作者 · ${waiting} 本待导入` : left ? `正在导入 · 还有 ${left} 个`
@@ -126,7 +132,7 @@ function paintImports() {
           <label class="it-field"><span>作者</span><input class="field-input" data-f="author" value="${it.author}" placeholder="未知" spellcheck="false"></label>`
         : html`<div class="it-name" title="${it.name}">${it.book && it.book.title ? it.book.title : it.name}</div>`}
         <div class="it-sub">${importLine(it)}</div>
-        ${it.state === "uploading" || it.state === "processing" ? html`<div class="bar ${it.state === "processing" ? "busy" : ""}"><i style="width:${it.state === "processing" ? 100 : (it.progress * 100).toFixed(1)}%"></i></div>` : ""}
+        ${["packing", "uploading", "processing"].includes(it.state) ? html`<div class="bar ${it.state === "processing" ? "busy" : ""}"><i style="width:${it.state === "processing" ? 100 : (it.progress * 100).toFixed(1)}%"></i></div>` : ""}
         ${it.state === "done" && (it.book.notes || []).length ? html`<div class="it-notes">${it.book.notes.slice(0, 4).join("；")}</div>` : ""}
         ${it.state === "failed" && it.hint ? html`<div class="it-notes">${it.hint}</div>` : ""}
         ${it.state === "confirm" && (it.preview.notes || []).length ? html`<div class="it-notes">${it.preview.notes.join("；")}</div>` : ""}</div>
@@ -183,5 +189,6 @@ window.addEventListener("drop", (e) => {
   e.preventDefault();
   imports.depth = 0;
   $("dropZone").hidden = true;
-  importFiles(e.dataTransfer.files);
+  const folders = droppedFolders(e.dataTransfer); // 拖进文件夹：图片打包成 CBZ，书文件单独导入
+  if (folders) { clearFinishedImports(); folders.then(importFolders); } else importFiles(e.dataTransfer.files);
 });

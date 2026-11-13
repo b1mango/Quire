@@ -123,11 +123,15 @@ extension NativeBridge: WKUIDelegate {
             return
         }
         let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
+        // webkitdirectory：选图片文件夹（WebKit 会展开成带相对路径的文件列表）；否则只选书文件
+        let folders = parameters.allowsDirectories
+        panel.canChooseFiles = !folders
+        panel.canChooseDirectories = folders
         panel.allowsMultipleSelection = parameters.allowsMultipleSelection
-        panel.allowedContentTypes = ["txt", "epub", "pdf", "cbz", "zip"]
-            .compactMap { UTType(filenameExtension: $0) }
+        if !folders {
+            panel.allowedContentTypes = ["txt", "epub", "pdf", "cbz", "zip"]
+                .compactMap { UTType(filenameExtension: $0) }
+        }
         panel.prompt = "导入"
         panel.beginSheetModal(for: window) { response in
             completionHandler(response == .OK ? panel.urls : nil)
