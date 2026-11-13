@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 
 from ..errors import FetchError
 from ..fetch.simple import Response
-from ..parse.catalog_links import chapter_signature
+from ..parse.catalog_links import CATALOGUE_TOKEN, chapter_signature
 from ..parse.chapters import ChapterLink, classify_next, discover_chapters
 from ..parse.minidom import Document
 from ..parse.minidom import parse as parse_html
@@ -103,15 +103,24 @@ async def expand_pages(client: _Client, page: Response) -> Response:
     merged = list({link.url: link for links in pages for link in links}.values())
     if len(merged) <= len(first):
         return page
+    return rebuild(page, doc, [(link.url, link.title) for link in merged])
+
+
+def rebuild(
+    page: Response, doc: Document, links: list[tuple[str, str]], *, trusted: bool = False
+) -> Response:
+    """用整理好的章节（阅读顺序）重建目录页，书名与 <title> 沿用原页。
+
+    ``trusted``：章节来自站点接口（Madara、漫城 CMS），带令牌整份照收，不再二次筛选。
+    """
     h1 = doc.select_one("h1")
     heading = f"<h1>{escape(h1.text.strip())}</h1>" if h1 is not None and h1.text.strip() else ""
-    items = "".join(
-        f'<dd><a href="{escape(link.url)}">{escape(link.title)}</a></dd>' for link in merged
+    items = "".join(f'<li><a href="{escape(url)}">{escape(title)}</a></li>' for url, title in links)
+    box = (
+        f'<ul id="quire-catalogue" data-quire="{CATALOGUE_TOKEN}">{items}</ul>'
+        if trusted
+        else f'<div class="listmain"><ul>{items}</ul></div>'
     )
-    title = escape(doc.title.strip())
-    html = (
-        f"<html><head><title>{title}</title></head><body>{heading}"
-        f'<div class="listmain"><dl>{items}</dl></div></body></html>'
-    )
+    html = f"<html><head><title>{escape(doc.title.strip())}</title></head><body>{heading}{box}</body></html>"
     headers = {**page.headers, "content-type": "text/html; charset=utf-8"}
     return Response(page.url, page.status, headers, html.encode("utf-8"), page.elapsed_ms)

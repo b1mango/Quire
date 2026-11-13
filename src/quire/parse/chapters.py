@@ -24,6 +24,7 @@ from .catalog_links import (
     is_linked_reader,
     is_namespace_link,
     pick_source,
+    trusted_catalogue,
 )
 from .continuation import _PAGE_PARAMS, PAGE_MARK, _looks_like_continuation
 from .minidom import Document, Node
@@ -124,7 +125,9 @@ def discover_chapters(
     base = join_url(base_url, doc.effective_base()) or base_url
     # 站点适配器重建的全量目录（书旗、咚漫）：整份照收，不再按标题/URL 形态二次筛选
     host = (urlsplit(base_url).hostname or "").lower().rsplit(".", 2)[-2:]
-    if doc.select_one("#quire-catalogue") and ".".join(host) in {"shuqi.com", "dongmanmanhua.cn"}:
+    if trusted_catalogue(doc) or (
+        doc.select_one("#quire-catalogue") and ".".join(host) in {"shuqi.com", "dongmanmanhua.cn"}
+    ):
         selector = "#quire-catalogue a"
     anchors = _anchors(doc, selector)
     found: list[ChapterLink] = []

@@ -3,8 +3,11 @@ plus shared "this URL is not a chapter" predicates (namespace/category).
 """
 
 import re
+import secrets
 from typing import Protocol
 from urllib.parse import urlsplit
+
+from .minidom import Document
 
 
 class _Link(Protocol):
@@ -93,3 +96,13 @@ def _token_signature(match: re.Match[str]) -> str:
 def chapter_signature(url: str) -> str:
     """URL 的数字段与随机 ID 段换成 ``#``，用于判断链接是否同属一组。"""
     return _DIGIT_RUN.sub("#", _ID_TOKEN.sub(_token_signature, url))
+
+
+#: 站点适配器（接口取回的全量目录）写入页面时带的进程内随机令牌：网页自己写不出这个值，
+#: 所以带令牌的 #quire-catalogue 可以整份照收，不再按标题/地址形态二次筛选。
+CATALOGUE_TOKEN = secrets.token_hex(8)
+
+
+def trusted_catalogue(doc: Document) -> bool:
+    node = doc.select_one("#quire-catalogue")
+    return node is not None and node.get("data-quire") == CATALOGUE_TOKEN

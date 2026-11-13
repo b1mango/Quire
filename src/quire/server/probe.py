@@ -113,7 +113,7 @@ async def probe_url(
         page = await fetch_render_input(client, url, render)
         native = bool(render and (render.native or render.cdp_endpoint))
         if not native:
-            page = await expand_catalogue(client, page)
+            page = await expand_catalogue(client, page, catalogue=capture_mode != "single")
             if capture_mode == "single" or chosen_kind == "manga":
                 page = await reader_frame.follow(client, page, manga=chosen_kind == "manga")
         dynamic = native or bool(route_fragment(url)) or bilibili.is_reader_page(page.url)

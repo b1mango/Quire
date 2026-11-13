@@ -178,6 +178,27 @@ def _declared_thumbnail(node: Node) -> bool:
     return width < 200 and height < 200
 
 
+#: 常见漫画模板的正文容器（Madara、MangaThemesia、MMRCMS 等，参照 Mihon multisrc）。
+#: 容器里有 ≥3 张图时只收容器内的图，排除侧栏推荐封面、logo 与统计像素。
+READER_ROOTS = (
+    ".reading-content",
+    "#readerarea",
+    "#all.imagecnt",
+    ".comic-contain",
+    ".chapter-images",
+    "#chapter-images",
+    ".container-chapter-reader",
+)
+
+
+def _reader_roots(doc: Document) -> list[Document] | list[Node]:
+    for selector in READER_ROOTS:
+        roots = doc.select(selector)
+        if sum(1 for root in roots for n in root.iter_elements() if n.tag == "img") >= 3:
+            return roots
+    return [doc]
+
+
 def collect(
     doc: Document,
     base_url: str,
@@ -191,7 +212,7 @@ def collect(
     positions = {id(n): i for i, n in enumerate(doc.iter_elements())}
     candidates: list[Candidate] = []
 
-    roots = doc.select(selector) if selector else [doc]
+    roots = doc.select(selector) if selector else _reader_roots(doc)
     allowed = {id(n) for root in roots for n in root.iter_elements()}
     scoped = [n for n in doc.iter_elements() if id(n) in allowed]
     referer = doc.base_url or base_url
