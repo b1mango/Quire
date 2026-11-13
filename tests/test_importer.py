@@ -87,3 +87,22 @@ def test_volume_restart_chapters_and_stray_heading(tmp_path: Path):
     assert result.chapters > 1 and "未识别到章节标题" in "".join(
         result.notes
     )  # 只有 1 个标题：按字数分段
+
+
+@pytest.mark.parametrize(
+    ("line", "noise"),
+    [
+        ("=" * 58, True),
+        ("更多精校小说尽在知轩藏书下载：https://zxcs.zip/", True),
+        ("更多电子书请访问爱下电子书，简体：;繁体：", True),
+        ("本书由知轩藏书整理", True),
+        ("更多的人请到后院去看看那座网球场", False),
+        ("更多人去站台下载货物", False),
+        ("本书由他亲手整理成册", False),
+        ("免费的东西最贵，下载这种事他不懂", False),
+    ],
+)
+def test_netdisk_ad_lines(line, noise):
+    from quire.text.noise import noise_rule
+
+    assert bool(noise_rule(line)) is noise

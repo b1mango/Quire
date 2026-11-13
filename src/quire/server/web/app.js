@@ -27,6 +27,7 @@ function api(path, options = {}) {
     if (!res.ok) {
       const err = new Error(data.error || `请求失败（${res.status}）`);
       err.hint = data.hint;
+      err.bookId = data.book_id;
       throw err;
     }
     return data;

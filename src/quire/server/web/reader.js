@@ -233,7 +233,8 @@ function onReaderClick(e) {
     rdq(".rd-pop.look").innerHTML = lookPanel(); relayout(); return;
   }
   if (e.target.closest(".rd-typo")) return;
-  const t = e.target.closest("[data-rd],[data-sec],[data-size],[data-tone],[data-font],[data-flow],[data-cflow],[data-spread],[data-rtl],.rd-hot");
+  // 只认按钮：阅读器根元素自己带 data-flow / data-tone，用属性选择器会把点正文当成点了「翻页」
+  const t = e.target.closest("[data-rd],button[data-sec],button[data-size],button[data-tone],button[data-font],button[data-flow],button[data-cflow],button[data-spread],button[data-rtl],.rd-hot");
   if (!t) { if (!e.target.closest(".rd-pop")) closePops(); return; }
   const d = t.dataset;
   if (d.rd === "close") closeReader();
