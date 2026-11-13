@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import WebKit
 
 /// The page-world clipboard endpoint is read-only. Drag geometry stays in an isolated world.
@@ -108,5 +109,28 @@ final class NativeBridge: NSObject, WKScriptMessageHandlerWithReply, WKScriptMes
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         dragView?.updateGeometry([String: Any]())
+    }
+}
+
+/// `<input type="file">` 在 WKWebView 里默认没有反应：由原生打开面板代为选择（导入本地书籍用）。
+extension NativeBridge: WKUIDelegate {
+    func webView(
+        _ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void
+    ) {
+        guard frame.isMainFrame, let window = webView.window else {
+            completionHandler(nil)
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.allowedContentTypes = ["txt", "epub", "pdf", "cbz", "zip"]
+            .compactMap { UTType(filenameExtension: $0) }
+        panel.prompt = "导入"
+        panel.beginSheetModal(for: window) { response in
+            completionHandler(response == .OK ? panel.urls : nil)
+        }
     }
 }

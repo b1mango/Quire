@@ -125,7 +125,11 @@ def write(
                 text.write(paragraph + "\n\n")
         if not count:
             raise ParseError("TXT 文件没有可用的正文")
-    notes = ["已整理为 UTF-8", f"识别 {count} 章", f"删除广告/站点提示及重复内容 {removed} 行"]
+    notes = [
+        "已整理为 UTF-8",
+        f"识别 {count} 章" if info.has_headings else f"分为 {count} 段",
+        f"删除广告/站点提示及重复内容 {removed} 行",
+    ]
     if not info.has_headings:
         notes.append("未识别到章节标题，按约 8000 字在段落边界分段")
     return count, notes

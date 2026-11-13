@@ -87,6 +87,8 @@
           <button aria-pressed="true" data-layout="grid" aria-label="封面" title="封面"><svg class="i" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg></button>
           <button aria-pressed="false" data-layout="list" aria-label="列表" title="列表"><svg class="i" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h0M2.5 8h0M2.5 12h0"/></svg></button>
         </div>
+        <button class="btn quiet" id="importBtn" title="导入本地 TXT、EPUB、PDF、CBZ、ZIP，也可以直接把文件拖进窗口"><svg class="i" viewBox="0 0 16 16"><path d="M8 2.5v8M4.8 7.3 8 10.5l3.2-3.2M2.5 11v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V11"/></svg>导入</button>
+        <input type="file" id="importFile" multiple accept=".txt,.epub,.pdf,.cbz,.zip" hidden>
         <button class="btn quiet" id="checkAll" hidden><svg class="i" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.8v2.6h-2.6"/></svg><span id="checkAllTxt">检查更新</span></button>
       </div>
       <div class="lib-wrap" id="libWrap">
@@ -169,6 +171,9 @@
   <ul id="palList" role="listbox"></ul>
 </div></dialog>
 <dialog id="confirm" aria-labelledby="confirmTitle"><div class="confirm" id="confirmIn"></div></dialog>
+<div class="drop-zone" id="dropZone" hidden><div><svg class="i" viewBox="0 0 16 16"><path d="M8 2.5v8M4.8 7.3 8 10.5l3.2-3.2M2.5 11v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V11"/></svg>
+  <b>松开即可导入到书库</b><small>TXT 会自动转码、分章、去广告并转成 EPUB；EPUB、PDF、CBZ、ZIP 直接入库</small></div></div>
+<section class="import-tray" id="importTray" hidden aria-live="polite" aria-label="导入进度"></section>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTxt"></span><button id="toastAct" hidden></button></div>
 
 <script src="/static/app.js"></script>
@@ -182,6 +187,7 @@
 <script src="/static/library.js"></script>
 <script src="/static/inspector.js"></script>
 <script src="/static/settings.js"></script>
+<script src="/static/import.js"></script>
 <script src="/static/palette.js"></script>
 <script src="/static/reader.js"></script>
 <script src="/static/reader-flow.js"></script>

@@ -27,6 +27,7 @@ final class QuireWindow: NSObject, NSWindowDelegate {
         let webView = WKWebView(frame: window.contentView!.bounds, configuration: configuration)
         bridge.webView = webView
         webView.navigationDelegate = bridge
+        webView.uiDelegate = bridge
         webView.autoresizingMask = [.width, .height]
         window.contentView?.addSubview(webView)
         let dragView = WindowDragView(frame: webView.frame)

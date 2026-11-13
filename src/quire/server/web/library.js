@@ -63,7 +63,8 @@ function emptyShelf() {
   if (state.booksError) return html`<div class="empty"><div><h3>书库没能加载</h3><p>${state.booksError}</p><button class="btn" id="libRetry">重试</button></div></div>`;
   if (state.search) return html`<div class="empty"><div><h3>没有找到「${state.search}」</h3><p>换个关键词，或在全部书籍里找找</p><button class="btn" id="clearSearch">清除搜索</button></div></div>`;
   if (!state.books.length) return html`<div class="empty"><div><div class="ghost-books" style="justify-content:center"><i></i><i></i><i></i></div>
-    <h3>书架还空着</h3><p>贴一个作品链接，第一本书几分钟就到</p><button class="btn primary" data-go="capture">去采集</button></div></div>`;
+    <h3>书架还空着</h3><p>贴一个作品链接采集，或把网盘下载的 TXT、EPUB、PDF、CBZ 直接拖进窗口</p>
+    <div style="display:flex;gap:8px;justify-content:center"><button class="btn primary" data-go="capture">去采集</button><button class="btn" data-import="1">导入本地文件</button></div></div></div>`;
   const hint = state.group === "updates" ? "追更中的书有新章节时会出现在这里"
     : state.group === "following" ? "采集过的书可以在详情里打开「追更」" : "把书拖到左侧分组，或在详情里选择「移动到分组」";
   return html`<div class="empty"><div><h3>这里还没有书</h3><p>${hint}</p><button class="btn" data-go="library" data-group="all">查看全部书籍</button></div></div>`;

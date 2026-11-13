@@ -158,7 +158,6 @@ svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-widt
 .cv .author{position:absolute;left:9cqw;bottom:7cqw;font-size:6.5cqw;color:rgba(255,255,255,.72);writing-mode:vertical-rl;font-family:var(--font-book);letter-spacing:.1em}
 .cv.img{background:#ddd}
 .cv.img::after,.cv.img .stitch{display:none}
-.cv .art{position:absolute;inset:0}
 .cv .upd{position:absolute;top:5cqw;right:5cqw;min-width:6cqw;height:6cqw;border-radius:99px;background:var(--accent);box-shadow:0 0 0 1.4cqw rgba(0,0,0,.18)}
 /* ===================================================================
    浮层：命令面板、菜单、Toast、对话框
