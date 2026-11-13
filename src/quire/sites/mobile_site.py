@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 from typing import Protocol
@@ -36,6 +37,14 @@ class _Client(Protocol):
     ) -> Response: ...
 
 
+def _is_domain(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return "." in host and not host.endswith(".localhost")
+    return False
+
+
 def _site(host: str) -> str:
     return ".".join(host.lower().split(".")[-2:])
 
@@ -54,11 +63,13 @@ def alternates(doc: Document, page_url: str) -> list[str]:
             found.append(join_url(page_url, node.get("href") or "") or "")
     parts = urlsplit(page_url)
     host = parts.hostname or ""
-    if host.startswith(("m.", "wap.")):
-        swapped = "www." + host.split(".", 1)[1]
-    else:
-        swapped = "m." + (host[4:] if host.startswith("www.") else host)
-    found.append(urlunsplit((parts.scheme, swapped, parts.path, parts.query, "")))
+    if _is_domain(host):  # IP、localhost 没有 m. 子域
+        if host.startswith(("m.", "wap.")):
+            swapped = "www." + host.split(".", 1)[1]
+        else:
+            swapped = "m." + (host[4:] if host.startswith("www.") else host)
+        netloc = swapped + (f":{parts.port}" if parts.port else "")
+        found.append(urlunsplit((parts.scheme, netloc, parts.path, parts.query, "")))
     here = urlsplit(page_url).netloc
     out: list[str] = []
     for url in found:

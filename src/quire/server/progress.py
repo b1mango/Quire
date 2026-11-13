@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from ..models import MangaResult, NovelResult
 
 if TYPE_CHECKING:
+    from ..core_series import SeriesResult
     from .job_state import Job
 
 _LOG = logging.getLogger(__name__)
@@ -161,3 +162,11 @@ async def poll_job(job: Job, workdir: Path, thumbs: dict[str, Any], thumbs_root:
             )
             for page in pages:
                 job.emit("thumb", thumb_event(workdir / "cache" / task_id, job.id, task_id, page))
+
+
+def series_totals(job: Job, result: SeriesResult) -> None:
+    """系列任务结束：进度按全部卷的页数汇总（轮询只看得到当前卷）。"""
+    done = sum(v.pages_written for v in result.volumes)
+    failed = sum(v.pages_failed for v in result.volumes)
+    with job.condition:
+        job.done, job.failed_pages, job.total = done, failed, done + failed

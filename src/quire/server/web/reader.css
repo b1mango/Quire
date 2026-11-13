@@ -60,7 +60,7 @@ html[data-shell] .rd-top{padding-left:84px}
 .rd-pages img{max-height:100%;max-width:100%;object-fit:contain;display:block;box-shadow:0 2px 18px rgba(0,0,0,.12);background:#fff}
 .rd-pages.spread img{max-width:50%}
 .reader[data-flow="scroll"] .rd-pages{display:block;overflow:auto;padding:0}
-.reader[data-flow="scroll"] .rd-pages img{max-width:min(860px,100%);max-height:none;margin:0 auto;box-shadow:none}
+.reader[data-flow="scroll"] .rd-pages img{width:min(var(--rd-strip,720px),100%);max-width:none;height:auto;max-height:none;margin:0 auto;box-shadow:none;background:transparent}
 .rd-pdf{position:absolute;inset:46px 0 0;width:100%;height:calc(100% - 46px);border:0;background:#525659}
 
 /* 目录 / 外观 浮层 */

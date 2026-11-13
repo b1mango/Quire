@@ -10,6 +10,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from .assemble.models import ExportPage, clean_metadata_text
+from .errors import QuireError
 from .image.codec import inspect_image
 from .image.compress import encode_pages
 from .image.options import CompressionOptions, Encoding
@@ -82,3 +83,34 @@ def source_pages(
         result, pages_failed=result.pages_failed + 1, failures=result.failures + ((url, reason),)
     )
     yield _missing(index, url, reason), result
+
+
+def strip_width(root: Path, snapshot: TaskSnapshot, sample: int = 40) -> int:
+    """整卷是条漫切片时返回切片宽度，否则 0。
+
+    抽样已缓存的前 40 张：同一宽度占 ≥60%，且这些图的高宽比中位数 > 1.8（普通漫画单页约 1.4）。
+    读不出的图跳过，判不出来就按普通漫画处理（窄图照常过滤）。
+    """
+    from collections import Counter
+    from statistics import median
+
+    sizes: list[tuple[int, int]] = []
+    for record in snapshot.resources:
+        if len(sizes) >= sample:
+            break
+        if record.local_path is None or record.sha256 is None or record.size is None:
+            continue
+        try:
+            data = read_cached(
+                root, snapshot.task_id, record.local_path, sha256=record.sha256, size=record.size
+            )
+            info = inspect_image(data)
+        except (QuireError, ValueError, OSError):
+            continue
+        if info.width and info.height:
+            sizes.append((info.width, info.height))
+    if len(sizes) < 3:
+        return 0
+    width, count = Counter(w for w, _ in sizes).most_common(1)[0]
+    ratios = [h / w for w, h in sizes if w == width]
+    return width if count >= len(sizes) * 0.6 and median(ratios) > 1.8 else 0

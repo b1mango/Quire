@@ -51,3 +51,23 @@ def read_page(path: Path | BinaryIO, index: int) -> tuple[bytes, str]:
     name = names[index]
     with ZipFile(path) as archive:
         return read_entry(archive, name), _IMAGE_TYPES[PurePosixPath(name).suffix.lower()]
+
+
+def is_strip(path: Path | BinaryIO, sample: int = 6) -> bool:
+    """前几页高宽比中位数 > 1.8：条漫切片，阅读器默认上下连读。读不出尺寸时按普通漫画。"""
+    from io import BytesIO
+    from statistics import median
+
+    from PIL import Image, UnidentifiedImageError
+
+    ratios: list[float] = []
+    for index in range(min(sample, len(pages(path)))):
+        data, _ = read_page(path, index)
+        try:
+            with Image.open(BytesIO(data)) as image:
+                width, height = image.size
+        except (UnidentifiedImageError, OSError):
+            continue
+        if width:
+            ratios.append(height / width)
+    return bool(ratios) and median(ratios) > 1.8

@@ -34,7 +34,7 @@ from .chapter_stream import ChapterTracker
 from .execution import launch, prune_history
 from .follows import resolve_prefix
 from .job_state import Job, JobSpec, job_workdir
-from .progress import ChapterSink, ExportSink, make_thumbs, poll_job, thumb_event
+from .progress import ChapterSink, ExportSink, make_thumbs, poll_job, series_totals, thumb_event
 from .salvage import settle_cancelled
 from .settings import UiSettings
 
@@ -181,6 +181,7 @@ class JobManager:
             return
         try:
             if isinstance(result, SeriesResult):
+                series_totals(job, result)
                 self._settle(
                     job,
                     "partial" if result.partial else "done",
@@ -317,37 +318,40 @@ class JobManager:
         render = settings.render_options(spec.render)
         if rule:
             manga_options, novel_options = rule.manga(manga_options), rule.novel(novel_options)
-        if spec.series or (spec.kind == "manga" and spec.capture_mode == "catalogue"):
-            from ..core_series import run_series
-
-            def delivered(result: MangaResult) -> None:
-                book = self._register(job, result)
-                with job.condition:
-                    job.book_id = book.id
-                    job.done += 1
-                job.emit("volume", {"book_id": book.id, "title": result.title, "done": job.done})
-
-            return await run_series(
-                spec.url,
-                book_dir,
-                split_by=spec.split_by,
-                first=spec.chapter_first,
-                last=spec.chapter_last,
-                ranges=spec.chapter_ranges,
-                selected=spec.volumes,
-                rule=rule,
-                options=manga_options,
-                workdir=workdir,
-                compression=CompressionOptions(spec.compress, spec.target_bytes),
-                formats=spec.formats,
-                on_volume=delivered,
-                render=render,
-                on_task=on_task,
-                stop=should_stop,
-                pace=self._pace,
-            )
+        # 系列（漫画目录）也走账本轮询：此前它在轮询启动前就返回，进度条一直停在「读取目录」
         poll = asyncio.create_task(poll_job(job, workdir, thumbs, self.thumbs_root))
         try:
+            if spec.series or (spec.kind == "manga" and spec.capture_mode == "catalogue"):
+                from ..core_series import run_series
+
+                def delivered(result: MangaResult) -> None:
+                    book = self._register(job, result)
+                    with job.condition:
+                        job.book_id = book.id  # 页数进度由账本轮询给出，这里只记成品
+                    job.emit(
+                        "volume", {"book_id": book.id, "title": result.title, "done": job.done}
+                    )
+
+                return await run_series(
+                    spec.url,
+                    book_dir,
+                    split_by=spec.split_by,
+                    first=spec.chapter_first,
+                    last=spec.chapter_last,
+                    ranges=spec.chapter_ranges,
+                    selected=spec.volumes,
+                    rule=rule,
+                    options=manga_options,
+                    workdir=workdir,
+                    compression=CompressionOptions(spec.compress, spec.target_bytes),
+                    formats=spec.formats,
+                    on_volume=delivered,
+                    progress=ExportSink(job, on_page=sweep_thumbs),
+                    render=render,
+                    on_task=on_task,
+                    stop=should_stop,
+                    pace=self._pace,
+                )
             if spec.kind == "manga":
                 out = available_output(
                     base.with_suffix(f".{spec.formats[0]}"), spec.formats, overwrite=False

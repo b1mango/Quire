@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from zipfile import BadZipFile
 
 from ..errors import LedgerError
-from ..reader import comic, epub, txt
+from ..reader import comic, epub, pdfpages, txt
 from ..store import library, progress
 from ..store.models import JsonValue
 
@@ -111,7 +111,7 @@ def _read(
     fmt, path = item.format, item.path
     if len(parts) == 4:
         toc: list[JsonValue] = []
-        sections, pages = 0, 0
+        sections, pages, strip = 0, 0, False
         if fmt == "epub":
             document = epub.Epub(stream)
             toc, sections = [dict(entry) for entry in document.toc], document.sections
@@ -120,8 +120,10 @@ def _read(
             sections = len(texts)
             toc = [{"title": section.title, "section": i} for i, section in enumerate(texts)]
         elif fmt in ("cbz", "zip"):
-            pages = len(comic.pages(stream))
-        mode = "text" if fmt in ("epub", "txt") else "pages" if fmt in ("cbz", "zip") else "pdf"
+            pages, strip = len(comic.pages(stream)), comic.is_strip(stream)
+        elif fmt == "pdf":
+            pages, strip = pdfpages.inspect(stream)  # 图片型 PDF 当漫画读；带文字的交系统视图
+        mode = "text" if fmt in ("epub", "txt") else "pages" if pages else "pdf"
         saved = progress.get(handler.server.data_root, book.id)
         state: JsonValue = (
             {
@@ -144,6 +146,7 @@ def _read(
                 "toc": toc,
                 "sections": sections,
                 "pages": pages,
+                "strip": strip,
                 "progress": state,
             },
         )
@@ -160,8 +163,9 @@ def _read(
     if len(parts) >= 6 and parts[4] == "res" and fmt == "epub":
         data, content_type = epub.Epub(stream).resource("/".join(parts[5:]))
         return _bytes(handler, data, content_type)
-    if len(parts) == 6 and parts[4] == "page" and fmt in ("cbz", "zip"):
-        data, content_type = comic.read_page(stream, int(parts[5]))
+    if len(parts) == 6 and parts[4] == "page" and fmt in ("cbz", "zip", "pdf"):
+        reader_ = pdfpages if fmt == "pdf" else comic
+        data, content_type = reader_.read_page(stream, int(parts[5]))
         return _bytes(handler, data, content_type)
     if len(parts) == 5 and parts[4] == "pdf" and fmt == "pdf":
         return _pdf(handler, stream, item.bytes)

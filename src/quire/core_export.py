@@ -10,7 +10,7 @@ from pathlib import Path
 from .assemble.archive import ArchiveWriter
 from .assemble.models import clean_metadata_text
 from .assemble.pdf import CorePdfWriter
-from .core_pages import source_pages
+from .core_pages import source_pages, strip_width
 from .image.options import CompressionOptions, Encoding
 from .models import ArtifactResult, MangaOptions, MangaResult, ProgressSink
 from .parse.images import Candidate
@@ -35,6 +35,9 @@ async def _trial(
     chapter_titles: tuple[str, ...] = (),
 ) -> MangaResult:
     directory.mkdir(exist_ok=True)
+    width = strip_width(root, snapshot)
+    if width:
+        opts = replace(opts, policy=replace(opts.policy, strip_width=width))
     with ExitStack() as stack:
         writers: list[CorePdfWriter | ArchiveWriter] = []
         for format in formats:

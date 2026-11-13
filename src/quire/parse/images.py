@@ -295,6 +295,8 @@ class FilterPolicy:
     min_bytes: int = 0
     max_aspect: float = 8.0
     require_complete: bool = True
+    #: 条漫切片宽度（导出前按整卷判定）：同宽的窄切片是正文的一段，不按高度/宽高比丢弃
+    strip_width: int = 0
 
 
 def postfilter(
@@ -317,12 +319,15 @@ def postfilter(
         if size < pol.min_bytes:
             rejected.append(Rejection(cand.url, f"文件过小（{size} 字节）", "size"))
             continue
-        if probe.width < pol.min_width or probe.height < pol.min_height:
+        strip_slice = pol.strip_width > 0 and abs(probe.width - pol.strip_width) <= 2
+        if strip_slice and probe.height >= 1:
+            pass  # 条漫里 690×8 的空白间隔、690×60 的对白条都是正文
+        elif probe.width < pol.min_width or probe.height < pol.min_height:
             rejected.append(
                 Rejection(cand.url, f"尺寸过小（{probe.width}x{probe.height}）", "size")
             )
             continue
-        if probe.aspect > pol.max_aspect:
+        if probe.aspect > pol.max_aspect and not strip_slice:
             rejected.append(
                 Rejection(cand.url, f"宽高比异常（{probe.aspect:.1f}），像是横幅或分隔线", "size")
             )

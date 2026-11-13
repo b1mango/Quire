@@ -13,12 +13,14 @@ const RD_FONTS = [["Songti SC", "宋体"], ["PingFang SC", "苹方"], ["Kaiti SC
 const RD_TONES = [["paper", "#FFFFFF", "#1D1B18"], ["sepia", "#F6EFE3", "#4A3A28"], ["gray", "#4A4A4C", "#E8E6E1"], ["night", "#121212", "#C9C6C0"]];
 /* 排版默认值；「自定义排版」里的滑杆对应 lh 行距、ls 字距%、ws 词距%、margin 页边%、cols 栏数、bold、justify */
 const RD_TYPO = { lh: 1.85, ls: 0, ws: 0, margin: 0, cols: "auto", bold: false, justify: true };
-const RD_DEFAULTS = { size: 19, font: "Songti SC", tone: "auto", flow: "paged", spread: "auto", rtl: false, comicFlow: "paged", ...RD_TYPO };
+const RD_DEFAULTS = { size: 19, font: "Songti SC", tone: "auto", flow: "paged", spread: "auto", rtl: false, comicFlow: "paged", stripWidth: 720, ...RD_TYPO };
 const rd = {
   book: null, meta: null, section: 0, page: 0, pages: 1, frac: 0, calmTimer: null, saveTimer: null, loading: 0,
   cache: new Map(), // 段号 → 正文；翻到章末时下一章已在手里，切章无等待
   prefs: Object.assign({}, RD_DEFAULTS, JSON.parse(localStorage.getItem("quire-reader") || "{}")),
 };
+/* 漫画连读方式：本书里手动选过的优先；条漫（细长切片）默认上下连读，其余按偏好 */
+const cflow = () => rd.cflow || (rd.meta && rd.meta.strip ? "scroll" : rd.prefs.comicFlow);
 const icon = (name) => raw(`<svg viewBox="0 0 16 16">${RD_ICONS[name]}</svg>`);
 const rdq = (sel) => $("reader").querySelector(sel);
 const withToken = (url) => `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(TOKEN)}`;
@@ -31,6 +33,7 @@ async function openReader(bookId, format) {
   const book = state.books.find((b) => b.id === bookId) || { id: bookId, title: "" };
   rd.book = book;
   rd.cache = new Map();
+  rd.cflow = null;
   mountReader();
   rdq(".rd-top .t").textContent = book.title;
   showMsg("正在打开…", "");
@@ -113,8 +116,9 @@ function toneOf() {
 function applyLook() {
   const el = $("reader");
   el.dataset.tone = toneOf();
-  el.dataset.flow = rd.meta && rd.meta.mode === "pages" ? rd.prefs.comicFlow : rd.prefs.flow;
+  el.dataset.flow = rd.meta && rd.meta.mode === "pages" ? cflow() : rd.prefs.flow;
   const p = rd.prefs;
+  el.style.setProperty("--rd-strip", `${p.stripWidth}px`);
   el.style.setProperty("--rd-size", `${p.size}px`);
   el.style.setProperty("--rd-font", `"${p.font}", var(--font-book)`);
   el.style.setProperty("--rd-lh", String(p.lh));
@@ -135,9 +139,10 @@ function lookPanel() {
     ${text ? html`<div class="row"><div class="rd-fonts">${RD_FONTS.map(([f, label]) => html`<button data-font="${f}" aria-pressed="${pressed(rd.prefs.font === f)}" style="font-family:'${f}'">${label}</button>`)}</div></div>
       <div class="row"><div class="rd-seg"><button data-flow="paged" aria-pressed="${pressed(rd.prefs.flow === "paged")}">翻页</button><button data-flow="scroll" aria-pressed="${pressed(rd.prefs.flow === "scroll")}">滚动</button></div></div>
       ${typoPanel()}`
-    : html`<div class="row"><div class="rd-seg"><button data-cflow="paged" aria-pressed="${pressed(rd.prefs.comicFlow === "paged")}">翻页</button><button data-cflow="scroll" aria-pressed="${pressed(rd.prefs.comicFlow === "scroll")}">条漫</button></div></div>
-      <div class="row"><div class="rd-seg"><button data-spread="single" aria-pressed="${pressed(rd.prefs.spread === "single")}">单页</button><button data-spread="auto" aria-pressed="${pressed(rd.prefs.spread === "auto")}">自动</button><button data-spread="double" aria-pressed="${pressed(rd.prefs.spread === "double")}">双页</button></div></div>
-      <div class="row"><div class="rd-seg"><button data-rtl="0" aria-pressed="${pressed(!rd.prefs.rtl)}">从左往右</button><button data-rtl="1" aria-pressed="${pressed(rd.prefs.rtl)}">日漫 · 从右往左</button></div></div>`}`;
+    : html`<div class="row"><div class="rd-seg"><button data-cflow="paged" aria-pressed="${pressed(cflow() === "paged")}">翻页</button><button data-cflow="scroll" aria-pressed="${pressed(cflow() === "scroll")}">条漫</button></div></div>
+      ${cflow() === "scroll" ? html`<label class="rd-slider"><span>条漫宽度</span><input type="range" data-typo="stripWidth" min="420" max="1200" step="20" value="${rd.prefs.stripWidth}"><output>${rd.prefs.stripWidth}</output></label>` : ""}
+      ${cflow() === "scroll" ? "" : html`<div class="row"><div class="rd-seg"><button data-spread="single" aria-pressed="${pressed(rd.prefs.spread === "single")}">单页</button><button data-spread="auto" aria-pressed="${pressed(rd.prefs.spread === "auto")}">自动</button><button data-spread="double" aria-pressed="${pressed(rd.prefs.spread === "double")}">双页</button></div></div>
+      <div class="row"><div class="rd-seg"><button data-rtl="0" aria-pressed="${pressed(!rd.prefs.rtl)}">从左往右</button><button data-rtl="1" aria-pressed="${pressed(rd.prefs.rtl)}">日漫 · 从右往左</button></div></div>`}`}`;
 }
 
 /* 自定义排版：对应「图书」的 粗体 / 行间距 / 字符间距 / 词间距 / 页边空白 / 列 / 两端对齐 */
@@ -244,7 +249,7 @@ function onReaderClick(e) {
     if (d.tone) rd.prefs.tone = d.tone;
     if (d.font) rd.prefs.font = d.font;
     if (d.flow) rd.prefs.flow = d.flow;
-    if (d.cflow) rd.prefs.comicFlow = d.cflow;
+    if (d.cflow) { rd.cflow = d.cflow; if (!rd.meta.strip) rd.prefs.comicFlow = d.cflow; }
     if (d.spread) rd.prefs.spread = d.spread;
     if (d.rtl) rd.prefs.rtl = d.rtl === "1";
     savePrefs();
@@ -262,11 +267,13 @@ function onReaderInput(e) {
     const t = e.target;
     rd.prefs[key] = t.type === "checkbox" ? t.checked : t.tagName === "SELECT" ? t.value : Number(t.value);
     const out = t.parentElement.querySelector("output");
-    if (out) out.textContent = key === "lh" ? Number(t.value).toFixed(2) : `${key === "margin" && t.value > 0 ? "+" : ""}${t.value}%`;
+    if (out) out.textContent = key === "lh" ? Number(t.value).toFixed(2) : key === "stripWidth" ? t.value : `${key === "margin" && t.value > 0 ? "+" : ""}${t.value}%`;
     savePrefs();
     applyLook();
     cancelAnimationFrame(rd.typoFrame);
-    rd.typoFrame = requestAnimationFrame(() => relayout());
+    rd.typoFrame = requestAnimationFrame(() => (key === "stripWidth"
+      ? curPages()?.querySelector(`[data-n="${rd.page}"]`)?.scrollIntoView() // 改宽度后停在当前页
+      : relayout()));
     return;
   }
   if (e.target.dataset.rd !== "scrub" || !rd.meta) return;

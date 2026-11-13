@@ -183,11 +183,13 @@ async function renderPages(dir = 0) {
   applyLook();
   const stage = stageEl();
   if (!rd.meta.pages) { showMsg("这本书没有可显示的页面", "", true); return; }
-  if (rd.prefs.comicFlow === "scroll") {
+  if (cflow() === "scroll") {
+    // 条漫连读：图片按宽度铺开、上下无缝，懒加载；未加载的页按条漫比例占位，跳到进度处不乱跳
+    const ph = rd.meta.strip ? "aspect-ratio:1/2.3" : "min-height:40vh";
     stage.innerHTML = html`<div class="rd-pages" tabindex="-1">${Array.from({ length: rd.meta.pages }, (_, n) =>
-      html`<img data-n="${n}" loading="lazy" alt="第 ${n + 1} 页" src="${pageUrl(n)}" style="min-height:40vh">`)}</div>`;
+      html`<img data-n="${n}" loading="lazy" decoding="async" alt="第 ${n + 1} 页" src="${pageUrl(n)}" style="${ph}">`)}</div>`;
     const box = stage.querySelector(".rd-pages");
-    box.addEventListener("load", (e) => { e.target.style.minHeight = ""; }, true);
+    box.addEventListener("load", (e) => { e.target.style.minHeight = ""; e.target.style.aspectRatio = ""; }, true);
     box.querySelector(`[data-n="${rd.page}"]`)?.scrollIntoView();
     box.addEventListener("scroll", () => {
       const top = box.getBoundingClientRect().top;
@@ -220,7 +222,7 @@ async function renderPages(dir = 0) {
 }
 
 function turnPages(delta) {
-  if (rd.prefs.comicFlow === "scroll") {
+  if (cflow() === "scroll") {
     const box = curPages();
     box.scrollBy({ top: delta * box.clientHeight * 0.9, behavior: "smooth" });
     return;
@@ -240,7 +242,7 @@ function snapPages() {
 
 function reportPages() {
   const n = rd.meta.pages;
-  const group = rd.prefs.comicFlow === "scroll" ? [rd.page] : groupOf(rd.page);
+  const group = cflow() === "scroll" ? [rd.page] : groupOf(rd.page);
   const label = group.length > 1 ? `${group[0] + 1}–${group[1] + 1}` : `${group[0] + 1}`;
   const fraction = n > 1 ? rd.page / (n - 1) : 1;
   setBottom(fraction, `第 ${label} / ${n} 页`);
