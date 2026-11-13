@@ -69,6 +69,38 @@ class Epub:
                 for item in manifest
                 if _local(item.tag) == "item"
             }
+            metadata = next((e for e in package if _local(e.tag) == "metadata"), None)
+            dc = "{http://purl.org/dc/elements/1.1/}"
+            self.title = ""
+            self.author = ""
+            cover_id = ""
+            if metadata is not None:
+                self.title = next(
+                    ("".join(e.itertext()).strip() for e in metadata if e.tag == dc + "title"), ""
+                )
+                self.author = next(
+                    ("".join(e.itertext()).strip() for e in metadata if e.tag == dc + "creator"), ""
+                )
+                cover_id = next(
+                    (
+                        e.attrib.get("content", "")
+                        for e in metadata
+                        if _local(e.tag) == "meta" and e.attrib.get("name") == "cover"
+                    ),
+                    "",
+                )
+            self.cover_path = next(
+                (
+                    path
+                    for path, media, props in items.values()
+                    if media.startswith("image/") and "cover-image" in props
+                ),
+                None,
+            )
+            if self.cover_path is None and cover_id in items:
+                path, media, _ = items[cover_id]
+                if media.startswith("image/"):
+                    self.cover_path = path
             self.images = {path for path, media, _ in items.values() if media.startswith("image/")}
             spine = next(e for e in package if _local(e.tag) == "spine")
             self.paths = [
