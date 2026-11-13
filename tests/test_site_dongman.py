@@ -93,3 +93,14 @@ def test_expand_falls_back_when_mobile_list_is_unusable():
 
 def test_custom_user_agent_is_a_public_header():
     assert public_headers(None, {"user-agent": "UA/1"})["user-agent"] == "UA/1"
+
+
+def test_expand_keeps_links_same_origin_after_bare_host_redirect():
+    # 桌面页常 301 到不带 www 的裸域：章节链接须跟最终页同源，否则通用识别全部当跨站丢掉
+    bare = LIST.replace("www.", "")
+    desktop = _desktop()
+    page = Response(bare, 200, desktop.headers, desktop.content, 1)
+    expanded = asyncio.run(dongman.expand_listing(_Client(_mobile()), page))
+    links = discover_chapters(parse_html(expanded.text), bare, limit=20001)
+    assert len(links) == 14
+    assert links[0].url.startswith("https://dongmanmanhua.cn/FANTASY/feirenzai/episode/viewer?")

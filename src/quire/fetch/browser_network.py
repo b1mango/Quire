@@ -7,7 +7,7 @@ import base64
 from typing import Any
 from urllib.parse import urlsplit
 
-from ..errors import BlockedError, FetchError, HttpStatusError, QuireError
+from ..errors import BlockedError, FetchError, HttpStatusError, NetworkError, QuireError
 from ..utils.urls import normalize_url
 from .browser_cdp import Cdp
 from .session import AsyncFetcher
@@ -222,6 +222,10 @@ class BrowserNetwork:
                 # 页面自发的接口调用未登录/被拒(如 bilibili GetInitInfo 401):
                 # 拒掉这一条继续渲染;正文接口若也失败,占位页会在下游被查出。
                 self.warnings.add(f"动态页面接口请求被拒绝了(HTTP {exc.status}),已跳过")
+            elif isinstance(exc, NetworkError) and not main:
+                # 子请求连不上(统计/埋点子域 DNS 不解析、CDN 超时):拒掉这一条继续渲染,
+                # 正文若因此缺失,下游识别会如实报错,不让一条埋点拖垮整页。
+                self.warnings.add(f"动态页面部分资源连不上,已跳过：{urlsplit(url).netloc}")
             elif main or (dependency and same_site) or self.bytes > 128 * 1024 * 1024:
                 self.error = exc
             else:

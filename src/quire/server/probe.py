@@ -17,10 +17,10 @@ from ..parse.images import collect, prefilter
 from ..parse.minidom import parse as parse_html
 from ..parse.packed import extract_script_images
 from ..parse.series import Volume, plan_volumes
-from ..sites import bilibili, dongman
+from ..sites import bilibili, dongman, reader_frame
 from ..sites.cleanup import clean_document
 from ..sites.expand import expand_catalogue
-from ..sites.kind_guard import check_placement, expected_kind
+from ..sites.kind_guard import check_placement, expected_kind, guess_kind
 from ..sites.registry import cookie_hosts_for
 from ..sites.rules import SiteRule, resolve_rule
 from ..utils.urls import is_usable_url, route_fragment
@@ -108,6 +108,8 @@ async def probe_url(
         native = bool(render and (render.native or render.cdp_endpoint))
         if not native:
             page = await expand_catalogue(client, page)
+            if capture_mode == "single" or chosen_kind == "manga":
+                page = await reader_frame.follow(client, page, manga=chosen_kind == "manga")
         dynamic = native or bool(route_fragment(url)) or bilibili.is_reader_page(page.url)
         if not dynamic:
             stage("parse")
@@ -196,7 +198,9 @@ async def _estimate_bytes(client: AsyncFetcher, result: ProbeResult) -> int | No
         return None
     try:
         if result.series:
-            chapter = await client.get(result.sample_urls[0])
+            chapter = await reader_frame.follow(
+                client, await client.get(result.sample_urls[0]), manga=True
+            )
             urls = extract_script_images(chapter.text)
             if not urls:
                 doc = parse_html(chapter.text, base_url=chapter.url)
@@ -230,6 +234,11 @@ def _inspect(
     )
     catalogue = bool(links) if mode == "catalogue" else looks_like_catalogue(links)
     if mode != "single" and catalogue:
+        if kind is None:
+            meta = " ".join(n.get("content") or "" for n in doc.select("meta[name]"))
+            head = doc.select_one("title")
+            text = f"{title} {head.text if head else ''} {meta}"
+            kind = guess_kind(page.url, text, [c.title for c in links])
         if kind == "manga":
             volumes, _ = plan_volumes(
                 doc,

@@ -28,3 +28,31 @@ def challenge_target(text: str, url: str, content_length: int) -> str | None:
         return None
     parts = urlsplit(url)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, f"challenge={quote(token[1])}", ""))
+
+
+#: 「点击完成验证」类 Cookie 门:页面用 JS 写一个固定 Cookie 后刷新(kalamanhua 等小站常见),
+#: 形如 ``k="…"; document.cookie = "omo_token=" + k`` 或直接写字面量。
+_COOKIE_SET = re.compile(
+    r"""document\.cookie\s*=\s*["']([A-Za-z0-9_.-]{1,64})=(?:["']\s*\+\s*([A-Za-z_$][\w$]{0,31})"""
+    r"""|([A-Za-z0-9+/=:_.-]{4,256})[;"'])"""
+)
+_RELOAD = re.compile(r"location\.(?:reload|href|replace|assign)|location\s*=", re.I)
+_COOKIE_VALUE = re.compile(r"^[A-Za-z0-9+/=:_.-]{4,256}$")
+
+
+def cookie_gate(text: str, content_length: int) -> tuple[str, str] | None:
+    """若页面是「写 Cookie 再刷新」的验证门,返回 (Cookie 名, 值);否则 None。"""
+    if content_length > MAX_CHALLENGE_BYTES or not _RELOAD.search(text):
+        return None
+    found = _COOKIE_SET.search(text)
+    if found is None:
+        return None
+    name, var, literal = found.groups()
+    if name.lower().startswith(("cf_", "__cf")):
+        return None  # Cloudflare 凭据只能由其服务端签发,交给真实 Chrome 升级通道
+    if literal:
+        return name, literal
+    assigned = re.search(rf"""(?<![\w$.]){re.escape(var)}\s*=\s*["']([^"'\\]{{4,256}})["']""", text)
+    if assigned is None or not _COOKIE_VALUE.match(assigned[1]):
+        return None
+    return name, assigned[1]

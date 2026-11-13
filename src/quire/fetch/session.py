@@ -15,8 +15,9 @@ import httpx
 from ..errors import BlockedError, ConfigError, FetchError, HttpStatusError, NetworkError
 from ..utils.urls import redact, route_fragment
 from .async_policy import AsyncRateLimiter, AsyncRobotsPolicy, HostPace
-from .challenge import challenge_target
+from .challenge import challenge_target, cookie_gate
 from .decoding import read_body, sniff_body
+from .proxy import proxy_mounts, system_proxy
 from .request_shape import public_headers, redirect_target, valid_url
 from .simple import CONNECTION_HINT, RETRYABLE_STATUS, Response, blocked_error, retry_after
 
@@ -69,6 +70,7 @@ class AsyncFetcher:
         self.cookie_hosts = {h.lower() for h in cookie_hosts}
         self.escalation: Escalation | None = None
         self._host_agents: dict[str, str] = {}
+        self._gate_cookies: dict[str, str] = {}  # 主机 → 验证门 Cookie(仅内存)
         self.limiter = AsyncRateLimiter(rate, pace)
         self._slots = asyncio.Semaphore(concurrency)
         self._transport, self._concurrency = transport, concurrency
@@ -83,14 +85,18 @@ class AsyncFetcher:
         if self._loop is not None:
             raise ConfigError("AsyncFetcher 不能重复进入")
         self._loop = asyncio.get_running_loop()
+        limits = httpx.Limits(
+            max_connections=self._concurrency, max_keepalive_connections=self._concurrency
+        )
+        # 测试注入的 transport 不经代理；正式请求跟随 macOS 系统代理（见 proxy.py）
+        mounts = None if self._transport is not None else proxy_mounts(system_proxy(), limits)
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(self.timeout),
-            limits=httpx.Limits(
-                max_connections=self._concurrency, max_keepalive_connections=self._concurrency
-            ),
+            limits=limits,
             follow_redirects=False,
             trust_env=False,
             transport=self._transport,
+            mounts=mounts,
         )
         await self._client.__aenter__()
         return self
@@ -278,6 +284,7 @@ class AsyncFetcher:
     ) -> Response:
         redirects = 0
         attempt = 0
+        gated = False
         seen = {str(url)}
         while True:
             if not policy and robots and self.respect_robots:
@@ -320,6 +327,9 @@ class AsyncFetcher:
                     redirects += 1
                     attempt = 0
                     continue
+                if response.status in {200, 403} and not gated and self._pass_gate(url, response):
+                    gated, attempt = True, 0
+                    continue
                 if 200 <= response.status < 300:
                     return response
                 if response.status == 403:
@@ -332,6 +342,18 @@ class AsyncFetcher:
             await asyncio.sleep(min(8, 0.6 * 2**attempt) * self._rng.uniform(0.6, 1.4))
             attempt += 1
 
+    def _pass_gate(self, url: httpx.URL, response: Response) -> bool:
+        """「写 Cookie 再刷新」验证门:记下该 Cookie,同主机后续请求都带上,当前请求重试一次。"""
+        gate = cookie_gate(response.text, len(response.content))
+        if gate is None:
+            return False
+        host = url.host.lower()
+        value = f"{gate[0]}={gate[1]}"
+        if self._gate_cookies.get(host) == value:
+            return False  # 已带过这个 Cookie 仍被拦:不是这种门,如实返回
+        self._gate_cookies[host] = value
+        return True
+
     async def _request(
         self,
         url: httpx.URL,
@@ -342,6 +364,8 @@ class AsyncFetcher:
     ) -> tuple[Response, str, float]:
         assert self._client is not None
         # 默认直连 Request:绕过 Cookie 罐与默认认证头;仅登记的站点保留会话 Cookie。
+        if gate := self._gate_cookies.get(url.host.lower()):
+            headers = {**headers, "cookie": gate}
         if self._uses_cookies(url):
             request = self._client.build_request(method, url, headers=headers, content=content)
         else:

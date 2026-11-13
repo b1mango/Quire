@@ -13,7 +13,7 @@ from .models import MangaOptions, MangaResult
 from .parse.chapters import find_next_page
 from .parse.images import Candidate
 from .parse.minidom import parse
-from .sites import bilibili
+from .sites import bilibili, reader_frame
 
 
 async def discover_manga(
@@ -36,6 +36,7 @@ async def discover_manga(
         page = await fetch_render_input(
             client, current, render, referer=opts.referer or (url if current != url else None)
         )
+        page = await reader_frame.follow(client, page, manga=True)
         notes: tuple[str, ...] = ()
         if render:
             page, notes = await render_page(page, client, render)

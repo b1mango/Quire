@@ -108,9 +108,10 @@ async def expand_listing(client: _CatalogueClient, page: Response) -> Response:
         return page
     # 阅读页路径里的标题段每话不同，通用识别按 URL 形态分组会被拆散；站点对任意标题段都会
     # 302 到规范地址，所以统一成 <作品>/episode/viewer，整本书只剩 episode_no 不同。
-    work = parts.path.removesuffix("/list")
+    # 链接与最终页同源（桌面页常 301 到不带 www 的裸域），否则通用识别按跨站过滤掉
+    work = f"{parts.scheme}://{parts.netloc}{parts.path.removesuffix('/list')}"
     items = "".join(
-        f'<li><a href="https://www.{_HOST}{escape(work)}/episode/viewer?title_no={escape(title_no)}'
+        f'<li><a href="{escape(work)}/episode/viewer?title_no={escape(title_no)}'
         f'&amp;episode_no={number}"><span>{escape(title)}</span></a></li>'
         for number, (_, title) in sorted(found.items())
     )

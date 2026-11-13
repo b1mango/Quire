@@ -58,3 +58,27 @@ def check_placement(url: str, kind: str | None) -> None:
         "这是小说链接,漫画模块解析不出图片",
         hint="请切换到「小说」标签,用目录或单章模式提交。",
     )
+
+
+_MANGA_URL = re.compile(r"manhua|manga|comic|cartoon|(?<![a-z])mh(?![a-z])", re.I)
+_NOVEL_URL = re.compile(
+    r"xiaoshuo|novel|biquge|bqg|txt|wenxue|quanben|shu(?:ge|wu|ku|ba)|(?<![a-z])xs(?![a-z])|book",
+    re.I,
+)
+
+
+def guess_kind(url: str, text: str, chapter_titles: list[str]) -> str:
+    """未知站点的目录页是漫画还是小说:地址、页面标题/描述、章节名三路打分,平局按小说。
+
+    参照阅读类工具按「书源类型」区分的做法,通用识别只能看站点自己的说法:
+    域名/路径里的 manhua/comic、标题里的「漫画」、章节名「第 N 话」都是漫画信号。
+    """
+    target = (urlsplit(url).hostname or "") + urlsplit(url).path
+    manga = 2 * bool(_MANGA_URL.search(target)) + 2 * ("漫画" in text or "漫畫" in text)
+    novel = 2 * bool(_NOVEL_URL.search(target)) + 2 * ("小说" in text or "小說" in text)
+    if chapter_titles:
+        hua = sum(bool(re.search(r"[话話]", t)) for t in chapter_titles)
+        zhang = sum("章" in t for t in chapter_titles)
+        manga += hua * 2 >= len(chapter_titles)
+        novel += zhang * 2 >= len(chapter_titles)
+    return "manga" if manga > novel else "novel"

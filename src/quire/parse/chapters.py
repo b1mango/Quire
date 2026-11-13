@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 from ..text.clean import chapter_number, has_chapter_mark
 from ..utils.urls import is_usable_url, route_fragment
 from ..utils.urls import join_document_url as join_url
-from .catalog_links import is_category_link, is_linked_reader, is_namespace_link
+from .catalog_links import is_category_link, is_linked_reader, is_namespace_link, pick_source
 from .minidom import Document, Node
 
 #: 明确不是章节的导航链接文本。
@@ -161,7 +161,7 @@ def discover_chapters(
     chosen = strong if len(strong) >= 2 else weak
     # 最新章节通常在完整目录前重复出现；以后面的阅读清单位置为准。
     chosen = list({link.url: link for link in reversed(chosen)}.values())[::-1]
-    grouped = _modal_group(chosen)
+    grouped = pick_source(_modal_group(chosen))
     if grouped and all(is_linked_reader(base_url, link.url) for link in grouped):
         grouped.sort(key=lambda link: int(urlsplit(link.url).path.rsplit("/", 1)[-1]))
         return tuple(grouped[:limit])
