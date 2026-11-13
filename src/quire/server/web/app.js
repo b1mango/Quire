@@ -69,6 +69,41 @@ function html(strings, ...values) {
   return raw(out);
 }
 
+/* 增量更新：把新标记与现有 DOM 比对，只改有变化的节点。实时进度每秒刷新多次时，
+   整块 innerHTML 会让缩略图、封面反复重载而闪烁；这里没变的图片原地保留。
+   带 data-key 的子节点按键对齐（缩略图窗口滑动、章节重排时不会整排换 src）。 */
+function morph(el, markup) {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = String(markup);
+  patchChildren(el, tpl.content);
+}
+function sameNode(a, b) {
+  return a.nodeType === b.nodeType && a.nodeName === b.nodeName
+    && (a.nodeType !== 1 || a.getAttribute("data-key") === b.getAttribute("data-key"));
+}
+function patchNode(old, next) {
+  if (old.nodeType !== 1) { if (old.nodeValue !== next.nodeValue) old.nodeValue = next.nodeValue; return; }
+  for (const { name } of [...old.attributes]) if (!next.hasAttribute(name)) old.removeAttribute(name);
+  for (const { name, value } of [...next.attributes]) if (old.getAttribute(name) !== value) old.setAttribute(name, value);
+  if (old.tagName === "INPUT" || old.tagName === "TEXTAREA") return; // 不覆盖用户正在输入的值
+  patchChildren(old, next);
+}
+function patchChildren(parent, next) {
+  const olds = [...parent.childNodes];
+  const keyOf = (n) => (n.nodeType === 1 ? n.getAttribute("data-key") : null);
+  const keyed = new Map(olds.filter(keyOf).map((n) => [keyOf(n), n]));
+  const plain = olds.filter((n) => !keyOf(n));
+  let i = 0;
+  const result = [...next.childNodes].map((n) => {
+    const key = keyOf(n);
+    const old = key ? keyed.get(key) : plain[i++];
+    if (old && sameNode(old, n)) { patchNode(old, n); return old; }
+    return n;
+  });
+  result.forEach((node, at) => { if (parent.childNodes[at] !== node) parent.insertBefore(node, parent.childNodes[at] || null); });
+  while (parent.childNodes.length > result.length) parent.lastChild.remove();
+}
+
 /* ------------------------------------------------------------ 导航 */
 
 const VIEW_HOOKS = {};

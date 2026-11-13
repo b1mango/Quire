@@ -106,10 +106,14 @@ async def run_series(
             # Cloudflare 盾站点：HTTP 403 命中时自动升级真实 Chrome 过质询。
             client.escalation = ClearanceEscalation(client, render)
         page = await fetch_render_input(client, url, render, referer=opts.referer)
-        if not (render and (render.native or render.cdp_endpoint)):
-            page = await expand_catalogue(client, page)  # 与探查同一套目录补全（咚漫全量等）
+        # 与探查同一套目录补全（咚漫全量等）：真实浏览器模式下在渲染之后补，否则在渲染之前
+        native = bool(render and (render.native or render.cdp_endpoint))
+        if not native:
+            page = await expand_catalogue(client, page)
         if render:
             page, _ = await render_page(page, client, render, content="text")
+        if native:
+            page = await expand_catalogue(client, page)
         doc = parse(page.text, base_url=page.url)
         volumes, warnings = plan_volumes(
             doc,

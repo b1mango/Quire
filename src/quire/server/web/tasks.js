@@ -58,9 +58,9 @@ function paintJobsChrome() {
   $("miniJob").hidden = !run;
   if (!run) return;
   const p = run.total ? (run.done / run.total) * 100 : 0;
-  $("miniJob").innerHTML = html`${cover({ title: run.title })}<div class="txt" style="flex:1;min-width:0">
+  morph($("miniJob"), html`${cover({ title: run.title })}<div class="txt" style="flex:1;min-width:0">
     <div class="t">${run.title}</div><div class="s num">${run.status === "pending" ? "排队中" : run.total ? `${run.done} / ${run.total} ${unitFor(run)}` : "准备中"}</div>
-    <div class="bar"><i style="width:${p.toFixed(1)}%"></i></div></div>`;
+    <div class="bar"><i style="width:${p.toFixed(1)}%"></i></div></div>`);
   $("miniJob").setAttribute("aria-label", `正在采集《${run.title}》，查看任务`);
 }
 
@@ -84,6 +84,7 @@ function renderTasks() {
     state.job = null;
     $("tasksWrap").style.gridTemplateColumns = "1fr";
     $("tlist").hidden = true;
+    $("tdetail").dataset.job = "";
     $("tdetail").innerHTML = html`<div class="empty"><div><div class="ghost-books" style="justify-content:center"><i></i><i></i><i></i></div>
       <h3>没有任务</h3><p>采集开始后，进度会显示在这里</p><button class="btn primary" data-go="capture">去采集</button></div></div>`;
     return;
@@ -91,11 +92,11 @@ function renderTasks() {
   $("tasksWrap").style.gridTemplateColumns = "";
   $("tlist").hidden = false;
   if (!state.job || hiddenJobs.has(state.job.id) || !state.jobs.has(state.job.id)) state.job = act[0] || jobs[0];
-  const item = (j) => html`<button class="titem" role="listitem" data-job="${j.id}" aria-current="${String(j === state.job)}">${cover({ title: j.title })}
+  const item = (j) => html`<button class="titem" role="listitem" data-key="${j.id}" data-job="${j.id}" aria-current="${String(j === state.job)}">${cover({ title: j.title })}
     <div style="min-width:0"><div class="t">${j.title}</div><div class="s">${jobLine(j)}</div>
     ${j.status === "running" && j.total ? html`<div class="bar"><i style="width:${((j.done / j.total) * 100).toFixed(1)}%"></i></div>` : ""}</div></button>`;
-  $("tlist").innerHTML = html`${act.length ? html`<div class="tgroup">进行中</div>${act.map(item)}` : ""}
-    ${fin.length ? html`<div class="tgroup">最近</div>${fin.map(item)}` : ""}`;
+  morph($("tlist"), html`${act.length ? html`<div class="tgroup">进行中</div>${act.map(item)}` : ""}
+    ${fin.length ? html`<div class="tgroup">最近</div>${fin.map(item)}` : ""}`);
   renderJobDetail(state.job);
 }
 
@@ -106,7 +107,7 @@ function stageText(j) {
   if (j.status === "pending") return "排队中，前面的任务完成后开始";
   if (j.status === "running") {
     if (j.phase === "encoding") return "正在压缩与合成…";
-    return j.total ? `正在下载 · 已完成 ${j.done} / ${j.total} ${unit}` : "正在读取目录…";
+    return j.total ? `正在下载 · 已完成 ${j.done} / ${j.total} ${unit}` : "正在解析目录和各章图片…";
   }
   if (j.status === "paused") return "已暂停，已抓取的部分保留在缓存里";
   if (j.status === "done") {
@@ -140,7 +141,7 @@ function chapterOrder(c) {
 function chapterRows(j) {
   const rows = [...j.chapters.values()].sort((a, b) => chapterOrder(a) - chapterOrder(b)); // 并发完成顺序是乱的，按目录顺序列
   const pending = j.kind === "novel" && j.total ? Math.max(0, j.total - j.done) : 0;
-  return html`${rows.slice(0, 400).map((c) => html`<div class="ch ${c.status === "failed" ? "miss" : c.reused ? "reused done" : "done"}">
+  return html`${rows.slice(0, 400).map((c) => html`<div data-key="c${c.id}" class="ch ${c.status === "failed" ? "miss" : c.reused ? "reused done" : "done"}">
       <span class="st"><i></i></span><span class="t">${c.title}</span>
       <span class="x num">${[c.status === "failed" ? `缺 ${c.failed_pages}/${c.pages} 页` : j.kind === "manga" ? `${c.pages} 页` : "",
         c.reused ? "缓存" : ""].filter(Boolean).join(" · ")}</span></div>`)}
@@ -156,10 +157,14 @@ function renderJobDetail(j) {
   const showProgress = j.status !== "failed" && j.status !== "cancelled";
   const failure = readableError(j.error);
   const thumbs = j.kind === "manga" && j.thumbs.length ? html`<div class="td-sec"><h4><span>页面</span><span class="num">${j.thumbs.length}</span></h4>
-    <div class="pages">${j.thumbs.slice(-120).map((t) => html`<div class="pg img"><img src="${t.url}?token=${encodeURIComponent(TOKEN)}" alt="第 ${t.page} 页" loading="lazy"></div>`)}
+    <div class="pages">${j.thumbs.slice(-120).map((t) => html`<div class="pg img" data-key="t${t.page}"><img src="${t.url}?token=${encodeURIComponent(TOKEN)}" alt="第 ${t.page} 页" loading="lazy"></div>`)}
     ${LIVE.has(j.status) ? html`<div class="pg skel"><i></i><div class="r"><i></i><i></i></div><i></i></div>` : ""}</div></div>` : "";
   const chapters = j.chapters.size || (LIVE.has(j.status) && j.total) ? html`<div class="td-sec"><h4><span>章节</span><span class="num">${j.chapters.size}${j.kind === "novel" && j.total ? ` / ${j.total}` : ""}</span></h4><div class="chs">${chapterRows(j)}</div></div>` : "";
-  $("tdetail").innerHTML = html`<div class="td-head">${cover({ title: j.title })}<div style="min-width:0"><h2>${j.title}</h2>
+  // 换了任务就整块重画；同一任务的实时进度走增量更新，避免闪烁
+  const fresh = $("tdetail").dataset.job !== j.id;
+  $("tdetail").dataset.job = j.id;
+  if (fresh) $("tdetail").textContent = "";
+  morph($("tdetail"), html`<div class="td-head">${cover({ title: j.title })}<div style="min-width:0"><h2>${j.title}</h2>
       <div class="stage" aria-live="polite">${stageText(j)}</div></div><div class="acts">${jobActions(j)}</div></div>
     ${showProgress ? html`<div class="td-prog"><div class="bar" role="progressbar" aria-label="进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p * 100)}"><i style="width:${(p * 100).toFixed(1)}%"></i></div></div>
       <div class="td-stats num"><div>已完成<b>${j.done || 0}</b></div><div class="${missing ? "warn" : ""}">${j.kind === "manga" ? "缺页" : "失败"}<b>${missing}</b></div>
@@ -169,7 +174,7 @@ function renderJobDetail(j) {
       <div><b>${failure.title}</b><p>${j.hint || "可以直接重试；反复失败时检查链接或网络设置。"}</p>
       ${failure.detail ? html`<p class="num" style="font-size:var(--fs-12);color:var(--text-3)">原始信息：${failure.detail}</p>` : ""}
       ${/403|登录|拒绝|浏览器/.test(`${j.error}${j.hint}`) ? html`<button class="btn" data-go="settings">打开网络设置</button>` : ""}</div></div></div>` : ""}
-    ${thumbs}${chapters}`;
+    ${thumbs}${chapters}`);
 }
 
 /* ------------------------------------------------------------ 操作 */

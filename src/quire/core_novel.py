@@ -224,13 +224,18 @@ async def run_core_novel(
             # cf_clearance；外部传入的 fetcher 由调用方自行决定是否启用。
             client.escalation = ClearanceEscalation(client, render)
         page = await fetch_render_input(client, url, render, referer=opts.referer)
-        if not (render and (render.native or render.cdp_endpoint)):
-            page = await expand_catalogue(client, page)
+        # 与探查一致：真实浏览器模式下目录补全放在渲染之后（此前漏补，下载只拿到渲染页上的几章）
+        native = bool(render and (render.native or render.cdp_endpoint))
+        catalogue = opts.capture_mode != "single"
+        if not native:
+            page = await expand_catalogue(client, page, catalogue=catalogue)
         render_warnings: tuple[str, ...] = ()
         renderer: Renderer | None = None
         if render is not None:
             page, render_warnings = await render_page(page, client, render, content="text")
             renderer = _browser_renderer(client, render)
+        if native:
+            page = await expand_catalogue(client, page, catalogue=catalogue)
         plan = plan_chapters(page, opts, render_warnings)
         specs = [ResourceSpec(i + 1, 1, link.url) for i, link in enumerate(plan.links)]
         identity = novel_identity(opts, plan.links)

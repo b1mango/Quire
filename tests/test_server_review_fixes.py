@@ -31,7 +31,7 @@ def test_probe_uses_configured_browser_without_first_http_fetch(tmp_path, monkey
     monkeypatch.setattr(probing, "AsyncFetcher", lambda **kwargs: client)
     rendered = response(CATALOGUE)
     renderer = AsyncMock(return_value=(rendered, ()))
-    expanded = AsyncMock(side_effect=lambda client, page: page)
+    expanded = AsyncMock(side_effect=lambda client, page, catalogue=True: page)
     monkeypatch.setattr(probing, "render_page", renderer)
     monkeypatch.setattr(probing, "expand_catalogue", expanded)
     monkeypatch.setattr(endpoints, "find_chrome", lambda: None)

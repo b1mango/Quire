@@ -146,7 +146,7 @@ async def probe_url(
                 content="images" if chosen_kind == "manga" and capture_mode == "single" else "text",
             )
             if native:
-                page = await expand_catalogue(client, page)
+                page = await expand_catalogue(client, page, catalogue=capture_mode != "single")
             stage("parse")
             result = _inspect(page, chosen_kind, capture_mode, split_by, rule)
         estimate_stage(result)
