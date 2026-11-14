@@ -17,7 +17,7 @@
 ## Features
 
 - Collect public pages, dynamically loaded images, and local image folders as comics or novels; recognizes common site templates (Biquge-style, MacCMS, MCCMS, Madara), paginated catalogues, and "all chapters" links.
-- Import local files: TXT is re-encoded, split into chapters, cleaned of ads, unwrapped from hard line breaks, and converted to EPUB; EPUB ad paragraphs are removed; PDF, CBZ, ZIP (including books inside archives), and image folders (packed as CBZ) are supported, with title and author confirmed before import.
+- Import local files: TXT is re-encoded, split into chapters, cleaned of ads, unwrapped from hard line breaks, and converted to EPUB; EPUB ad paragraphs are removed; PDF, CBZ, ZIP (including books inside archives), and image folders (packed as CBZ) are supported, with title and author confirmed before import and written into EPUB metadata.
 - Built-in reader: paged or scrolling novels with custom typography; single-page, two-page, or continuous webtoon comics; image-only PDFs read as comics.
 - Export comics to PDF, CBZ, or image ZIP; export novels to TXT, EPUB, or PDF.
 - Image compression, long-image splitting, missing-page placeholders, and interrupted-download recovery.

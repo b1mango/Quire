@@ -787,7 +787,7 @@ wheels = [
 
 [[package]]
 name = "quire-local"
-version = "1.5.0"
+version = "1.0.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
