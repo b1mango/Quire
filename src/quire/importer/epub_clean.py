@@ -16,6 +16,7 @@ from zipfile import ZipFile, ZipInfo
 
 from ..reader.archive import read_entry
 from ..text.noise import noise_rule
+from .epub_meta import Retitle, retitle_ncx, retitle_opf
 
 _BLOCK = re.compile(r"<(p|div|h[1-6]|li)\b[^>]*>((?:(?!<\1\b).)*?)</\1\s*>\s*", re.S | re.I)
 _TAG = re.compile(r"<[^>]+>")
@@ -37,8 +38,22 @@ def _clean_markup(markup: str) -> tuple[str, int]:
     return _BLOCK.sub(drop, markup), removed
 
 
-def clean_epub(source: Path, target: Path) -> int:
-    """把 ``source`` 清洗后写到 ``target``（须不存在），返回删除的段落数。"""
+def _retitle(name: str, data: bytes, change: Retitle) -> bytes:
+    lower = name.lower()
+    rewrite = retitle_opf if lower.endswith(".opf") else retitle_ncx
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data
+    updated = rewrite(text, change)
+    return updated.encode("utf-8") if updated != text else data
+
+
+def clean_epub(source: Path, target: Path, change: Retitle | None = None) -> int:
+    """把 ``source`` 清洗后写到 ``target``（须不存在），返回删除的段落数。
+
+    ``change`` 给出时，把用户确认的书名/作者写进 OPF 与 NCX。
+    """
     removed = 0
     with ZipFile(source) as archive, ZipFile(target, "x") as out:
         for info in archive.infolist():
@@ -57,6 +72,11 @@ def clean_epub(source: Path, target: Path) -> int:
                 markup, count = _clean_markup(text)
                 removed += count
                 out.writestr(copy, markup.encode("utf-8") if count else data)
+                continue
+            if change and info.filename.lower().endswith((".opf", ".ncx")):
+                out.writestr(
+                    copy, _retitle(info.filename, read_entry(archive, info.filename), change)
+                )
                 continue
             with archive.open(info) as src, out.open(copy, "w") as dst:
                 shutil.copyfileobj(src, dst, 1024 * 1024)

@@ -16,6 +16,7 @@ from ..reader.archive import read_entry
 from ..utils.naming import available_book_dir, safe_filename
 from . import txt
 from .epub_clean import clean_epub
+from .epub_meta import Retitle
 from .naming import filename_metadata
 
 FORMATS = frozenset({"txt", "epub", "pdf", "cbz", "zip"})
@@ -124,6 +125,7 @@ def prepare(
         kind, chapters, pages, cover = "novel", None, None, None
     else:
         title, author, kind, chapters, pages, cover = _inspect(path, fmt, title, author)
+    detected = title, author
     if chosen_title:
         title = chosen_title
     if chosen_author is not None:
@@ -144,8 +146,14 @@ def prepare(
         else:
             notes = []
             if fmt == "epub":
-                removed = clean_epub(path, paths[0][1])
+                change = Retitle(
+                    title if title != detected[0] else None,
+                    author if author != detected[1] else None,
+                )
+                removed = clean_epub(path, paths[0][1], change if change != Retitle() else None)
                 notes.append(f"删除广告/站点提示 {removed} 段" if removed else "未发现广告段落")
+                if change != Retitle():
+                    notes.append("书名/作者已写入 EPUB")
             else:
                 with path.open("rb") as source, paths[0][1].open("xb") as copy:
                     shutil.copyfileobj(source, copy, length=1024 * 1024)

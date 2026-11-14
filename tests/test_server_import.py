@@ -13,6 +13,7 @@ from PIL import Image
 from pypdf import PdfWriter
 
 from quire.assemble.epub import EpubChapter, EpubWriter
+from quire.reader.epub import Epub
 from quire.server import imports
 from quire.server.app import make_server
 from quire.store import library
@@ -222,3 +223,23 @@ def test_epub_import_removes_ad_paragraphs(server, tmp_path):
     )
     assert "知轩藏书" not in text and "=" * 30 not in text
     assert "真正的前言" in text and "网球场" in text  # 正文不误删
+
+
+def test_edited_title_and_author_written_into_epub(server, tmp_path):
+    status, info = preview(server, "外部.epub", epub_bytes(tmp_path / "meta.epub"))
+    assert status == 200 and info["title"] == "OPF书名"
+    status, book = call(
+        server, "POST", f"/api/import/{info['token']}", {"title": "新书名 & 续", "author": "新作者"}
+    )
+    assert status == 201 and "书名/作者已写入 EPUB" in book["notes"]
+    stored = next(f.path for f in library.get_book(server.data_root, book["book_id"]).files)
+    epub = Epub(Path(stored))
+    assert (epub.title, epub.author) == ("新书名 & 续", "新作者")
+    ncx = next(n for n in ZipFile(stored).namelist() if n.endswith(".ncx"))
+    assert "<text>新书名 &amp; 续</text>" in ZipFile(stored).read(ncx).decode()
+
+
+def test_unchanged_epub_metadata_is_left_alone(server, tmp_path):
+    status, info = preview(server, "外部.epub", epub_bytes(tmp_path / "same.epub"))
+    status, book = call(server, "POST", f"/api/import/{info['token']}", {})
+    assert status == 201 and "书名/作者已写入 EPUB" not in book["notes"]
