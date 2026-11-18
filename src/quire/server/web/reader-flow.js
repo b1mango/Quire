@@ -5,6 +5,7 @@
 const SPREAD_MIN = 860; // 文字双栏、漫画自动双页的最小视宽
 const TURN_MS = 460;
 const TURN_EASE = "cubic-bezier(.22,.72,.2,1)";
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const stageEl = () => rdq(".rd-stage");
 const curView = () => stageEl() && stageEl().querySelector(".rd-view:not(.leaving)");
@@ -13,6 +14,7 @@ const curPages = () => stageEl() && stageEl().querySelector(".rd-pages:not(.leav
 
 /* 两层同步滑动：旧层滑出、新层滑入（dir=1 向后翻，新层从右边进来） */
 function slideSwap(oldEl, newEl, dir, fromPx = 0) {
+  if (reduceMotion()) { oldEl.remove(); return; }
   const w = stageEl().clientWidth;
   oldEl.classList.add("leaving");
   const opts = { duration: TURN_MS, easing: TURN_EASE, fill: "forwards" };
@@ -116,7 +118,7 @@ function remeasure() {
 function setFlowX(px, animate) {
   const flow = curFlow();
   if (!flow) return;
-  flow.style.transition = animate ? `transform ${TURN_MS}ms ${TURN_EASE}` : "none";
+  flow.style.transition = animate && !reduceMotion() ? `transform ${TURN_MS}ms ${TURN_EASE}` : "none";
   flow.style.transform = `translate3d(${px}px,0,0)`;
 }
 
@@ -129,7 +131,7 @@ function place(animate) {
 function turnText(delta) {
   if (rd.prefs.flow === "scroll") {
     const view = curView();
-    view.scrollBy({ top: delta * view.clientHeight * 0.9, behavior: "smooth" });
+    view.scrollBy({ top: delta * view.clientHeight * 0.9, behavior: reduceMotion() ? "auto" : "smooth" });
     return;
   }
   const next = rd.page + delta;
@@ -224,7 +226,7 @@ async function renderPages(dir = 0) {
 function turnPages(delta) {
   if (cflow() === "scroll") {
     const box = curPages();
-    box.scrollBy({ top: delta * box.clientHeight * 0.9, behavior: "smooth" });
+    box.scrollBy({ top: delta * box.clientHeight * 0.9, behavior: reduceMotion() ? "auto" : "smooth" });
     return;
   }
   const group = groupOf(rd.page);
@@ -235,7 +237,7 @@ function turnPages(delta) {
 }
 function snapPages() {
   const box = curPages();
-  if (box && rd.dragPx) box.animate([{ transform: `translate3d(${rd.dragPx}px,0,0)` }, { transform: "translate3d(0,0,0)" }], { duration: 320, easing: TURN_EASE });
+  if (box && rd.dragPx && !reduceMotion()) box.animate([{ transform: `translate3d(${rd.dragPx}px,0,0)` }, { transform: "translate3d(0,0,0)" }], { duration: 320, easing: TURN_EASE });
   if (box) box.style.transform = "";
   rd.dragPx = 0;
 }

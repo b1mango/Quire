@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 #: 前端静态资源白名单（文件名 → Content-Type）；不在表里的一律 404
 _WEB_FILES = (
-    "app.js covers.js follows.js chapters.js capture.js run-events.js tasks.js queue-status.js"
+    "icons.js app.js covers.js follows.js chapters.js capture.js run-events.js tasks.js queue-status.js"
     " library.js inspector.js settings.js import.js import-folder.js palette.js reader.js reader-flow.js"
     " app.css views.css reader.css"
 )

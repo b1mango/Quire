@@ -213,13 +213,14 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._events(job_id, query)
             if method == "GET" and len(parts) == 5 and parts[3] == "thumbs":
                 return self._thumb(job_id, parts[4])
-        if imports.route(self, method, parts) or reader.route(self, method, parts):
+        if (
+            imports.route(self, method, parts)
+            or reader.route(self, method, parts)
+            or follows.route(self, method, parts)
+        ):
             return
-        if method == "POST" and len(parts) == 3 and parts[:2] == ["api", "books"]:
-            if parts[2] == "check-all-updates":
-                return self._stream_ndjson(lambda send: follows.check_all_stream(self.server, send))
-            if parts[2] == "batch":
-                return self._reply_json(200, endpoints.batch_books(self.server, self._body()))
+        if method == "POST" and parts == ["api", "books", "batch"]:
+            return self._reply_json(200, endpoints.batch_books(self.server, self._body()))
         if len(parts) >= 2 and parts[:2] == ["api", "groups"]:
             if method == "POST" and len(parts) == 2:
                 return self._reply_json(201, endpoints.create_group(self.server, self._body()))
@@ -242,12 +243,6 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._reply_json(
                     200, endpoints.reveal_book(self.server, parts[2], self._body())
                 )
-            if parts[3] == "check-update":
-                return self._stream_ndjson(
-                    lambda send: follows.check_update_stream(self.server, parts[2], send)
-                )
-            if parts[3] == "follow":
-                return self._reply_json(201, follows.follow_submit(self.server, parts[2]))
         if method == "GET" and len(parts) == 4 and parts[:2] == ["api", "books"]:
             if parts[3] == "cover":
                 return self._cover(parts[2])

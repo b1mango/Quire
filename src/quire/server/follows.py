@@ -29,9 +29,87 @@ from .job_state import JobSpec
 from .probe import probe_url
 
 if TYPE_CHECKING:
-    from .app import QuireServer
+    from .app import QuireServer, _Handler
 
 NOVEL_FORMATS = ("epub", "txt", "pdf")
+
+
+def route(handler: _Handler, method: str, parts: list[str]) -> bool:
+    """追更相关 HTTP 路由分发（自 app.py 收口）。"""
+    if method == "POST" and parts == ["api", "books", "check-all-updates"]:
+        handler._stream_ndjson(lambda send: check_all_stream(handler.server, send))
+        return True
+    if len(parts) == 4 and parts[:2] == ["api", "books"]:
+        book_id, tail = parts[2], parts[3]
+        if method == "POST" and tail == "check-update":
+            handler._stream_ndjson(lambda send: check_update_stream(handler.server, book_id, send))
+            return True
+        if method == "POST" and tail == "follow":
+            handler._reply_json(201, follow_submit(handler.server, book_id))
+            return True
+        if method == "PUT" and tail == "follow":
+            handler._reply_json(200, enable_follow(handler.server, book_id))
+            return True
+        if method == "DELETE" and tail == "follow":
+            handler._reply_json(200, disable_follow(handler.server, book_id))
+            return True
+    return False
+
+
+def disable_follow(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
+    library.get_book(ctx.data_root, book_id)
+    library.delete_follow(ctx.data_root, book_id)
+    return {"follow": None}
+
+
+def enable_follow(ctx: QuireServer, book_id: str) -> dict[str, JsonValue]:
+    book = library.get_book(ctx.data_root, book_id)
+    if book.kind != "novel" or not book.source_url:
+        raise ConfigError("这本书不支持追更", hint="只有目录模式采集的整本小说可以追更。")
+    existing = library.get_follow(ctx.data_root, book_id)
+    if existing is None:
+        titles: dict[int, str] = {}
+        with Ledger(ctx.data_root) as ledger:
+            for task_id, record in ledger.done_chapters(book.source_url):
+                if not (record.local_path and record.sha256 and record.size):
+                    continue
+                try:
+                    cached = decode_chapter(
+                        read_cached(
+                            ledger.root,
+                            task_id,
+                            record.local_path,
+                            sha256=record.sha256,
+                            size=record.size,
+                        )
+                    )
+                except LedgerError:
+                    continue
+                titles[record.spec.chapter] = cached.title
+        contiguous = 0
+        while contiguous + 1 in titles:
+            contiguous += 1
+        if not contiguous:
+            raise ConfigError(
+                "没有找到完整的章节缓存，无法直接开启追更",
+                hint="请从来源重新采集这本书后再开启追更。",
+            )
+        library.upsert_follow(
+            ctx.data_root,
+            book_id,
+            capture_mode="catalogue",
+            chapters=contiguous,
+            last_title=titles[contiguous],
+        )
+        existing = library.get_follow(ctx.data_root, book_id)
+    assert existing is not None
+    return {
+        "follow": {
+            "chapters": existing.chapters,
+            "update": existing.update,
+            "changed": bool(existing.checked_at) and not existing.remote_match,
+        }
+    }
 
 
 def register_follow(data_root: Path, book_id: str, spec: JobSpec, result: NovelResult) -> None:

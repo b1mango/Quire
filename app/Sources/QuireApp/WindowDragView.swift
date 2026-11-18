@@ -61,6 +61,7 @@ final class WindowDragView: NSView {
           // 顶部 52px 整条是拖拽带：侧栏顶部 + 当前视图工具条；其中的控件照常可点。
           // 阅读器是盖在主界面上的全屏层：打开时只认阅读器顶栏，底下主界面的按钮不再登记。
           const zones = () => {
+            if (document.querySelector('dialog[open], #dropZone:not([hidden])')) return [];
             const reader = document.querySelector('#reader:not([hidden])');
             return [...document.querySelectorAll(reader ? '#reader .rd-top' : '.sb-top, .toolbar')]
               .filter((el) => el.getClientRects().length > 0);

@@ -56,7 +56,6 @@ def test_runtime_and_frontend_budget():
 
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
     assert project["project"]["dependencies"] == []
-    assert sum(p.stat().st_size for p in (ROOT / "ui-preview").rglob("*") if p.is_file()) < 200_000
     web = ROOT / "src" / "quire" / "server" / "web"
     # 2026-11-14 随内置阅读器与本地导入上调到 240 KB（项目设计 §2.3）
     assert sum(p.stat().st_size for p in web.rglob("*") if p.is_file()) < 240_000

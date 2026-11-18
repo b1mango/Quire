@@ -3,12 +3,6 @@
    后端契约见 server/reader.py：/read、/read/section/n、/read/page/n、/read/pdf、/progress。依赖 app.js。 */
 "use strict";
 
-const RD_ICONS = {
-  back: '<path d="M10 3.5 5.5 8l4.5 4.5"/>',
-  toc: '<path d="M5.5 4.5h8M5.5 8h8M5.5 11.5h8M2.5 4.5h0M2.5 8h0M2.5 11.5h0"/>',
-  look: '<path d="M3 13 6.5 3h1L11 13M4.3 9.5h5.4M11.5 13l1.9-5h.2l1.9 5M12.1 11.5h2.8"/>',
-  ext: '<path d="M9 3h4v4M13 3 7.5 8.5M11 9.5V13H3V5h3.5"/>',
-};
 const RD_FONTS = [["Songti SC", "宋体"], ["PingFang SC", "苹方"], ["Kaiti SC", "楷体"], ["Georgia", "Georgia"]];
 const RD_TONES = [["paper", "#FFFFFF", "#1D1B18"], ["sepia", "#F6EFE3", "#4A3A28"], ["gray", "#4A4A4C", "#E8E6E1"], ["night", "#121212", "#C9C6C0"]];
 /* 排版默认值；「自定义排版」里的滑杆对应 lh 行距、ls 字距%、ws 词距%、margin 页边%、cols 栏数、bold、justify */
@@ -21,7 +15,6 @@ const rd = {
 };
 /* 漫画连读方式：本书里手动选过的优先；条漫（细长切片）默认上下连读，其余按偏好 */
 const cflow = () => rd.cflow || (rd.meta && rd.meta.strip ? "scroll" : rd.prefs.comicFlow);
-const icon = (name) => raw(`<svg viewBox="0 0 16 16">${RD_ICONS[name]}</svg>`);
 const rdq = (sel) => $("reader").querySelector(sel);
 const withToken = (url) => `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(TOKEN)}`;
 
@@ -59,6 +52,7 @@ async function openReader(bookId, format) {
   } else {
     rdq(".rd-stage").innerHTML = html`<iframe class="rd-pdf" title="${rd.meta.title}" src="${withToken(`/api/books/${bookId}/read/pdf?format=pdf`)}"></iframe>`;
     rdq(".rd-bot").hidden = true;
+    rdq(".rd-foot").hidden = true;
     $("reader").classList.add("pinned"); // PDF 视图会吞掉鼠标事件，顶栏常驻
     saveProgress("0", 0);
   }
@@ -88,12 +82,13 @@ function mountReader() {
     el.addEventListener("load", () => rd.meta && rd.meta.mode === "text" && rd.prefs.flow === "paged" && remeasure(), true);
   }
   el.innerHTML = html`<div class="rd-top">
-      <button class="rd-btn" data-rd="close" title="返回书库（Esc）" aria-label="返回">${icon("back")}</button>
-      <button class="rd-btn" data-rd="toc" title="目录（T）" aria-label="目录" aria-pressed="false">${icon("toc")}</button>
+      <button class="rd-btn" data-rd="close" title="返回书库（Esc）" aria-label="返回">${ico("chevron-left")}</button>
+      <button class="rd-btn" data-rd="toc" title="目录（T）" aria-label="目录" aria-pressed="false">${ico("list")}</button>
       <div class="t"></div>
-      <button class="rd-btn" data-rd="look" title="外观" aria-label="外观" aria-pressed="false">${icon("look")}</button>
-      <button class="rd-btn" data-rd="ext" title="用系统应用打开" aria-label="用系统应用打开">${icon("ext")}</button></div>
+      <button class="rd-btn" data-rd="look" title="外观" aria-label="外观" aria-pressed="false">${ico("type")}</button>
+      <button class="rd-btn" data-rd="ext" title="用系统应用打开" aria-label="用系统应用打开">${ico("external-link")}</button></div>
     <div class="rd-stage"></div>
+    <div class="rd-foot num" aria-hidden="true"></div>
     <div class="rd-bot"><input type="range" min="0" max="1000" value="0" aria-label="阅读位置" data-rd="scrub"><span class="pos num"></span></div>
     <div class="rd-pop toc" hidden role="menu"></div><div class="rd-pop look" hidden></div>`;
   el.hidden = false;
@@ -136,7 +131,7 @@ function lookPanel() {
     <div class="row"><span class="lab">主题</span><div class="rd-tones">
       <button data-tone="auto" aria-pressed="${pressed(rd.prefs.tone === "auto")}" title="跟随应用" style="background:linear-gradient(135deg,#fff 50%,#121212 50%);color:transparent">·</button>
       ${RD_TONES.map(([v, bg, fg]) => html`<button data-tone="${v}" aria-pressed="${pressed(rd.prefs.tone === v)}" style="background:${bg};color:${fg}" title="${{ paper: "原色", sepia: "纸色", gray: "灰", night: "夜间" }[v]}">文</button>`)}</div></div>
-    ${text ? html`<div class="row"><div class="rd-fonts">${RD_FONTS.map(([f, label]) => html`<button data-font="${f}" aria-pressed="${pressed(rd.prefs.font === f)}" style="font-family:'${f}'">${label}</button>`)}</div></div>
+    ${text ? html`<div class="row"><div class="rd-fonts">${RD_FONTS.map(([f, label]) => html`<button data-font="${f}" aria-pressed="${pressed(rd.prefs.font === f)}" style="font-family:'${f}'"><span>${label}</span>${rd.prefs.font === f ? ico("check", "i sm") : ""}</button>`)}</div></div>
       <div class="row"><div class="rd-seg"><button data-flow="paged" aria-pressed="${pressed(rd.prefs.flow === "paged")}">翻页</button><button data-flow="scroll" aria-pressed="${pressed(rd.prefs.flow === "scroll")}">滚动</button></div></div>
       ${typoPanel()}`
     : html`<div class="row"><div class="rd-seg"><button data-cflow="paged" aria-pressed="${pressed(cflow() === "paged")}">翻页</button><button data-cflow="scroll" aria-pressed="${pressed(cflow() === "scroll")}">条漫</button></div></div>
@@ -150,7 +145,7 @@ function typoPanel() {
   const p = rd.prefs;
   const slider = (key, label, min, max, step, shown) => html`<label class="rd-slider"><span>${label}</span>
     <input type="range" data-typo="${key}" min="${min}" max="${max}" step="${step}" value="${p[key]}"><output>${shown}</output></label>`;
-  return html`<details class="rd-typo" ${rd.typoOpen ? raw("open") : ""}><summary>自定义排版</summary>
+  return html`<details class="rd-typo" ${rd.typoOpen ? raw("open") : ""}><summary><span>自定义排版</span>${ico("chevron-right", "i sm")}</summary>
     <label class="rd-toggle"><span>粗体文本</span><input type="checkbox" class="switch" data-typo="bold" ${p.bold ? raw("checked") : ""}></label>
     ${slider("lh", "行间距", 1.2, 2.6, 0.05, Number(p.lh).toFixed(2))}
     ${slider("ls", "字符间距", 0, 20, 1, `${p.ls}%`)}
@@ -222,6 +217,7 @@ function setBottom(fraction, label) {
   const scrub = rdq("[data-rd=scrub]");
   if (document.activeElement !== scrub) scrub.value = String(Math.round(fraction * 1000));
   rdq(".rd-bot .pos").textContent = label;
+  rdq(".rd-foot").textContent = label;
 }
 
 /* ------------------------------------------------------------ 事件 */

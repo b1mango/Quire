@@ -92,8 +92,8 @@ function showProbeError(err) {
   const noCatalogue = /章节列表|目录/.test(err.message) && capture.mode !== "single";
   const other = capture.kind === "manga" ? "novel" : "manga";
   const failure = readableError(err.message, "识别没有成功");
-  $("capErr").innerHTML = html`<div class="err" role="alert"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h0"/></svg>
-    <div><b>${failure.title}</b><p>${err.hint || "检查链接是否能在浏览器里打开，或换成作品的目录页再试。"}</p>
+  $("capErr").innerHTML = html`<div class="err" role="alert">${ico("alert")}
+    <div><b>${failure.title}</b><p>${err.hint || "检查链接是否能在浏览器里打开，或换成作品的目录页再试"}</p>
     ${failure.detail ? html`<p style="font-size:var(--fs-12);color:var(--text-3)">原始信息：${failure.detail}</p>` : ""}
     ${noCatalogue ? html`<button class="btn" data-retry="single">只抓这一章</button> ` : ""}
     <button class="btn" data-retry="kind">按${other === "manga" ? "漫画" : "小说"}再识别</button>
@@ -128,8 +128,8 @@ function showResult(result) {
   const total = (result.chapters || []).length;
   const noChrome = state.caps && !state.caps.chrome;
   const libNote = !result.library ? "" : owned >= total
-    ? html`<div class="lib-note"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="m5.5 8.2 1.8 1.8 3.3-3.6"/></svg><div>书库里已有全部 ${owned} 章，目录没有新章节。</div></div>`
-    : html`<div class="lib-note"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="m5.5 8.2 1.8 1.8 3.3-3.6"/></svg><div>书库里已有第 1–${owned} 章，默认从第 ${owned + 1} 章续抓。</div></div>`;
+    ? html`<div class="lib-note">${ico("check-circle")}<div>书库里已有全部 ${owned} 章，目录没有新章节</div></div>`
+    : html`<div class="lib-note">${ico("check-circle")}<div>书库里已有第 1–${owned} 章，默认从第 ${owned + 1} 章续抓</div></div>`;
   const fmtChips = FORMATS[kind].map(([v, label]) => {
     const needChrome = kind === "novel" && v === "pdf";
     return html`<button type="button" class="chip" data-f="${v}" aria-pressed="${String(capture.formats.has(v))}"
@@ -146,7 +146,7 @@ function showResult(result) {
       <div class="rs-meta"><span class="k">${host(result.url)}</span><span class="num">${total || result.count} ${unitOf(result)}</span>
         ${result.render ? html`<span class="k">动态页面</span>` : ""}
         <button type="button" class="kind-pill" id="kindPill" aria-label="内容类型：${kind === "manga" ? "漫画" : "小说"}，点击改为${kind === "manga" ? "小说" : "漫画"}"
-          title="识别错了？点击改为${kind === "manga" ? "小说" : "漫画"}">${kind === "manga" ? "漫画" : "小说"} <svg class="i" viewBox="0 0 16 16" style="width:12px;height:12px"><path d="m5 6.5 3 3 3-3"/></svg></button></div>
+          title="识别错了？点击改为${kind === "manga" ? "小说" : "漫画"}">${kind === "manga" ? "漫画" : "小说"} ${ico("chevron-down", "i sm")}</button></div>
       ${libNote}
     </div></div>
     <div class="rs-rows">
@@ -155,7 +155,7 @@ function showResult(result) {
       ${kind === "novel" ? html`<div class="row" id="styleRow"><span class="lab" id="styLab">版式</span><div class="ctl style-cards" role="group" aria-labelledby="styLab" id="styCards">${styleCards}</div></div>` : ""}
       ${kind === "manga" ? html`<div class="row"><span class="lab" id="qLab">画质</span><div class="ctl"><div class="seg" role="group" aria-labelledby="qLab" id="qPick">${quality}</div><span class="hint" id="qHint"></span></div></div>` : ""}
     </div>
-    <details class="more"><summary><svg class="i" viewBox="0 0 16 16" style="width:12px;height:12px"><path d="m6 4 4 4-4 4"/></svg>更多选项</summary>
+    <details class="more"><summary>${ico("chevron-right", "i sm")}更多选项</summary>
       ${kind === "manga" && total ? html`<div class="row"><label for="splitSel">分卷</label><div class="ctl"><select class="field-input" id="splitSel">
         ${SPLITS.map(([v, label]) => html`<option value="${v}" ${capture.split === v ? raw("selected") : ""}>${v === "size" ? `每卷不超过 ${sizeCapMb()} MB` : label}</option>`)}</select>
         ${series ? html`<div class="vol-list" id="volList" aria-label="选择需要的卷">${(result.volumes || []).map((v) => html`<label><input type="checkbox" value="${v.index}" checked> ${v.title} · ${v.chapters} 章</label>`)}</div>` : ""}

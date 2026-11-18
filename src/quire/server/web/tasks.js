@@ -170,8 +170,8 @@ function renderJobDetail(j) {
       <div class="td-stats num"><div>已完成<b>${j.done || 0}</b></div><div class="${missing ? "warn" : ""}">${j.kind === "manga" ? "缺页" : "失败"}<b>${missing}</b></div>
       <div>总数<b>${j.total || "—"}</b></div><div>格式<b style="font-size:15px;line-height:1.6">${fmts || "—"}</b></div></div>` : ""}
     ${j.status === "partial" ? html`<div class="done-card"><div class="txt">缺 ${missing} 页已用占位页补齐<small>补抓只会重新下载缺失的部分</small></div></div>` : ""}
-    ${j.status === "failed" ? html`<div class="td-sec"><div class="err"><svg class="i" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h0"/></svg>
-      <div><b>${failure.title}</b><p>${j.hint || "可以直接重试；反复失败时检查链接或网络设置。"}</p>
+    ${j.status === "failed" ? html`<div class="td-sec"><div class="err">${ico("alert")}
+      <div><b>${failure.title}</b><p>${j.hint || "可以直接重试；反复失败时检查链接或网络设置"}</p>
       ${failure.detail ? html`<p class="num" style="font-size:var(--fs-12);color:var(--text-3)">原始信息：${failure.detail}</p>` : ""}
       ${/403|登录|拒绝|浏览器/.test(`${j.error}${j.hint}`) ? html`<button class="btn" data-go="settings">打开网络设置</button>` : ""}</div></div></div>` : ""}
     ${thumbs}${chapters}`);

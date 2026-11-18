@@ -14,15 +14,19 @@ function renderInspector() {
   $("inspIn").innerHTML = books.length === 1 ? singleInspector(books[0]) : multiInspector(books);
 }
 
+const CLOSE_BAR = () => html`<div class="insp-bar"><button class="btn quiet icon-btn" data-ia="close" aria-label="收起详情" title="收起详情（Esc）">${ico("x")}</button></div>`;
+
 function followSection(b) {
+  if (b.kind !== "novel" || !b.source_url) return "";
   const f = b.follow;
-  if (!f) return "";
+  const head = html`<h4 class="row-h"><span>追更</span><input type="checkbox" class="switch" data-ia="toggleFollow" aria-label="开启追更" ${f ? raw("checked") : ""}></h4>`;
+  if (!f) return html`<div class="sec">${head}<small style="display:block;color:var(--text-3)">开启后可在书库一键检查新章节</small></div>`;
   const checking = checkingBook === b.id;
   const card = f.changed
     ? html`<div class="upd-card"><div class="txt"><b>目录有变动</b><small style="display:block;color:var(--text-3)">建议整本重抓</small></div><button class="btn" data-ia="recapture">去重抓</button></div>`
     : f.update > 0
       ? html`<div class="upd-card"><div class="txt"><b>新增 ${f.update} 章</b></div><button class="btn primary" data-ia="follow">续抓</button></div>` : "";
-  return html`<div class="sec"><h4>追更</h4><div class="follow"><div class="txt">已抓到第 ${f.chapters} 章
+  return html`<div class="sec">${head}<div class="follow"><div class="txt">已抓到第 ${f.chapters} 章
     <small id="followStage">${checking ? "正在检查…" : "只抓新章节并合进原书"}</small></div>
     <button class="btn" data-ia="check" ${checking ? raw("disabled") : ""}>${checking ? "检查中…" : "检查更新"}</button></div>${card}</div>`;
 }
@@ -30,7 +34,7 @@ function followSection(b) {
 function singleInspector(b) {
   const group = state.groups.find((g) => g.id === b.group);
   const files = b.files || (b.formats || []).map((format) => ({ format, bytes: 0, name: "" }));
-  return html`${cover(coverItem(b))}<h2>${b.title}</h2><div class="by">${[b.author, bookHost(b)].filter(Boolean).join(" · ")}</div>
+  return html`${CLOSE_BAR()}${cover(coverItem(b))}<h2>${b.title}</h2><div class="by">${[b.author, bookHost(b)].filter(Boolean).join(" · ")}</div>
     <div class="acts"><button class="btn primary" data-ia="open">阅读</button><button class="btn" data-ia="external">用系统应用打开</button></div>
     <dl><dt>类型</dt><dd>${KIND_TEXT[b.kind] || b.kind || "—"}</dd>
       <dt>大小</dt><dd class="num">${humanSize(b.bytes)}</dd>
@@ -51,7 +55,7 @@ function singleInspector(b) {
 function multiInspector(books) {
   const bytes = books.reduce((sum, b) => sum + (b.bytes || 0), 0);
   const covers = books.slice(0, 3).map((b, i) => html`<div style="transform:translateX(${(i - 1) * 14}px) rotate(${(i - 1) * 4}deg);position:absolute;inset:0">${cover(coverItem(b))}</div>`);
-  return html`<div class="stack">${covers}</div><h2>已选 ${books.length} 本</h2><div class="by num">共 ${humanSize(bytes)}</div>
+  return html`${CLOSE_BAR()}<div class="stack">${covers}</div><h2>已选 ${books.length} 本</h2><div class="by num">共 ${humanSize(bytes)}</div>
     <div class="menu-list" style="margin-top:18px">
       <button class="btn" data-ia="move">移动到分组…</button>
       ${books.some((b) => b.group) ? html`<button class="btn" data-ia="ungroup">移出分组</button>` : ""}
@@ -104,6 +108,22 @@ async function checkSelected(books) {
   renderInspector();
 }
 
+async function toggleFollow(book, on) {
+  try {
+    const res = await api(`/api/books/${book.id}/follow`, { method: on ? "PUT" : "DELETE" });
+    book.follow = res.follow || null;
+  } catch (err) { toast(errText(err)); }
+  renderSidebar();
+  $("checkAll").hidden = !state.books.some((x) => x.follow);
+  renderInspector();
+}
+
+$("inspIn").addEventListener("change", (e) => {
+  const sw = e.target.closest('[data-ia="toggleFollow"]');
+  const b = selectedBooks()[0];
+  if (sw && b) toggleFollow(b, sw.checked);
+});
+
 $("inspIn").addEventListener("click", (e) => {
   const books = selectedBooks();
   const b = books[0];
@@ -113,6 +133,7 @@ $("inspIn").addEventListener("click", (e) => {
   if (!a || !b) return;
   const ids = books.map((x) => x.id);
   switch (a.dataset.ia) {
+    case "close": setSelection([]); break;
     case "open": openBook(b.id); break;
     case "reveal": revealBook(b.id); break;
     case "external": openExternal(b.id); break;

@@ -125,7 +125,7 @@ function paintImports() {
     : failed ? `导入完成 · ${failed} 个没有成功` : "导入完成";
   tray.hidden = false;
   morph(tray, html`<div class="it-head"><b>${head}</b>${waiting > 1 ? html`<button class="btn sm primary" data-imp="all">全部导入</button>` : ""}
-    ${left || waiting ? "" : html`<button class="btn quiet icon-btn" data-imp="close" aria-label="关闭导入面板" title="关闭">×</button>`}</div>
+    ${left || waiting ? "" : html`<button class="btn quiet icon-btn" data-imp="close" aria-label="关闭导入面板" title="关闭">${ico("x")}</button>`}</div>
     <div class="it-list">${imports.items.map((it) => html`<div class="it-row is-${it.state}" data-key="i${it.id}">
       <div class="it-main">${it.state === "confirm" ? html`<div class="it-file" title="${it.name}">${it.name}</div>
           <label class="it-field"><span>书名</span><input class="field-input" data-f="title" value="${it.title}" placeholder="书名" spellcheck="false"></label>

@@ -230,7 +230,7 @@ async function askDelete() {
 /* ------------------------------------------------------------ 分组 */
 
 async function askName(title, value = "") {
-  const ok = await confirmBox({ title, ok: "好", body: html`<p><input class="field-input" id="nameIn" style="width:100%" maxlength="40" value="${value}" aria-label="分组名"></p>` });
+  const ok = await confirmBox({ title, ok: "保存", body: html`<p><input class="field-input" id="nameIn" style="width:100%" maxlength="40" value="${value}" aria-label="分组名"></p>` });
   return ok ? ($("nameIn").value || "").trim() : "";
 }
 async function addGroup() {

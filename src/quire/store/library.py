@@ -389,3 +389,8 @@ def record_check(data_root: Path, book_id: str, *, remote_count: int, match: boo
         ).rowcount
     if not changed:
         raise LedgerError("这本书没有追更记录")
+
+
+def delete_follow(data_root: Path, book_id: str) -> None:
+    with _open(data_root) as connection:
+        connection.execute("DELETE FROM follows WHERE book_id = ?", (book_id,))

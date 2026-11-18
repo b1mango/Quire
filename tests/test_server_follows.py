@@ -124,3 +124,47 @@ def test_jobspec_follow_prefix_validation() -> None:
         JobSpec(**{**base, "kind": "manga", "formats": ("pdf",)}, chapter_first=4, follow_prefix=3)
     with pytest.raises(ConfigError):
         JobSpec(**base, follow_prefix=1.5)
+
+
+def test_http_toggle_follow_and_static_icons(tmp_path: Path) -> None:
+    import http.client
+    import threading
+
+    from quire.server.app import make_server
+
+    book = _book(tmp_path)
+    server = make_server("127.0.0.1", 0, data_root=tmp_path)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        host, port = server.server_address[:2]
+        headers = {"X-Quire-Token": server.token}
+
+        def req(method: str, path: str) -> tuple[int, bytes]:
+            conn = http.client.HTTPConnection(str(host), int(port), timeout=5)
+            conn.request(method, path, headers=headers)
+            resp = conn.getresponse()
+            body = resp.read()
+            conn.close()
+            return resp.status, body
+
+        status, js_bytes = req("GET", "/static/icons.js")
+        assert status == 200 and b"LUCIDE" in js_bytes
+
+        # 尚无章节缓存时开启追更应明确报错 400
+        status, err_bytes = req("PUT", f"/api/books/{book.id}/follow")
+        assert status == 400 and "章节缓存" in json.loads(err_bytes)["error"]
+
+        # 落定连续两章后可开启、查询、再关闭追更
+        _settle_chapter(tmp_path, book.source_url, 1, "第一章", "正文一")
+        _settle_chapter(tmp_path, book.source_url, 2, "第二章", "正文二")
+        status, on_bytes = req("PUT", f"/api/books/{book.id}/follow")
+        assert status == 200
+        assert json.loads(on_bytes)["follow"] == {"chapters": 2, "update": 0, "changed": False}
+        assert library.get_follow(tmp_path, book.id) is not None
+
+        status, off_bytes = req("DELETE", f"/api/books/{book.id}/follow")
+        assert status == 200 and json.loads(off_bytes) == {"follow": None}
+        assert library.get_follow(tmp_path, book.id) is None
+    finally:
+        server.shutdown()
+        server.server_close()

@@ -21,6 +21,8 @@ html[data-shell] .rd-top{padding-left:84px}
 /* 默认隐身：鼠标靠近上沿 / 下沿（或打开浮层、PDF 模式）才浮现 */
 .reader:not(.show-top):not(.pinned) .rd-top{opacity:0;transform:translateY(-8px);pointer-events:none}
 .reader:not(.show-bot) .rd-bot{opacity:0;transform:translateY(8px);pointer-events:none}
+.rd-foot{position:absolute;right:20px;bottom:14px;z-index:1;font-size:var(--fs-11);color:var(--rd-dim);opacity:.72;pointer-events:none;transition:opacity .2s var(--ease)}
+.reader.show-bot .rd-foot{opacity:0}
 .rd-top .t{flex:1;min-width:0;text-align:center;font:500 var(--fs-13)/1 var(--font-ui);color:var(--rd-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rd-btn{height:30px;min-width:30px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--rd-fg);display:inline-grid;place-items:center;font:500 var(--fs-12) var(--font-ui)}
 .rd-btn:hover{background:var(--rd-line)}
@@ -85,7 +87,7 @@ html[data-shell] .rd-top{padding-left:84px}
 .rd-tones button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--rd-chrome),0 0 0 4px var(--accent)}
 .rd-fonts{display:flex;flex-direction:column;gap:2px;width:100%}
 .rd-fonts button{display:flex;justify-content:space-between;align-items:center;height:32px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:var(--rd-fg);font-size:15px}
-.rd-fonts button[aria-pressed="true"]::after{content:"✓";font-family:var(--font-ui);font-size:12px}
+.rd-fonts button svg{color:var(--rd-fg)}
 .rd-fonts button:hover{background:var(--rd-line)}
 .rd-seg{display:flex;gap:2px;background:var(--rd-line);border-radius:8px;padding:2px;width:100%}
 .rd-seg button{flex:1;height:26px;border:0;border-radius:6px;background:transparent;color:var(--rd-fg);font:500 var(--fs-12) var(--font-ui)}
@@ -95,10 +97,10 @@ html[data-shell] .rd-top{padding-left:84px}
 
 /* 自定义排版（对应「图书」的自定义主题） */
 .rd-typo{border-top:1px solid var(--rd-line);margin-top:4px;padding-top:10px}
-.rd-typo summary{list-style:none;cursor:pointer;font:500 var(--fs-12) var(--font-ui);color:var(--rd-dim);display:flex;justify-content:space-between}
+.rd-typo summary{list-style:none;cursor:pointer;font:500 var(--fs-12) var(--font-ui);color:var(--rd-dim);display:flex;align-items:center;justify-content:space-between}
 .rd-typo summary::-webkit-details-marker{display:none}
-.rd-typo summary::after{content:"›";transition:transform var(--t)}
-.rd-typo[open] summary::after{transform:rotate(90deg)}
+.rd-typo summary svg{transition:transform var(--t)}
+.rd-typo[open] summary svg{transform:rotate(90deg)}
 .rd-typo[open] summary{margin-bottom:10px}
 .rd-slider{display:grid;grid-template-columns:4.5em minmax(0,1fr) 40px;align-items:center;gap:8px;margin-bottom:10px;font-size:var(--fs-12);color:var(--rd-dim)}
 .rd-slider span{white-space:nowrap}

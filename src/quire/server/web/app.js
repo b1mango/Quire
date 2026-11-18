@@ -171,15 +171,35 @@ function confirmBox({ title, body = "", ok = "确定", cancel = "取消", danger
     ${ok ? html`<button class="btn ${danger ? "danger" : "primary"}" data-r="1">${ok}</button>` : ""}</div>`;
   const dialog = $("confirm");
   return new Promise((resolve) => {
-    const done = (value) => { dialog.onclose = null; if (dialog.open) dialog.close(); resolve(value); };
+    const done = (value) => {
+      dialog.onclose = null;
+      dialog.onclick = null;
+      box.onkeydown = null;
+      if (dialog.open) dialog.close();
+      resolve(value);
+    };
     box.onclick = (e) => {
       if (onClick && onClick(e, done)) return;
       const b = e.target.closest("[data-r]");
       if (b) done(b.dataset.r === "1");
     };
+    box.onkeydown = (e) => {
+      if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+      const input = e.target.closest("input:not([type=hidden]):not([type=checkbox])");
+      if (!input) return;
+      e.preventDefault();
+      const rowPick = input.closest("div")?.parentElement?.querySelector("[data-pick]");
+      if (rowPick) rowPick.click();
+      else if (box.querySelector('[data-r="1"]')) done(true);
+    };
+    dialog.onclick = (e) => { if (e.target === dialog && cancel) done(false); };
     dialog.onclose = () => resolve(false);
     dialog.showModal();
-    box.querySelector('[data-r="0"]')?.focus();
+    const firstCtl = box.querySelector("input:not([type=hidden]):not([type=checkbox]), [data-pick], [data-follow], [data-r='0'], [data-r='1']");
+    if (firstCtl) {
+      firstCtl.focus();
+      if (firstCtl.tagName === "INPUT" && typeof firstCtl.select === "function") firstCtl.select();
+    }
   });
 }
 
@@ -224,17 +244,6 @@ function onShortcut(e) {
   else if (key === "escape" && state.view === "library" && state.sel.size && !typing()) run(() => setSelection([]));
 }
 document.addEventListener("keydown", onShortcut);
-
-/* 任务页按 Esc 取消正在查看的任务（输入中、输入法组字、对话框打开时不触发）。 */
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
-  if (document.querySelector("dialog[open]")) return;
-  if (e.target.isContentEditable || e.target.closest?.("input, textarea, select")) return;
-  if (document.querySelector('.view[data-view="tasks"]').hidden) return;
-  if (state.job && (state.job.status === "running" || state.job.status === "pending")) {
-    api(`/api/jobs/${state.job.id}/cancel`, { method: "POST" }).catch(() => {});
-  }
-});
 
 /* 不在输入框时 ⌘V 一个链接：直接去采集并识别 */
 document.addEventListener("paste", (e) => {
