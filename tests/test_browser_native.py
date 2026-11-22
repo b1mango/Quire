@@ -167,10 +167,17 @@ def test_real_cdp_reuses_login_and_keeps_existing_tab(tmp_path):
                     )
                     assert "第6段" in response.text
                     assert not client._client.cookies
-                after = await cdp.call("Target.getTargets")
-                assert {t["targetId"] for t in before["targetInfos"] if t["type"] == "page"} == {
-                    t["targetId"] for t in after["targetInfos"] if t["type"] == "page"
-                }
+
+                async def pages() -> set[str]:
+                    targets = (await cdp.call("Target.getTargets"))["targetInfos"]
+                    return {t["targetId"] for t in targets if t["type"] == "page"}
+
+                existing = {t["targetId"] for t in before["targetInfos"] if t["type"] == "page"}
+                # closeTarget 回复成功时标签页可能还在销毁中（慢机器上能看到），等它消失再比对
+                async with asyncio.timeout(3):
+                    while (after := await pages()) != existing:
+                        await asyncio.sleep(0.05)
+                assert after == existing
                 cookies = await cdp.call(
                     "Network.getCookies", {"urls": [url]}, session_id=attached["sessionId"]
                 )
