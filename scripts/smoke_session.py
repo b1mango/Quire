@@ -78,11 +78,18 @@ async def run_smoke() -> dict[str, object]:
     return report
 
 
+def _json_default(value: object) -> str:
+    # 请求记录里的 body 是 bytes（9-18 起 mock 记录 POST 请求体）
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def main() -> int:
     report = asyncio.run(run_smoke())
     output = ROOT / "output" / "session-smoke"
     output.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(report, indent=2, ensure_ascii=True) + "\n"
+    payload = json.dumps(report, indent=2, ensure_ascii=True, default=_json_default) + "\n"
     (output / "report.json").write_text(payload, encoding="utf-8")
     sys.stdout.write(payload)
     return 0 if report["ok"] else 1
