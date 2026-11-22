@@ -42,7 +42,7 @@ strict = true
 files = ["src/quire"]
 
 [[tool.mypy.overrides]]
-module = ["onnxruntime", "numpy"]
+module = "onnxruntime"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

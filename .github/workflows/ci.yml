@@ -14,7 +14,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.11.7"
-      - run: uv sync --locked --extra dev --extra core --python 3.12
+      - run: uv sync --locked --extra dev --extra core --extra ocr --python 3.12
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy src/quire
