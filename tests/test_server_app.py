@@ -608,14 +608,18 @@ def test_sites_list_returns_recommended(server):
 
 
 def test_sites_open_only_allowlisted(server, monkeypatch):
+    import subprocess
+
     srv, _ = server
     opened = []
-    monkeypatch.setattr("quire.server.recsites._open_url", opened.append)
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: opened.append(cmd))
     status, data = _request(srv, "POST", "/api/sites/open", {"host": "quanben.io"})
     assert status == 200
     assert data == {"opened": "https://quanben.io/"}
-    assert opened == ["https://quanben.io/"]
+    assert opened == [["open", "https://quanben.io/"]]
+    status, error = _request(srv, "POST", "/api/sites/open", {})
+    assert status == 400 and error["error"]
     status, error = _request(srv, "POST", "/api/sites/open", {"host": "evil.test"})
     assert status == 400
     assert error["error"]
-    assert opened == ["https://quanben.io/"]  # 未再打开
+    assert len(opened) == 1  # 未再打开

@@ -47,7 +47,7 @@ def add(server, book_id, files):
 def test_modes_default_and_progress(server):
     root = server.data_root
     epub = root / "book.epub"
-    with EpubWriter(epub, title="测试", cover=False) as writer:
+    with EpubWriter(epub, title="测试") as writer:
         writer.add_chapter(EpubChapter(1, "第一章", ("正文",)))
     cbz = root / "book.cbz"
     with ZipFile(cbz, "w") as archive:
@@ -93,6 +93,23 @@ def test_modes_default_and_progress(server):
     assert headers["Cache-Control"] == "private, max-age=3600"
     status, _, raw = request(server, "GET", "/api/books/b1/read/section/0?format=txt")
     assert status == 200 and "<h1>第一章 开始</h1>" in json.loads(raw)["html"]
+    status, _, raw = request(server, "GET", "/api/books/b1/read/section/0?format=epub")
+    assert status == 200 and "cover" in json.loads(raw)["title"]
+    assert request(server, "GET", "/api/books/b1/read/section/-1?format=txt")[0] == 404
+    status, _, img = request(server, "GET", "/api/books/b1/read/res/cover.png?format=epub")
+    assert status == 200 and img.startswith(b"\x89PNG")
+    assert request(server, "GET", "/api/books/b1/read/unknown")[0] == 404
+    assert request(server, "POST", "/api/books/b1/read")[0] == 404
+    assert request(server, "PUT", "/api/books/b1/progress", ["not-a-dict"])[0] == 400
+    assert (
+        request(
+            server,
+            "PUT",
+            "/api/books/b1/progress",
+            {"format": "zip", "position": "1", "percent": 0.5},
+        )[0]
+        == 404
+    )
 
 
 def test_pdf_range_and_replaced_file(server):
@@ -106,6 +123,14 @@ def test_pdf_range_and_replaced_file(server):
     assert headers["Content-Range"] == "bytes 2-6/14"
     assert headers["Content-Type"] == "application/pdf"
     assert headers["Cache-Control"] == "private, max-age=3600"
+    status, _, suffix = request(
+        server, "GET", "/api/books/b1/read/pdf", headers={"Range": "bytes=-4"}
+    )
+    assert status == 206 and suffix == b"6789"
+    assert request(server, "GET", "/api/books/b1/read/pdf", headers={"Range": "bytes=-"})[0] == 416
+    assert (
+        request(server, "GET", "/api/books/b1/read/pdf", headers={"Range": "bytes=50-60"})[0] == 416
+    )
     pdf.write_bytes(b"changed")
     status, _, data = request(server, "GET", "/api/books/b1/read")
     assert status == 404 and "文件已移动或被修改" in json.loads(data)["error"]

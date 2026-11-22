@@ -15,7 +15,12 @@ def test_reader_uses_last_nonce_without_executing_javascript():
     window["non"+"ce"] = "" + (+eval("1+1")).toString() + "ab";</script>"""
     html += f"<script>var DATA = '{encoded}';</script>"
     assert extract_tencent_images(html) == ["https://images.test/page.jpg"]
+    assert extract_tencent_images(html.replace("1+1", "1<=2?2:9")) == [
+        "https://images.test/page.jpg"
+    ]
     assert extract_tencent_images(html.replace("1+1", "__import__(1)")) == []
+    assert extract_tencent_images(html.replace('+ "ab"', "+ bad")) == []
+    assert extract_tencent_images(html.replace(encoded, "ab!invalid")) == []
 
 
 def test_gugu_reader_links_are_explicit_and_in_reading_order():

@@ -84,6 +84,11 @@ def test_inline_elements_do_not_split_prose() -> None:
         ("/read?id=9&id=8&page=2", "/read?id=9&page=3", False),
         ("/read?id=9&lang=&page=2", "/read?id=9&page=3", False),
         ("/read?id=9&id=8&page=2", "/read?id=8&id=9&page=3", False),
+        ("/app#/book/2.html", "/app#/book/2_2.html", True),
+        ("/app#/book/2.html", "/other#/book/2_2.html", False),
+        ("/read?2702787", "/read?2702787_2", True),
+        ("/read?2702787_2", "/read?2702787_3", True),
+        ("/read?id=9", "/read?id=9", False),
     ],
 )
 def test_rel_next_preserves_chapter_identity(current: str, target: str, follow: bool) -> None:

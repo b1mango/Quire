@@ -99,12 +99,20 @@ def _pack_page(payload: str, words: list[str]) -> str:
 
 
 def test_lz_base64_round_trip():
+    from quire.parse.packed import _packer_key, _unpack
+
     for text in ["SMH|reader|images|sl|preInit", "斗破苍穹|act_01|seemh-001-c8d2.jpg.webp"]:
         assert _lz_decompress_base64(_lz_compress_base64(text)) == text
+    assert _lz_decompress_base64("!") == ""
+    assert _lz_decompress_base64("A" * (512 * 1024 + 1)) == ""
+    assert _lz_decompress_base64("A" * 32) == ""
+    assert _lz_decompress_base64("C" * 32) == ""
+    assert _packer_key(36, 40) == "14"
+    assert _unpack("10", 10, 11, [f"w{i}" for i in range(11)]) == "w10"
 
 
 def test_extracts_reader_image_list():
-    payload = '0.1({"2":["/ps3/x/a.jpg","/ps3/x/b.jpg"],"3":{"e":111,"m":"sig"}}).4();'
+    payload = r'0.1({"2":["\x2fps3\u002fx/a.jpg","/ps3/x/b.jpg"],"3":{"e":111,"m":"sig"}}).4();\n'
     html = _pack_page(payload, ["SMH", "reader", "images", "sl", "preInit"])
     assert extract_smh_reader_images(html) == [
         "https://us.hamreus.com/ps3/x/a.jpg?e=111&m=sig",
@@ -143,6 +151,7 @@ def test_extracts_desktop_imgdata_variant():
         '6.2({"0":["a.JPG.webp"],"1":"/ps1/"});',  # 缺 sl 签名
         '6.2({"0":"a.JPG.webp","1":"/ps1/","3":{"e":111,"m":"sig"}});',  # files 不是数组
         '6.2({"0":["a.JPG.webp"],"1":"ps1/","3":{"e":111,"m":"sig"}});',  # path 非 / 开头
+        '6.2({"0":["/a.JPG.webp"],"1":"/ps1/","3":{"e":111,"m":"sig"}});',  # file 以 / 开头
     ],
 )
 def test_desktop_imgdata_malformed_returns_empty(payload):
@@ -159,9 +168,18 @@ def test_desktop_imgdata_malformed_returns_empty(payload):
             ["SMH", "reader", "images", "sl", "preInit"],
         ),  # images 不是数组
         _pack_page(
+            '0.1({"2":["ps3/x/a.jpg"],"3":{"e":111,"m":"sig"}}).4();',
+            ["SMH", "reader", "images", "sl", "preInit"],
+        ),  # images 非 / 开头
+        _pack_page(
             '0.1({"2":["/ps3/x/a.jpg"]}).4();', ["SMH", "reader", "images", "sl", "preInit"]
         ),  # 缺 sl 签名
-        "eval(function(p,a,c,k,e,d){}('junk',62,5,'!!!not-base64!!!'['splic']('|')))",
+        _pack_page("0.1(123);", ["SMH", "reader"]),  # 无花括号
+        _pack_page("0.1({bad});", ["SMH", "reader"]),  # 非法 JSON
+        _pack_page("0.1({", ["SMH", "reader"]),  # 未闭合花括号
+        _pack_page("other();", ["SMH", "reader"]),  # 非 SMH.reader/imgData
+        f"eval(function(p,a,c,k,e,d){{}}('0',62,99,'{_lz_compress_base64('a|b')}'['splic']('|')))",
+        f"eval(function(p,a,c,k,e,d){{}}('0',62,2,'{'C' * 32}'['splic']('|')))",
     ],
 )
 def test_malformed_or_absent_payload_returns_empty(html):

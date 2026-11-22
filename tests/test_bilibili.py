@@ -121,6 +121,14 @@ def test_tap_deduplicates_tokens_and_excludes_encrypted_or_foreign_images():
                     "params": {"requestId": str(i), "request": {"url": url}},
                 }
             )
+        queue.put_nowait({"sessionId": "other", "method": "Fetch.requestPaused", "params": {}})
+        queue.put_nowait({"sessionId": "session", "method": "Page.loadEventFired", "params": {}})
+        from quire.errors import FetchError
+
+        cdp.call.side_effect = [
+            *([{}] * (len(urls) - 1)),
+            FetchError("request cancelled"),
+        ]
         pump = asyncio.create_task(tap.pump())
         await asyncio.sleep(0)
         pump.cancel()
@@ -129,3 +137,128 @@ def test_tap_deduplicates_tokens_and_excludes_encrypted_or_foreign_images():
         assert cdp.call.await_count == len(urls)
 
     asyncio.run(run())
+
+
+def test_capture_reader_page_local_chrome_and_error_paths(monkeypatch):
+    import asyncio
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from quire.errors import FetchError, UnsupportedError
+    from quire.fetch.browser import RenderOptions
+    from quire.sites import bilibili
+
+    url = "https://manga.bilibili.com/mc1/2"
+    with pytest.raises(UnsupportedError):
+        asyncio.run(
+            bilibili.capture_reader_page("https://manga.bilibili.com/detail/mc1", RenderOptions())
+        )
+
+    monkeypatch.setattr(bilibili, "find_chrome", lambda *args: None)
+    with pytest.raises(UnsupportedError):
+        asyncio.run(bilibili.capture_reader_page(url, RenderOptions()))
+
+    process = AsyncMock()
+    process.endpoint = "ws://127.0.0.1:9222/devtools/browser/x"
+    process.__aenter__.return_value = process
+    monkeypatch.setattr(bilibili, "find_chrome", lambda *args: "/fake/chrome")
+    monkeypatch.setattr(bilibili, "ChromeProcess", lambda *args, **kwargs: process)
+
+    states = [
+        "{bad json",
+        json.dumps({"ready": True, "page": "1", "title": "测试话", "href": url, "text": "2P"}),
+        json.dumps({"ready": True, "page": "2", "title": "测试话", "href": url, "text": "2P"}),
+        json.dumps({"ready": True, "page": "2", "title": "测试话", "href": url, "text": "2P"}),
+    ]
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def call(method, params=None, **kwargs):
+        if method == "Target.createTarget":
+            return {"targetId": "owned"}
+        if method == "Target.attachToTarget":
+            return {"sessionId": "session"}
+        if method == "Target.closeTarget":
+            return {"success": True}
+        if method == "Page.navigate":
+            queue.put_nowait(
+                {
+                    "sessionId": "session",
+                    "method": "Fetch.requestPaused",
+                    "params": {
+                        "requestId": "1",
+                        "request": {"url": "https://a.hdslb.com/bfs/manga/1.jpg?token=t1"},
+                    },
+                }
+            )
+            return {}
+        if method == "Input.dispatchKeyEvent" and params.get("type") == "keyUp":
+            queue.put_nowait(
+                {
+                    "sessionId": "session",
+                    "method": "Fetch.requestPaused",
+                    "params": {
+                        "requestId": "2",
+                        "request": {"url": "https://a.hdslb.com/bfs/manga/2.jpg?token=t2"},
+                    },
+                }
+            )
+            return {}
+        if method == "Runtime.evaluate":
+            val = states.pop(0) if len(states) > 1 else states[0]
+            return {"result": {"value": val}}
+        return {}
+
+    cdp = AsyncMock()
+    cdp.events = queue
+    cdp.call.side_effect = call
+    cdp.__aenter__.return_value = cdp
+    monkeypatch.setattr(bilibili, "Cdp", lambda _: cdp)
+
+    async def fast_first_images(tap):
+        while not tap.urls:
+            await asyncio.sleep(0.01)
+
+    monkeypatch.setattr(bilibili, "_await_first_images", fast_first_images)
+    assert asyncio.run(bilibili._state(cdp, "session")) == {}
+
+    page, total = asyncio.run(bilibili.capture_reader_page(url, RenderOptions(max_scrolls=1)))
+    assert total == 2 and "1.jpg" in page.text and "2.jpg" in page.text
+
+    # 空图片清单与导航错误
+    async def no_images(tap):
+        pass
+
+    monkeypatch.setattr(bilibili, "_await_first_images", no_images)
+    with pytest.raises(FetchError, match="未能捕获"):
+        asyncio.run(bilibili.capture_reader_page(url, RenderOptions(), full=False))
+
+    async def fail_nav(method, params=None, **kwargs):
+        if method == "Target.createTarget":
+            return {"targetId": "owned"}
+        if method == "Target.attachToTarget":
+            return {"sessionId": "session"}
+        if method == "Target.closeTarget":
+            return {"success": True}
+        if method == "Page.navigate":
+            return {"errorText": "net::ERR_FAILED"}
+        return {}
+
+    cdp.call.side_effect = fail_nav
+    with pytest.raises(FetchError, match="导航失败"):
+        asyncio.run(bilibili.capture_reader_page(url, RenderOptions(), full=False))
+
+    # 翻页达到 max_scrolls 但未收齐页数
+    tap = SimpleNamespace(urls=["one"])
+    monkeypatch.setattr(
+        bilibili,
+        "_state",
+        AsyncMock(
+            side_effect=[
+                {"page": "2", "href": url},
+                {"page": "3", "href": url},
+            ]
+        ),
+    )
+    with pytest.raises(FetchError, match="上限"):
+        asyncio.run(bilibili._paginate(cdp, "session", tap, RenderOptions(max_scrolls=1), url, 3))

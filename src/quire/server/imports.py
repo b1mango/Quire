@@ -15,7 +15,6 @@ from urllib.parse import parse_qs, urlsplit
 
 from PIL import Image
 
-from ..errors import QuireError
 from ..importer import files
 from ..importer.unwrap import unwrap
 from ..reader import comic, epub, pdfpages
@@ -132,7 +131,11 @@ def _accept(handler: _Handler, query: dict[str, list[str]]) -> _Staged | None:
     staging = handler.server.data_root / "imports"
     staging.mkdir(parents=True, exist_ok=True)
     path = staging / f"{secrets.token_hex(12)}.part"
-    digest = _receive(handler, length, path)
+    try:
+        digest = _receive(handler, length, path)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
     if digest is None:
         path.unlink(missing_ok=True)
         handler._reply_json(400, {"error": "上传的文件不完整"})
@@ -140,7 +143,7 @@ def _accept(handler: _Handler, query: dict[str, list[str]]) -> _Staged | None:
     item = _Staged(path, name, digest, [], [], time.time())
     try:
         inner = unwrap(path, name, staging)
-    except QuireError:
+    except BaseException:
         _discard(item)
         raise
     if inner is not None:  # ZIP 里装的是书：之后按解出的书文件处理，原压缩包一并清理
@@ -152,43 +155,50 @@ def _commit(
     handler: _Handler, item: _Staged, style: str | None, title: str, author: str | None
 ) -> None:
     root = handler.server.data_root
-    with _IMPORT_LOCK:
-        duplicate = _duplicate(root, {item.digest})
-        if duplicate:
-            handler._reply_json(409, {"error": "书库里已有同一文件", "book_id": duplicate.id})
-            return
-        current = settings.load(handler.server.settings_path, root)
-        prepared = files.prepare(
-            item.path,
-            item.name,
-            current.output_path,
-            style or current.epub_style,
-            current.epub_font,
-            title=title,
-            author=author,
-        )
-        try:
-            hashes = {library._hash(target)[1] for _, target in prepared.files}
-            duplicate = _duplicate(root, hashes)
+    try:
+        with _IMPORT_LOCK:
+            duplicate = _duplicate(root, {item.digest})
             if duplicate:
-                for _, target in prepared.files:
-                    target.unlink(missing_ok=True)
+                _discard(item)
                 handler._reply_json(409, {"error": "书库里已有同一文件", "book_id": duplicate.id})
                 return
-            book = library.add_book(
-                root,
-                secrets.token_hex(8),
-                title=prepared.title,
-                author=prepared.author,
-                kind=prepared.kind,
-                source_url="",
-                files=prepared.files,
+            current = settings.load(handler.server.settings_path, root)
+            prepared = files.prepare(
+                item.path,
+                item.name,
+                current.output_path,
+                style or current.epub_style,
+                current.epub_font,
+                title=title,
+                author=author,
             )
-        except BaseException:
-            for _, target in prepared.files:
-                target.unlink(missing_ok=True)
-            raise
-        _cover(root, book, prepared)
+            try:
+                hashes = {library._hash(target)[1] for _, target in prepared.files}
+                duplicate = _duplicate(root, hashes)
+                if duplicate:
+                    for _, target in prepared.files:
+                        target.unlink(missing_ok=True)
+                    _discard(item)
+                    handler._reply_json(
+                        409, {"error": "书库里已有同一文件", "book_id": duplicate.id}
+                    )
+                    return
+                book = library.add_book(
+                    root,
+                    secrets.token_hex(8),
+                    title=prepared.title,
+                    author=prepared.author,
+                    kind=prepared.kind,
+                    source_url="",
+                    files=prepared.files,
+                )
+            except BaseException:
+                for _, target in prepared.files:
+                    target.unlink(missing_ok=True)
+                raise
+            _cover(root, book, prepared)
+    finally:
+        _discard(item)
     notes: list[JsonValue] = [*item.notes, *prepared.notes]
     handler._reply_json(
         201,
@@ -220,15 +230,15 @@ def route(handler: _Handler, method: str, parts: list[str]) -> bool:
         if item is None:
             handler._reply_json(404, {"error": "这个导入已过期，请重新选择文件"})
             return True
-        if method == "DELETE":
-            _discard(item)
-            handler._reply_json(200, {"discarded": True})
-            return True
-        body = handler._body()
-        title = body.get("title") if isinstance(body, dict) else None
-        author = body.get("author") if isinstance(body, dict) else None
-        style = body.get("style") if isinstance(body, dict) else None
         try:
+            if method == "DELETE":
+                _discard(item)
+                handler._reply_json(200, {"discarded": True})
+                return True
+            body = handler._body()
+            title = body.get("title") if isinstance(body, dict) else None
+            author = body.get("author") if isinstance(body, dict) else None
+            style = body.get("style") if isinstance(body, dict) else None
             _commit(
                 handler,
                 item,

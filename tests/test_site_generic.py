@@ -142,10 +142,22 @@ def test_maccms_player_frame_is_followed():
 def test_player_url_decodes_like_macplayer():
     assert reader_frame.player_url({"url": "a%2Fb", "encrypt": "1"}) == "a/b"
     assert reader_frame.player_url({"url": "YSUyRmI=", "encrypt": "2"}) == "a/b"
+    assert reader_frame.player_url({"url": "A", "encrypt": "2"}) == "A"
     assert reader_frame.player_url({"url": "raw", "encrypt": "3"}) == "raw"
 
 
 def test_frame_follow_falls_back_to_page():
+    from quire.errors import NetworkError
+
+    class FailingClient:
+        def __init__(self, fail_url: str, pages: dict[str, str]) -> None:
+            self.fail_url, self.pages = fail_url, pages
+
+        async def get(self, url, *, referer=None, headers=None):
+            if url == self.fail_url:
+                raise NetworkError("down")
+            return Response(url, 200, {"content-type": "text/html"}, self.pages[url].encode(), 1)
+
     lone = '<html><body><iframe src="/reader/1"></iframe></body></html>'
     page = Response("https://m.test/c/1.html", 200, {}, lone.encode(), 1)
     client = _Client({"https://m.test/reader/1": FRAME})
@@ -153,6 +165,17 @@ def test_frame_follow_falls_back_to_page():
     assert asyncio.run(reader_frame.follow(client, page, manga=False)) is page  # 小说不跟 iframe
     empty = _Client({"https://m.test/reader/1": "<html></html>"})
     assert asyncio.run(reader_frame.follow(empty, page, manga=True)) is page  # 框架里也没图
+    bad_player = Response(
+        "https://m.test/c/1.html", 200, {}, b"<script>var player_aaaa={bad}</script>", 1
+    )
+    assert asyncio.run(reader_frame.follow(empty, bad_player, manga=True)) is bad_player
+    player_page = Response("https://m.test/chapter/1-2-3.html", 200, {}, PLAYER.encode(), 1)
+    fail_script = FailingClient("https://m.test/static/player/wmmh.js", {})
+    assert asyncio.run(reader_frame.follow(fail_script, player_page, manga=True)) is player_page
+    fail_frame = FailingClient(
+        "https://img.test/play/min/abc123", {"https://m.test/static/player/wmmh.js": SCRIPT}
+    )
+    assert asyncio.run(reader_frame.follow(fail_frame, player_page, manga=True)) is player_page
 
 
 def test_system_proxy_switch_and_loopback_bypass(monkeypatch):
@@ -233,6 +256,14 @@ def test_script_array_images_cover_common_templates():
     encoded = base64.b64encode(run.encode()).decode()
     inline = f'<script src="data:text/javascript;base64,{encoded}"></script>'
     assert len(extract_script_images(inline)) == 2
+    single_quoted = (
+        "<script>atob('=================');var imgList = ['//img.test/a/1.jpg','//img.test/a/2.jpg'];"
+        "var picdata = [invalid json here];</script>"
+    )
+    assert extract_script_images(single_quoted) == [
+        "https://img.test/a/1.jpg",
+        "https://img.test/a/2.jpg",
+    ]
 
 
 def test_unnamed_arrays_need_one_folder_and_five_images():

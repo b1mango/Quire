@@ -168,8 +168,8 @@ def test_real_cdp_reuses_login_and_keeps_existing_tab(tmp_path):
                     assert "第6段" in response.text
                     assert not client._client.cookies
                 after = await cdp.call("Target.getTargets")
-                assert {t["targetId"] for t in before["targetInfos"]} == {
-                    t["targetId"] for t in after["targetInfos"]
+                assert {t["targetId"] for t in before["targetInfos"] if t["type"] == "page"} == {
+                    t["targetId"] for t in after["targetInfos"] if t["type"] == "page"
                 }
                 cookies = await cdp.call(
                     "Network.getCookies", {"urls": [url]}, session_id=attached["sessionId"]
@@ -366,3 +366,95 @@ def test_closed_interception_does_not_kill_native_pump():
             await network._continue("Fetch.continueRequest", {"requestId": "live"}, session_id="s")
 
     asyncio.run(run())
+
+
+def test_render_native_boundary_validations(monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from quire.errors import UnsupportedError
+    from quire.fetch import browser
+
+    client = AsyncFetcher(respect_robots=False, max_bytes=100, rate=100)
+    with pytest.raises(ConfigError):
+        asyncio.run(fetch_render_input(client, "file:///etc/passwd", RenderOptions(native=True)))
+    with pytest.raises(ConfigError):
+        asyncio.run(
+            render_page(Response("file:///x", 200, {}, b"", 0), client, RenderOptions(native=True))
+        )
+    monkeypatch.setattr(browser, "find_chrome", lambda _: None)
+    with pytest.raises(UnsupportedError):
+        asyncio.run(
+            render_page(
+                Response("https://8book.com/read/1/?2", 200, {}, b"", 0),
+                client,
+                RenderOptions(native=True),
+            )
+        )
+
+    process = AsyncMock()
+    process.endpoint = "ws://127.0.0.1:9222/devtools/browser/x"
+    process.__aenter__.return_value = process
+    cdp = AsyncMock()
+    cdp.__aenter__.return_value = cdp
+
+    @asynccontextmanager
+    async def fake_tab(_):
+        yield "s"
+
+    class FakeNet:
+        def __init__(self, *args):
+            self.hosts = {"8book.com"}
+            self.warnings: set[str] = set()
+            self.ready_script = "true"
+            self.status = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            pass
+
+        def check(self):
+            pass
+
+        def validate_status(self, url):
+            pass
+
+    monkeypatch.setattr(browser, "find_chrome", lambda _: "/fake")
+    monkeypatch.setattr(browser, "ChromeProcess", lambda *a, **kw: process)
+    monkeypatch.setattr(browser, "Cdp", lambda _: cdp)
+    monkeypatch.setattr(browser, "owned_tab", fake_tab)
+    monkeypatch.setattr(browser, "NativeNetwork", FakeNet)
+
+    outcomes = [
+        ({"errorText": "fail"}, None, FetchError),
+        ({}, None, FetchError),
+        ({}, {"url": "https://other.test/", "html": "ok"}, FetchError),
+        (
+            {},
+            {"url": "https://8book.com/read/1/?2", "html": "<title>Just a moment</title>"},
+            BlockedError,
+        ),
+        (
+            {},
+            {"url": "https://8book.com/read/1/?2", "html": "x" * 200},
+            FetchError,
+        ),
+    ]
+    page = Response("https://8book.com/read/1/?2", 200, {}, b"", 0)
+    for nav, dom, exc_type in outcomes:
+
+        async def call(method, params=None, nav=nav, dom=dom, **kwargs):
+            if method == "Page.getFrameTree":
+                return {"frameTree": {"frame": {"id": "f"}}}
+            if method == "Page.navigate":
+                return nav
+            if method == "Runtime.evaluate":
+                if params and params.get("expression") == "true":
+                    return {"result": {"value": True}}
+                return {"result": {"value": dom}}
+            return {}
+
+        cdp.call.side_effect = call
+        with pytest.raises(exc_type):
+            asyncio.run(render_page(page, client, RenderOptions(native=True)))

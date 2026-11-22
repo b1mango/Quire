@@ -165,6 +165,100 @@ def test_http_toggle_follow_and_static_icons(tmp_path: Path) -> None:
         status, off_bytes = req("DELETE", f"/api/books/{book.id}/follow")
         assert status == 200 and json.loads(off_bytes) == {"follow": None}
         assert library.get_follow(tmp_path, book.id) is None
+
+        # 未开启追更时检查更新或提交追更任务应返回 400
+        assert req("POST", f"/api/books/{book.id}/check-update")[0] == 400
+        assert req("POST", f"/api/books/{book.id}/follow")[0] == 400
+
+        # 非目录小说（无来源地址或漫画）不支持开启追更
+        local_file = tmp_path / "local.txt"
+        local_file.write_text("正文", "utf-8")
+        local_book = library.add_book(
+            tmp_path,
+            "local1",
+            title="本地书",
+            kind="novel",
+            source_url="",
+            files=[("txt", local_file)],
+        )
+        assert req("PUT", f"/api/books/{local_book.id}/follow")[0] == 400
     finally:
         server.shutdown()
+        server.server_close()
+
+
+def test_follow_edge_cases_and_stream_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from quire.assemble.models import NovelChapter
+    from quire.models import ArtifactResult, NovelResult
+    from quire.server import follows
+    from quire.server.app import make_server
+
+    server = make_server("127.0.0.1", 0, data_root=tmp_path)
+    try:
+        book = _book(tmp_path, "b2")
+        spec = JobSpec(
+            kind="novel",
+            url=book.source_url,
+            title="书",
+            formats=("txt",),
+            follow_prefix=2,
+            chapter_first=3,
+        )
+        with pytest.raises(ConfigError, match="缓存不完整"):
+            follows.resolve_prefix(spec, tmp_path)
+
+        # 单章或非第一章起始的区间不登记追更锚点
+        out = tmp_path / "out.txt"
+        out.write_text("x", "utf-8")
+        res = NovelResult(
+            output=out,
+            title="书",
+            artifacts=(ArtifactResult("txt", out, 1, None),),
+            report=out,
+            chapters_written=1,
+            chapters=(NovelChapter(2, "第二章", ("正文",)),),
+        )
+        follows.register_follow(
+            tmp_path,
+            book.id,
+            JobSpec(
+                kind="novel",
+                url=book.source_url,
+                title="书",
+                formats=("txt",),
+                capture_mode="single",
+            ),
+            res,
+        )
+        follows.register_follow(
+            tmp_path,
+            book.id,
+            JobSpec(
+                kind="novel", url=book.source_url, title="书", formats=("txt",), chapter_first=2
+            ),
+            res,
+        )
+        assert library.get_follow(tmp_path, book.id) is None
+
+        # 流式检查在发出阶段帧后出错时，以错误帧收尾；全部检查单本出错不中断
+        library.upsert_follow(
+            tmp_path, book.id, capture_mode="catalogue", chapters=1, last_title="第一章"
+        )
+
+        async def failing_probe(*args: object, on_stage: object = None, **kwargs: object) -> object:
+            if callable(on_stage):
+                on_stage("fetch")
+            raise ConfigError("站点不可达", hint="稍后重试")
+
+        monkeypatch.setattr(follows, "probe_url", failing_probe)
+        frames: list[dict[str, object]] = []
+        follows.check_update_stream(server, book.id, frames.append)
+        assert frames[0] == {"stage": "fetch"} and "error" in frames[-1]
+
+        all_frames: list[dict[str, object]] = []
+        follows.check_all_stream(server, all_frames.append)
+        assert all_frames[0] == {"total": 1} and all_frames[1]["error"] == "站点不可达"
+    finally:
         server.server_close()

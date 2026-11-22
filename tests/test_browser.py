@@ -320,3 +320,64 @@ def test_render_options_referer_validate():
         RenderOptions(referer="not a url")
     with pytest.raises(ConfigError):
         RenderOptions(referer="https://user:pw@example.test/")
+    with pytest.raises(ConfigError):
+        RenderOptions(native=1)  # type: ignore[arg-type]
+
+
+def test_render_challenge_escalation_and_harvest_clearance(monkeypatch):
+    from quire.errors import BlockedError
+
+    process = AsyncMock()
+    process.__aenter__.return_value = process
+    cdp = AsyncMock()
+    cdp.__aenter__.return_value = cdp
+    htmls = [
+        "<html><head><title>Just a moment...</title></head></html>",
+        "<html><head><title>Just a moment...</title></head></html>",
+    ]
+
+    async def call(method, params=None, **kwargs):
+        if method == "Target.createTarget":
+            return {"targetId": "target"}
+        if method == "Target.attachToTarget":
+            return {"sessionId": "session"}
+        if method == "Page.getFrameTree":
+            return {"frameTree": {"frame": {"id": "frame"}}}
+        if method == "Runtime.evaluate":
+            return {"result": {"value": {"url": "https://example.test/", "html": htmls.pop(0)}}}
+        return {}
+
+    cdp.call.side_effect = call
+    monkeypatch.setattr(browser, "find_chrome", lambda _: "/fake")
+    monkeypatch.setattr(browser, "ChromeProcess", lambda _: process)
+    monkeypatch.setattr(browser, "Cdp", lambda _: cdp)
+    monkeypatch.setattr(browser, "_scroll", AsyncMock())
+    client = AsyncFetcher()
+    escalated = []
+
+    async def escalate(url: str) -> None:
+        escalated.append(url)
+
+    client.escalation = escalate
+    page = Response("https://example.test/", 200, {}, b"", 0)
+    with pytest.raises(BlockedError):
+        asyncio.run(render_page(page, client, RenderOptions()))
+    assert escalated == ["https://example.test/"]
+
+    # _harvest_clearance: 成功回注与异常转警告
+    warnings: set[str] = set()
+    harvest_cdp = AsyncMock()
+    harvest_cdp.call.side_effect = [
+        {"cookies": [{"name": "cf_clearance", "value": "tok"}]},
+        {"result": {"value": "Chrome/120"}},
+        {"cookies": [{"name": "cf_clearance", "value": "tok"}]},
+        {"result": {"value": ""}},
+    ]
+    asyncio.run(
+        browser._harvest_clearance(harvest_cdp, "s", "https://example.test/", client, warnings)
+    )
+    assert not warnings
+    asyncio.run(
+        browser._harvest_clearance(harvest_cdp, "s", "https://example.test/", client, warnings)
+    )
+    assert warnings

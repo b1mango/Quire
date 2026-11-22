@@ -184,9 +184,22 @@ def test_preview_then_confirm_with_edited_title_and_author(server):
 
 def test_preview_can_be_discarded(server):
     status, info = preview(server, "书.txt", NOVEL.encode())
+    assert call(server, "GET", f"/api/import/{info['token']}")[0] == 404
+    assert call(server, "GET", "/api/import")[0] == 404
     assert call(server, "DELETE", f"/api/import/{info['token']}")[0] == 200
     assert not list((server.data_root / "imports").glob("*"))
     assert library.list_books(server.data_root) == ()
+    # 过期暂存在下次上传时自动清理，且预览阶段遇到重复/损坏文件也会清理暂存
+    status, stale = preview(server, "过期.txt", NOVEL.encode())
+    assert status == 200
+    imports._STAGED[stale["token"]].created -= imports._STAGE_TTL + 10
+    assert preview(server, "坏.epub", b"not-an-epub")[0] == 422
+    assert stale["token"] not in imports._STAGED
+    assert not list((server.data_root / "imports").glob("*"))
+    assert request(server, "已入库.pdf", pdf_bytes())[0] == 201
+    assert preview(server, "重复.pdf", pdf_bytes())[0] == 409
+    assert preview(server, "坏压缩包.zip", b"not-a-zip")[0] == 422
+    assert not list((server.data_root / "imports").glob("*"))
 
 
 def test_zip_with_txt_and_gbk_entry_name(server):

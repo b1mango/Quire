@@ -249,6 +249,20 @@ def test_volume_detection_fallback_order_range():
     assert [len(v.chapters) for v in groups] == [3, 1] and warnings
     groups, _ = plan_volumes(doc, URL, split_by="chapters 1", first=2, last=3)
     assert [v.chapters[0].title for v in groups] == ["第2话", "第3话"]
+    ranged, _ = plan_volumes(doc, URL, split_by="chapters 1", ranges="1,3")
+    assert [v.chapters[0].title for v in ranged] == ["第1话", "第3话"]
+    desc_vols, _ = plan_volumes(doc, URL, order="desc")
+    assert desc_vols[0].chapters[0].title == "第4话"
+    dom_vols, _ = plan_volumes(doc, URL, order="dom")
+    assert dom_vols[0].chapters[0].title == "第1话"
+    with pytest.raises(ConfigError):
+        plan_volumes(doc, URL, ranges="1,3", first=2)
+    with pytest.raises(ConfigError):
+        plan_volumes(doc, URL, order="invalid")
+    from quire.errors import NoChaptersError
+
+    with pytest.raises(NoChaptersError):
+        plan_volumes(parse("<html></html>"), URL)
     named = parse(
         CATALOGUE.replace("第1话", "第1卷 第1话")
         .replace("第2话", "第1卷 第2话")

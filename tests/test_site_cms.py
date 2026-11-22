@@ -70,6 +70,8 @@ def test_madara_keeps_decimal_chapters_that_split_url_groups():
     page = _resp(BOOK, f'<div class="wp-manga"><ul>{rows}</ul></div>')
     links = _links(asyncio.run(cms.expand_madara(_Client(), page)))
     assert [link.title for link in links] == ["Chapter 1", "Chapter 1.5", "Chapter 2", "Chapter 3"]
+    already_complete = _resp(BOOK, f'<div class="wp-manga"><ul>{_rows([2, 1])}</ul></div>')
+    assert asyncio.run(cms.expand_madara(_Client(), already_complete)) is already_complete
 
 
 def test_mccms_reads_full_chapter_api():
@@ -91,6 +93,17 @@ def test_mccms_reads_full_chapter_api():
     )
     links = _links(asyncio.run(cms.expand_mccms(client, page)))
     assert len(links) == 40 and links[0].title == "第1话"
+    no_id = _resp(url, '<script src="/packs/mccms/base.js"></script>')
+    assert asyncio.run(cms.expand_mccms(_Client(), no_id)) is no_id
+    assert asyncio.run(cms.expand_mccms(_Client(), page)) is page
+    bad_rows = _Client(
+        gets={"https://c.test/index.php/api/comic/chapter?mid=543": json.dumps({"data": "none"})}
+    )
+    assert asyncio.run(cms.expand_mccms(bad_rows, page)) is page
+    empty_rows = _Client(
+        gets={"https://c.test/index.php/api/comic/chapter?mid=543": json.dumps({"data": []})}
+    )
+    assert asyncio.run(cms.expand_mccms(empty_rows, page)) is page
 
 
 def test_untrusted_page_cannot_fake_the_catalogue_token():
